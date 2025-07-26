@@ -1,0 +1,63 @@
+# 소거 연구 (Ablation Study) 실험 설정
+# 개별 컴포넌트의 영향도 분석
+
+project: nlp-summarization-ablation
+entity: wandb_repo
+program: sweep_runner.py
+
+method: grid
+
+metric:
+  name: rouge_combined_f1
+  goal: maximize
+
+parameters:
+  # 기본 설정 고정
+  model_architecture:
+    value: "kobart"
+  
+  learning_rate:
+    value: 3e-5
+  
+  per_device_train_batch_size:
+    value: 32
+  
+  num_train_epochs:
+    value: 20
+  
+  # 소거 연구 대상 컴포넌트들
+  
+  # 1. 정규화 기법 영향도
+  weight_decay:
+    values: [0.0, 0.01, 0.1]  # 가중치 감쇠 효과
+  
+  label_smoothing:
+    values: [0.0, 0.1, 0.2]  # 라벨 스무딩 효과
+  
+  # 2. 스케줄러 영향도
+  lr_scheduler_type:
+    values: ['linear', 'cosine', 'cosine_with_restarts']
+  
+  warmup_ratio:
+    values: [0.0, 0.1, 0.2]  # 워밍업 효과
+  
+  # 3. 생성 전략 영향도
+  num_beams:
+    values: [1, 3, 5]  # 빔 서치 vs 그리디 vs 다양한 빔 크기
+  
+  do_sample:
+    values: [false, true]  # 결정적 vs 확률적 생성
+  
+  # 4. 길이 제약 영향도
+  encoder_max_len:
+    values: [256, 512, 1024]
+  
+  decoder_max_len:
+    values: [64, 100, 128]
+  
+  # 5. 반복 방지 효과
+  no_repeat_ngram_size:
+    values: [0, 2, 3]  # 반복 방지 비활성화 vs 활성화
+
+run_cap: 100
+description: "Ablation study for dialogue summarization components"

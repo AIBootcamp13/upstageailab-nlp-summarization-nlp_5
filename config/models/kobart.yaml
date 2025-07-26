@@ -1,0 +1,148 @@
+# KoBART 모델 특화 설정
+# digit82/kobart-summarization에 최적화된 파라미터
+
+# 모델 기본 정보
+model:
+  architecture: "kobart"
+  checkpoint: "digit82/kobart-summarization"
+  model_type: "bart"
+  config_class: "BartConfig"
+  tokenizer_class: "PreTrainedTokenizerFast"
+  
+  # KoBART 특화 설정
+  config_overrides:
+    max_position_embeddings: 1024
+    vocab_size: 30000
+    d_model: 768
+    encoder_layers: 6
+    decoder_layers: 6
+    encoder_attention_heads: 12
+    decoder_attention_heads: 12
+    encoder_ffn_dim: 3072
+    decoder_ffn_dim: 3072
+    activation_function: "gelu"
+    dropout: 0.1
+    attention_dropout: 0.1
+    activation_dropout: 0.0
+    classifier_dropout: 0.0
+
+# 토크나이저 설정
+tokenizer:
+  model_max_length: 1024
+  truncation_side: "right"
+  padding_side: "right"
+  
+  # KoBART 특수 토큰
+  bos_token: "<s>"
+  eos_token: "</s>"
+  unk_token: "<unk>"
+  sep_token: "</s>"
+  pad_token: "<pad>"
+  mask_token: "<mask>"
+  
+  special_tokens:
+    - '#Person1#'
+    - '#Person2#'
+    - '#Person3#'
+    - '#PhoneNumber#'
+    - '#Address#'
+    - '#PassportNumber#'
+
+# KoBART 최적화 학습 설정
+training:
+  # KoBART에 검증된 하이퍼파라미터
+  learning_rate: 3.0e-05
+  per_device_train_batch_size: 32
+  per_device_eval_batch_size: 64
+  warmup_ratio: 0.1
+  weight_decay: 0.01
+  lr_scheduler_type: "cosine"
+  num_train_epochs: 20
+  
+  # KoBART 특화 최적화
+  adam_epsilon: 1e-8
+  max_grad_norm: 1.0
+  gradient_accumulation_steps: 1
+  label_smoothing: 0.1  # BART 계열에 효과적
+  
+  # 메모리 최적화
+  fp16: true
+  dataloader_num_workers: 4
+  remove_unused_columns: false
+
+# KoBART 최적화 생성 설정
+generation:
+  max_length: 128
+  min_length: 10
+  num_beams: 5
+  length_penalty: 1.2  # KoBART에 최적화된 값
+  no_repeat_ngram_size: 3
+  early_stopping: true
+  
+  # KoBART 특화 생성 파라미터
+  forced_bos_token_id: 0  # <s>
+  forced_eos_token_id: 2  # </s>
+  repetition_penalty: 1.0
+  do_sample: false
+  temperature: 1.0
+
+# 평가 설정
+evaluation:
+  # KoBART 성능 최적화를 위한 평가 설정
+  prediction_loss_only: false
+  eval_accumulation_steps: 1
+  
+  # 한국어 텍스트 특화 ROUGE 설정
+  rouge_use_stemmer: true
+  rouge_tokenize_korean: true
+  rouge_lang: "korean"
+
+# KoBART 하이퍼파라미터 탐색 공간
+sweep_parameters:
+  learning_rate:
+    distribution: log_uniform_values
+    min: 1.0e-5
+    max: 5.0e-5
+  
+  weight_decay:
+    values: [0.01, 0.05, 0.1]
+  
+  label_smoothing:
+    values: [0.0, 0.1, 0.2]
+  
+  length_penalty:
+    distribution: uniform
+    min: 0.9
+    max: 1.5
+  
+  num_beams:
+    values: [3, 5, 8]
+  
+  per_device_train_batch_size:
+    values: [16, 32, 48]
+
+# 데이터 전처리 (KoBART 특화)
+data_preprocessing:
+  max_source_length: 1024  # KoBART 최대 입력 길이
+  max_target_length: 128   # 요약문 적정 길이
+  ignore_pad_token_for_loss: true
+  
+  # 한국어 텍스트 전처리
+  normalize_unicode: true
+  remove_extra_whitespace: true
+  handle_korean_spacing: true
+
+# WandB 태그 (KoBART 식별용)
+wandb_tags:
+  - "kobart"
+  - "korean"
+  - "bart"
+  - "summarization"
+  - "autoregressive"
+
+# 추론 최적화
+inference_optimization:
+  batch_size: 64
+  use_cache: true
+  torch_dtype: "float16"
+  device_map: "auto"

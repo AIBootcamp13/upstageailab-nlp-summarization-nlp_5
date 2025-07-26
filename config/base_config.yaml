@@ -1,0 +1,188 @@
+# NLP 대화 요약 프로젝트 - 확장된 기본 설정 파일
+# 기존 config.yaml의 모든 설정을 포함하며 실험 자동화를 위한 확장 설정 추가
+
+meta:
+  experiment_name: "dialogue_summarization"
+  version: "1.0"
+  description: "Dialogue Summarization with Automated Hyperparameter Tuning"
+  author: "NLP Team 5"
+  created_date: "2025-07-25"
+
+general:
+  data_path: "../data/"
+  model_name: "digit82/kobart-summarization"
+  output_dir: "./"
+  seed: 42
+  device: "auto"  # auto, cuda, cpu
+  num_workers: 4
+  pin_memory: true
+
+model:
+  architecture: "kobart"  # kobart, kogpt2, t5, solar_api
+  checkpoint: "digit82/kobart-summarization"
+  load_pretrained: true
+  trust_remote_code: false
+
+tokenizer:
+  encoder_max_len: 512
+  decoder_max_len: 100
+  bos_token: "<s>"
+  eos_token: "</s>"
+  pad_token: "<pad>"
+  special_tokens: 
+    - '#Person1#'
+    - '#Person2#'
+    - '#Person3#'
+    - '#PhoneNumber#'
+    - '#Address#'
+    - '#PassportNumber#'
+  truncation: true
+  padding: "max_length"
+  return_tensors: "pt"
+
+training:
+  # 기본 학습 설정 (기존 config.yaml과 동일)
+  overwrite_output_dir: true
+  num_train_epochs: 20
+  learning_rate: 1.0e-05
+  per_device_train_batch_size: 50
+  per_device_eval_batch_size: 32
+  warmup_ratio: 0.1
+  weight_decay: 0.01
+  lr_scheduler_type: 'cosine'
+  optim: 'adamw_torch'
+  gradient_accumulation_steps: 1
+  evaluation_strategy: 'epoch'
+  save_strategy: 'epoch'
+  save_total_limit: 5
+  fp16: true
+  load_best_model_at_end: true
+  logging_dir: "./logs"
+  logging_strategy: "epoch"
+  predict_with_generate: true
+  generation_max_length: 100
+  do_train: true
+  do_eval: true
+  early_stopping_patience: 3
+  early_stopping_threshold: 0.001
+  report_to: "wandb"
+  
+  # 새로운 NLP 특화 설정
+  label_smoothing: 0.0
+  dataloader_num_workers: 4
+  remove_unused_columns: false
+  push_to_hub: false
+  hub_model_id: null
+  hub_strategy: "every_save"
+  
+  # 메모리 최적화
+  dataloader_pin_memory: true
+  skip_memory_metrics: false
+  use_legacy_prediction_loop: false
+
+generation:
+  # 생성 관련 파라미터 (NLP 특화)
+  max_length: 100
+  min_length: 10
+  num_beams: 4
+  no_repeat_ngram_size: 2
+  early_stopping: true
+  length_penalty: 1.0
+  repetition_penalty: 1.0
+  do_sample: false
+  temperature: 1.0
+  top_k: 50
+  top_p: 1.0
+  num_return_sequences: 1
+  forced_bos_token_id: null
+  forced_eos_token_id: null
+  remove_invalid_values: true
+
+evaluation:
+  # 평가 관련 설정 (대회 특성 반영)
+  metrics: ["rouge1", "rouge2", "rougeL"]
+  multi_reference: true  # 3개 정답 요약문 지원
+  rouge_use_stemmer: true
+  rouge_tokenize_korean: true
+  rouge_lang: "korean"
+  prediction_loss_only: false
+  
+  # 평가 최적화
+  eval_accumulation_steps: null
+  eval_delay: 0
+  include_inputs_for_metrics: false
+
+wandb:
+  # WandB 설정
+  entity: "wandb_repo"
+  project: "nlp-summarization-auto"
+  name: "base_experiment"
+  notes: "Base configuration experiment"
+  tags: ["nlp", "summarization", "kobart", "baseline"]
+  group: "base_experiments"
+  job_type: "train"
+  
+  # WandB 로깅 설정
+  log_model: "end"  # end, checkpoint, false
+  watch: "gradients"  # gradients, parameters, all, false
+  save_code: true
+
+inference:
+  # 추론 설정 (기존 config.yaml과 호환)
+  ckt_path: "model_ckt_path"
+  result_path: "./prediction/"
+  batch_size: 32
+  remove_tokens: 
+    - '<usr>'
+    - '<s>'
+    - '</s>'
+    - '<pad>'
+  output_format: "csv"  # csv, json
+  
+  # 추론 최적화
+  use_cache: true
+  low_cpu_mem_usage: false
+  torch_dtype: "auto"
+
+# 데이터 관련 설정
+data:
+  train_file: "train.csv"
+  dev_file: "dev.csv"
+  test_file: "test.csv"
+  validation_split_percentage: null
+  
+  # 데이터 전처리
+  preprocessing_num_workers: 4
+  overwrite_cache: false
+  text_column: "dialogue"
+  summary_column: "summary"
+  
+  # 데이터 필터링
+  max_source_length: 1024
+  max_target_length: 256
+  min_source_length: 10
+  min_target_length: 5
+
+# 실험 설정
+experiment:
+  run_name: null
+  experiment_dir: "./experiments"
+  log_level: "info"  # debug, info, warning, error
+  disable_tqdm: false
+  
+  # 체크포인트 관리
+  resume_from_checkpoint: null
+  ignore_data_skip: false
+  
+  # 분산 학습 (미래 확장용)
+  local_rank: -1
+  ddp_backend: "nccl"
+  ddp_bucket_cap_mb: 25
+  ddp_broadcast_buffers: false
+
+# 환경 설정
+environment:
+  cuda_visible_devices: null
+  tokenizers_parallelism: true
+  transformers_cache: null
+  hf_datasets_cache: null

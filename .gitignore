@@ -1,0 +1,127 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb_checkpoints/
+
+# PyCharm
+.idea/
+
+# VSCode
+.vscode/
+
+# Model outputs
+outputs/
+output/
+runs/
+models/
+checkpoints/
+*.pth
+*.pt
+*.bin
+*.h5
+*.pkl
+*.pickle
+
+# Data files (large files)
+data/
+*.csv
+*.json
+*.jsonl
+*.tsv
+*.txt
+*.parquet
+
+# Logs
+logs/
+*.log
+wandb/
+.wandb/
+lightning_logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+.cache/
+
+# Experiment results
+experiments/
+experiment_results/
+sweep_results/
+parallel_sweep_results/
+all_sweep_results/
+snapshots/
+
+# Config overrides (local settings)
+config_local.yaml
+config_override.yaml
+*_local.yaml
+
+# Secrets and credentials
+.env
+.env.local
+secrets.yaml
+credentials.json
+*.key
+*.pem
+
+# Test artifacts
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Documentation build
+docs/_build/
+docs/.doctrees/
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Custom
+temp/
+tmp/
+scratch/
+debug/

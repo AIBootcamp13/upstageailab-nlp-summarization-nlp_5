@@ -1,0 +1,196 @@
+# Solar API 모델 설정
+# Upstage Solar API를 활용한 대화 요약
+
+# API 기본 정보
+api:
+  provider: "upstage"
+  model_name: "solar-1-mini-chat"
+  base_url: "https://api.upstage.ai/v1/solar"
+  api_version: "v1"
+  
+  # API 제한사항
+  rate_limit:
+    requests_per_minute: 100
+    tokens_per_minute: 120000
+    max_tokens_per_request: 4096
+  
+  # 요청 설정
+  timeout: 30
+  max_retries: 3
+  retry_delay: 1.0
+  exponential_backoff: true
+
+# 모델 파라미터
+model_parameters:
+  # Solar 모델 특화 설정
+  max_tokens: 512      # 생성할 최대 토큰 수
+  temperature: 0.3     # 낮은 온도로 일관성 있는 요약
+  top_p: 0.85         # nucleus sampling
+  frequency_penalty: 0.1
+  presence_penalty: 0.1
+  
+  # 스트리밍 설정
+  stream: false        # 배치 처리를 위해 비스트리밍
+  
+  # 안전 설정
+  safety_settings:
+    enable_safety_filter: true
+    block_harmful_content: true
+
+# 프롬프트 설정 (대화 요약 특화)
+prompting:
+  # 시스템 프롬프트
+  system_prompt: |
+    당신은 한국어 대화를 요약하는 전문가입니다. 
+    주어진 대화를 읽고 핵심 내용을 간결하고 명확하게 요약해주세요.
+    요약할 때 다음 사항을 지켜주세요:
+    1. 대화의 주요 주제와 결론을 포함하세요
+    2. 중요한 정보나 결정사항을 빠뜨리지 마세요  
+    3. 50-100자 내외의 간결한 요약을 작성하세요
+    4. 자연스러운 한국어로 작성하세요
+  
+  # 사용자 프롬프트 템플릿
+  user_prompt_template: |
+    다음 대화를 요약해주세요:
+    
+    대화 내용:
+    {dialogue}
+    
+    요약:
+  
+  # Few-shot 예제 (선택사항)
+  few_shot_examples:
+    - dialogue: "#Person1#: 내일 회의 시간 몇 시로 할까요? #Person2#: 오후 2시 어떠세요? #Person1#: 좋습니다. 회의실은 A동 3층으로 하죠."
+      summary: "내일 오후 2시 A동 3층 회의실에서 회의 진행 결정"
+    
+    - dialogue: "#Person1#: 오늘 저녁 뭐 먹을까요? #Person2#: 피자 어떠세요? #Person1#: 좋아요. 어떤 피자로 주문할까요? #Person2#: 페퍼로니로 주문해요."
+      summary: "저녁에 페퍼로니 피자 주문하기로 결정"
+
+# 배치 처리 설정
+batch_processing:
+  batch_size: 10        # API 제한 고려
+  concurrent_requests: 5  # 동시 요청 수
+  delay_between_batches: 1.0  # 배치 간 대기 시간
+  
+  # 진행률 표시
+  show_progress: true
+  progress_desc: "Solar API 요약 진행 중"
+
+# 응답 처리 설정
+response_processing:
+  # 후처리 설정
+  strip_whitespace: true
+  remove_extra_newlines: true
+  max_summary_length: 150
+  min_summary_length: 10
+  
+  # 필터링
+  filter_empty_responses: true
+  filter_error_responses: true
+  
+  # 품질 검증
+  quality_checks:
+    check_korean_text: true
+    check_meaningful_content: true
+    check_length_limits: true
+
+# 오류 처리
+error_handling:
+  # 재시도 전략
+  retry_on_rate_limit: true
+  retry_on_timeout: true
+  retry_on_server_error: true
+  
+  # 오류 로깅
+  log_api_errors: true
+  save_failed_requests: true
+  failed_requests_file: "./failed_solar_requests.json"
+  
+  # 대안 처리
+  fallback_strategy: "skip"  # skip, retry, manual
+
+# 캐싱 설정
+caching:
+  enable_cache: true
+  cache_dir: "./cache/solar_api"
+  cache_expiry_hours: 24
+  use_input_hash: true
+
+# 평가 설정 (API 응답 평가)
+evaluation:
+  # ROUGE 평가
+  compute_rouge: true
+  rouge_types: ["rouge1", "rouge2", "rougeL"]
+  
+  # API 성능 메트릭
+  track_api_metrics:
+    - "response_time"
+    - "token_usage"
+    - "success_rate"
+    - "cost_estimation"
+  
+  # 품질 평가
+  quality_metrics:
+    - "summary_length"
+    - "korean_ratio"
+    - "coherence_score"
+
+# 비용 관리
+cost_management:
+  # 비용 추적
+  track_token_usage: true
+  estimate_cost: true
+  cost_per_1k_tokens: 0.002  # USD (예상 비용)
+  
+  # 예산 제한
+  max_daily_cost: 10.0    # USD
+  max_tokens_per_day: 100000
+  
+  # 알림 설정
+  cost_warning_threshold: 0.8  # 80% 도달 시 경고
+  budget_alert_email: null
+
+# WandB 통합
+wandb_integration:
+  log_api_calls: true
+  log_responses: false  # 개인정보 보호
+  log_metrics: true
+  
+  # 태그
+  wandb_tags:
+    - "solar_api"
+    - "external_api"
+    - "upstage"
+    - "llm_api"
+
+# 실험 설정 (Solar API 특화)
+experiment:
+  # 파라미터 탐색
+  temperature_values: [0.1, 0.3, 0.5, 0.7]
+  top_p_values: [0.8, 0.85, 0.9, 0.95]
+  max_tokens_values: [128, 256, 512]
+  
+  # A/B 테스트
+  prompt_variants:
+    - "concise"    # 간결한 프롬프트
+    - "detailed"   # 상세한 프롬프트  
+    - "structured" # 구조화된 프롬프트
+  
+  # 성능 벤치마크
+  benchmark_datasets:
+    - "validation_set"
+    - "test_subset"
+
+# 보안 설정
+security:
+  # API 키 관리
+  api_key_env_var: "UPSTAGE_API_KEY"
+  rotate_api_key: false
+  
+  # 데이터 보호
+  mask_personal_info: true
+  log_level: "INFO"  # DEBUG는 민감 정보 노출 위험
+  
+  # SSL/TLS
+  verify_ssl: true
+  ssl_cert_path: null

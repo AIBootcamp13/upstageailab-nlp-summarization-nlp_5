@@ -1,0 +1,173 @@
+# T5 모델 특화 설정
+# paust/pko-t5-small을 대화 요약에 적용
+
+# 모델 기본 정보
+model:
+  architecture: "t5"
+  checkpoint: "paust/pko-t5-small"
+  model_type: "t5"
+  config_class: "T5Config"
+  tokenizer_class: "T5TokenizerFast"
+  
+  # T5 특화 설정
+  config_overrides:
+    vocab_size: 32128
+    d_model: 512
+    d_kv: 64
+    d_ff: 2048
+    num_layers: 6
+    num_decoder_layers: 6
+    num_heads: 8
+    relative_attention_num_buckets: 32
+    dropout_rate: 0.1
+    layer_norm_epsilon: 1e-6
+    initializer_factor: 1.0
+    feed_forward_proj: "relu"
+    use_cache: true
+    tie_word_embeddings: false
+
+# 토크나이저 설정 (T5 특화)
+tokenizer:
+  model_max_length: 512
+  truncation_side: "right"
+  padding_side: "right"
+  legacy: false  # T5 새 토크나이저 형식
+  
+  # T5 특수 토큰
+  eos_token: "</s>"
+  unk_token: "<unk>"
+  pad_token: "<pad>"
+  additional_special_tokens:
+    - "<extra_id_0>"
+    - "<extra_id_1>"
+    - "<extra_id_2>"
+    - "<extra_id_3>"
+    - "<extra_id_4>"
+  
+  # 대화 요약 특수 토큰
+  task_specific_tokens:
+    - '#Person1#'
+    - '#Person2#'
+    - '#Person3#'
+    - '#PhoneNumber#'
+    - '#Address#'
+    - '#PassportNumber#'
+
+# T5 학습 설정 (Text-to-Text Transfer 특화)
+training:
+  # T5 최적화 파라미터
+  learning_rate: 1.0e-4   # T5는 상대적으로 높은 LR
+  per_device_train_batch_size: 32
+  per_device_eval_batch_size: 64
+  warmup_ratio: 0.1
+  weight_decay: 0.0       # T5는 가중치 감쇠 미사용
+  lr_scheduler_type: "cosine"
+  num_train_epochs: 25    # T5는 더 많은 에폭 필요
+  
+  # T5 특화 최적화
+  adam_epsilon: 1e-8
+  max_grad_norm: 1.0
+  gradient_accumulation_steps: 1
+  
+  # T5 AdaFactor 옵티마이저 (선택사항)
+  optim: "adafactor"  # T5 논문에서 사용
+  adafactor_beta1: null
+  adafactor_beta2: null
+  adafactor_relative_step_size: true
+  adafactor_scale_parameter: true
+  adafactor_warmup_init: true
+  
+  # 메모리 최적화
+  fp16: false  # T5는 bf16 권장하지만 호환성을 위해 fp32
+  bf16: false
+  dataloader_num_workers: 4
+
+# T5 생성 설정
+generation:
+  max_length: 128
+  min_length: 10
+  num_beams: 4
+  length_penalty: 1.0     # T5는 보통 1.0
+  no_repeat_ngram_size: 2
+  early_stopping: true
+  
+  # T5 특화 생성 파라미터
+  do_sample: false        # T5는 보통 결정적 생성
+  temperature: 1.0
+  repetition_penalty: 1.0
+  encoder_no_repeat_ngram_size: 0
+
+# 데이터 전처리 (T5 특화)
+data_preprocessing:
+  # T5는 태스크 프리픽스 사용
+  task_prefix: "summarize: "
+  input_format: "summarize: {dialogue}"
+  target_format: "{summary}"
+  
+  max_source_length: 512   # T5-small 제한
+  max_target_length: 128
+  
+  # T5 데이터 처리
+  ignore_pad_token_for_loss: true
+  source_prefix: "summarize: "
+
+# 평가 설정 (T5 특화)
+evaluation:
+  prediction_loss_only: false
+  eval_accumulation_steps: 1
+  
+  # T5 생성 평가
+  predict_with_generate: true
+  generation_max_length: 128
+  generation_num_beams: 4
+
+# T5 하이퍼파라미터 탐색 공간
+sweep_parameters:
+  learning_rate:
+    distribution: log_uniform_values
+    min: 5.0e-5
+    max: 2.0e-4
+  
+  per_device_train_batch_size:
+    values: [16, 24, 32]
+  
+  num_train_epochs:
+    values: [20, 25, 30]
+  
+  length_penalty:
+    values: [0.8, 1.0, 1.2]
+  
+  num_beams:
+    values: [3, 4, 5]
+  
+  warmup_ratio:
+    values: [0.05, 0.1, 0.15]
+
+# WandB 태그
+wandb_tags:
+  - "t5"
+  - "text2text"
+  - "korean"
+  - "encoder_decoder"
+  - "adafactor"
+
+# 추론 최적화
+inference_optimization:
+  batch_size: 48
+  use_cache: true
+  torch_dtype: "float32"  # T5는 fp32 안정적
+  device_map: "auto"
+  
+# T5 특화 설정
+t5_specific:
+  # 상대적 위치 임베딩
+  relative_attention_num_buckets: 32
+  relative_attention_max_distance: 128
+  
+  # 피드포워드 설정
+  feed_forward_proj: "relu"
+  dense_act_fn: "relu"
+  
+  # 정규화
+  layer_norm_epsilon: 1e-6
+  dropout_rate: 0.1

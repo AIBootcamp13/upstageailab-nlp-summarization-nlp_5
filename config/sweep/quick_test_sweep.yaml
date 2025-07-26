@@ -1,0 +1,50 @@
+# 빠른 테스트용 WandB Sweep 설정
+# 개발 및 디버깅용 최소 설정
+
+project: nlp-summarization-quick-test
+entity: wandb_repo
+program: sweep_runner.py
+
+method: random
+
+metric:
+  name: rouge_combined_f1
+  goal: maximize
+
+# 조기 종료 (빠른 피드백)
+early_terminate:
+  type: hyperband
+  min_iter: 1
+  max_iter: 5
+
+parameters:
+  # 제한된 파라미터 공간 (빠른 실험)
+  learning_rate:
+    values: [1e-5, 3e-5, 5e-5]
+  
+  per_device_train_batch_size:
+    values: [16, 32]
+  
+  per_device_eval_batch_size:
+    values: [32]
+  
+  num_train_epochs:
+    values: [3, 5]  # 짧은 학습
+  
+  encoder_max_len:
+    values: [256, 512]  # 작은 크기만
+  
+  decoder_max_len:
+    values: [64, 100]
+  
+  num_beams:
+    values: [3, 4]
+  
+  warmup_ratio:
+    values: [0.0, 0.1]
+  
+  weight_decay:
+    values: [0.01, 0.1]
+
+run_cap: 10  # 최대 10회 실험
+description: "Quick test experiments for development and debugging"

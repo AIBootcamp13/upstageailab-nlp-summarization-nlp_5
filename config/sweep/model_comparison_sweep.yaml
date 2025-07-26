@@ -1,0 +1,43 @@
+# 모델 비교 실험을 위한 WandB Sweep 설정
+# 다양한 모델 아키텍처 성능 비교
+
+project: nlp-summarization-model-comparison
+entity: wandb_repo  
+program: sweep_runner.py
+
+method: grid  # 모든 조합 테스트
+
+metric:
+  name: rouge_combined_f1
+  goal: maximize
+
+parameters:
+  # 모델 아키텍처 비교
+  model_architecture:
+    values: ["kobart", "kogpt2", "t5-small"]
+  
+  model_checkpoint:
+    values: 
+      - "digit82/kobart-summarization"
+      - "skt/kogpt2-base-v2" 
+      - "paust/pko-t5-small"
+  
+  # 각 모델에 최적화된 기본 설정
+  learning_rate:
+    values: [1e-5, 3e-5, 5e-5]
+  
+  per_device_train_batch_size:
+    values: [16, 32]
+  
+  num_train_epochs:
+    values: [15, 20]
+  
+  # 생성 파라미터 비교
+  num_beams:
+    values: [4, 5]
+  
+  length_penalty:
+    values: [1.0, 1.2]
+
+run_cap: 24  # 모든 조합 테스트
+description: "Model architecture comparison for dialogue summarization"
