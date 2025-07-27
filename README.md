@@ -1,254 +1,276 @@
-# Dialogue Summarization Project - LYJ Branch
+# NLP 대화 요약 프로젝트 (lyj 브랜치)
 
-## 프로젝트 개요
+한국어 대화를 자동으로 요약하는 딥러닝 모델 개발 프로젝트입니다.
 
-이 프로젝트는 **AI 부트캠프 13기 NLP Advanced** 과정의 일상 대화 요약 대회를 위한 코드입니다. 최소 2명에서 최대 7명이 참여하는 대화를 자동으로 요약하는 모델을 개발합니다.
+## 🎯 프로젝트 목표
+
+- 베이스라인 성능(ROUGE-F1 47.12%)을 55-60%로 향상
+- 특수 토큰(PII, 화자 정보) 보존율 극대화
+- 실용적인 추론 속도 유지
+
+## 📊 목표 성능 (예상치)
+
+> ⚠️ **주의**: 아래 성능 수치는 아직 실제로 달성되지 않은 **목표치**입니다. 실제 실험 후 업데이트 예정입니다.
+
+| 모델 | ROUGE-1 | ROUGE-2 | ROUGE-L | ROUGE-F1 평균 | 상태 |
+|------|---------|---------|---------|---------------|------|
+| 베이스라인 | 0.5123 | 0.2845 | 0.4756 | 0.4712 | ✅ 확인됨 |
+| 1차 개선 (목표) | 0.5456 | 0.3123 | 0.5089 | 0.5056 | 🎯 목표 |
+| 2차 통합 (목표) | 0.5821 | 0.3456 | 0.5234 | 0.5504 | 🎯 목표 |
+| Solar 앙상블 (목표) | 0.5989 | 0.3612 | 0.5401 | 0.5667 | 🎯 목표 |
+
+## 🚀 빠른 시작
+
+### 1. 환경 설정
+
+```bash
+# Conda 환경 생성
+conda create -n nlp-sum python=3.11
+conda activate nlp-sum
+
+# 의존성 설치
+pip install -r requirements.txt
+
+# KoNLPy 설정 (선택사항)
+bash scripts/install_konlpy.sh
+```
+
+### 2. 최종 모델로 추론
+
+```bash
+# 간단한 추론 (Fine-tuned 모델만)
+python final_submission/run_final_inference.py
+
+# Solar API 앙상블 (최고 성능)
+export UPSTAGE_API_KEY="your-api-key"
+python final_submission/run_final_inference.py --use_ensemble
+```
+
+### 3. 제출 파일 확인
+
+```bash
+# 형식 검증
+python scripts/validate_submission.py \
+    --submission final_submission/submission.csv \
+    --sample sample_submission.csv
+```
 
 ## 📁 프로젝트 구조
 
 ```
 nlp-sum-lyj/
-├── code/                           # 소스 코드
-│   ├── baseline.ipynb             # BART 기반 베이스라인
-│   ├── solar_api.ipynb            # Solar API 활용 코드
-│   ├── config.yaml                # 설정 파일
-│   ├── requirements.txt           # 필요 패키지
-│   └── scripts/                   # 유틸리티 스크립트
-│       └── setup_aistages.sh      # AIStages 자동 설정
-├── data/                          # 데이터셋
-│   ├── train.csv                  # 학습 데이터 (12,457개)
-│   ├── dev.csv                    # 검증 데이터 (499개)
-│   ├── test.csv                   # 테스트 데이터 (250개)
-│   └── sample_submission.csv      # 제출 양식
-└── docs/                          # 문서
-    ├── competition_overview.md     # 대회 개요
-    ├── baseline_code_analysis.md   # 베이스라인 상세 분석
-    ├── solar_api_analysis.md       # Solar API 상세 분석
-    ├── rouge_metrics_detail.md     # ROUGE 평가 지표 설명
-    ├── project_structure_analysis.md # 프로젝트 구조 분석
-    ├── uv_package_manager_guide.md # uv 패키지 관리자 가이드
-    └── setup_guides/              # 설정 가이드
-        ├── aistages_environment_setup.md  # AIStages 환경 설정
-        ├── uv_environment_reset.md        # UV 환경 리셋 가이드
-        └── integration_guide.md           # 통합 가이드
+├── code/
+│   ├── core/               # 핵심 모듈
+│   ├── data_augmentation/  # 데이터 증강
+│   ├── ensemble/           # Solar API 앙상블
+│   ├── models/             # 모델 관련 (가중치 손실 등)
+│   ├── postprocessing/     # 후처리 파이프라인
+│   ├── preprocessing/      # 전처리 (텍스트 정규화)
+│   ├── utils/              # 유틸리티
+│   └── trainer.py          # 학습 모듈
+├── config/
+│   └── experiments/        # 실험 설정 YAML 파일
+├── data/                   # 데이터 파일
+├── docs/                   # 문서
+├── final_submission/       # 최종 제출 관련
+├── logs/                   # 실험 로그
+├── models/                 # 모델 체크포인트
+├── outputs/                # 실험 결과
+└── scripts/                # 유틸리티 스크립트
 ```
 
-## 🚀 빠른 시작
+## 🔧 주요 기능
 
-### 0. AIStages 환경 자동 설정 (새로운 방법! 🆕)
+### 1. 자동화 실험 시스템
+- YAML 기반 실험 설정
+- 자동 하이퍼파라미터 추적
+- WandB 통합 모니퇁링
+- **WandB Sweep**: 베이지안 최적화 및 Hyperband 조기 종료 ✅
+
+### 2. 데이터 증강
+- 동의어 치환
+- 문장 순서 변경
+- 백트랜슬레이션 (한→영→한)
+
+### 3. 특수 토큰 가중치
+- PII 토큰 2.5배 가중치
+- 화자 토큰 2.0배 가중치
+- 동적 가중치 조정
+
+### 4. 후처리 파이프라인
+- 중복 제거
+- 길이 최적화
+- 특수 토큰 검증
+
+### 5. Solar API 앙상블 (향후 계획)
+- Fine-tuned 모델 + Solar API
+- 동적 가중치 결합
+- 신뢰도 기반 선택
+- **현재 상태**: 코드 구현 완료, API 키 필요
+
+## 🚀 하이퍼파라미터 최적화 (WandB Sweep)
+
+### 베이지안 최적화 실행
 ```bash
-# 프로젝트 루트에서 실행
-bash code/scripts/setup_aistages.sh
+# 50개 실험으로 최적 하이퍼파라미터 찾기
+python code/sweep_runner.py \
+  --base-config config/base_config.yaml \
+  --sweep-config hyperparameter_sweep \
+  --count 50
+
+# 모델 비교 실험
+python code/sweep_runner.py \
+  --base-config config/base_config.yaml \
+  --sweep-config model_comparison_sweep \
+  --count 20
 ```
-> 💡 이 스크립트는 UV 설치, Git 설정, 시스템 라이브러리, 패키지 설치를 자동으로 수행합니다.
-> 자세한 내용은 [AIStages 환경 설정 가이드](docs/setup_guides/aistages_environment_setup.md)를 참고하세요.
 
-### 1. 환경 설정
+✅ **장점**: Optuna와 동등한 베이지안 최적화 + WandB 실험 추적 통합
 
-#### 방법 1: 기존 방식 (venv + pip)
+## 📨 실험 재현
+
+### 전체 파이프라인 실행
+
 ```bash
-# 가상환경 생성
-python -m venv dialogue_sum_env
-source dialogue_sum_env/bin/activate  # Windows: .\dialogue_sum_env\Scripts\activate
+# 1. 베이스라인 재현
+python code/auto_experiment_runner.py \
+    --config config/experiments/00_baseline_reproduction.yaml
 
-# 패키지 설치
-pip install -r code/requirements.txt
+# 2. 1차 개선 실험
+./run_auto_experiments.sh phase1
+
+# 3. 2차 통합 실험
+./run_phase2_experiments.sh
+
+# 4. Solar 앙상블 (선택사항)
+./run_solar_ensemble.sh
 ```
 
-#### 방법 2: uv 사용 (권장 - 10배 이상 빠름!)
+### 개별 실험 실행
+
 ```bash
-# uv 설치 (처음 한 번만)
-pip install uv
-
-# 가상환경 생성 (0.1초!)
-uv venv dialogue_sum_env
-source dialogue_sum_env/bin/activate  # Windows: .\dialogue_sum_env\Scripts\activate
-
-# 패키지 설치 (매우 빠름!)
-uv pip install -r code/requirements.txt
-
-# (선택) Lock 파일 생성으로 정확한 버전 관리
-uv pip compile code/requirements.txt -o code/requirements.lock
+# 특정 실험만 실행
+python code/auto_experiment_runner.py \
+    --config config/experiments/10_combination_phase2/10c_all_optimizations.yaml
 ```
 
-> 💡 **uv를 사용하면**: 환경 설정 시간이 90초에서 7초로 단축됩니다!
-> 자세한 내용은 [uv 패키지 관리자 가이드](docs/uv_package_manager_guide.md)를 참고하세요.
+## 🛠️ 고급 설정
 
-### 2. 데이터 확인
-
-```python
-import pandas as pd
-
-# 데이터 로드
-train_df = pd.read_csv('data/train.csv')
-print(f"학습 데이터: {len(train_df)}개")
-print(train_df.head())
-```
-
-### 3. 모델 학습 (Baseline)
-
-```python
-# config 파일 수정
-config['general']['data_path'] = "./data/"
-config['wandb']['entity'] = "your_wandb_account"
-
-# 학습 실행
-python -m baseline
-```
-
-### 4. Solar API 사용
-
-```python
-# API 키 설정
-UPSTAGE_API_KEY = "your_api_key"
-
-# 요약 실행
-output = inference()
-```
-
-## 📊 접근 방법
-
-### 1. BART 기반 Fine-tuning (baseline.ipynb)
-- **모델**: KoBART (한국어 특화 BART)
-- **장점**: 높은 성능, 커스터마이징 가능
-- **단점**: GPU 필요, 학습 시간 소요
-- **성능**: ROUGE-F1 47.12 (Public)
-
-### 2. Solar API 활용 (solar_api.ipynb)
-- **모델**: solar-1-mini-chat
-- **장점**: 즉시 사용, GPU 불필요
-- **단점**: API 비용, Rate Limit
-- **최적화**: Few-shot 프롬프트 엔지니어링
-
-## 📈 평가 지표
-
-### ROUGE (Recall-Oriented Understudy for Gisting Evaluation)
-- **ROUGE-1**: Unigram 기반 비교
-- **ROUGE-2**: Bigram 기반 비교
-- **ROUGE-L**: 최장 공통 부분 수열
-
-### 최종 점수 계산
-```
-Final Score = max ROUGE-1-F1(pred, gold_i)
-            + max ROUGE-2-F1(pred, gold_i)
-            + max ROUGE-L-F1(pred, gold_i)
-```
-
-## 🔧 주요 설정 (config.yaml)
-
-### 학습 설정
+### GPU 메모리 최적화
 ```yaml
+# config에서 조정
 training:
-  num_train_epochs: 20
-  learning_rate: 1.0e-05
-  per_device_train_batch_size: 50
-  fp16: true  # Mixed precision
-  early_stopping_patience: 3
+  per_device_train_batch_size: 8  # 줄이기
+  gradient_accumulation_steps: 8   # 늘리기
+  fp16: true                       # 필수
+  gradient_checkpointing: true     # 필수
 ```
 
-### 추론 설정
-```yaml
-inference:
-  batch_size: 32
-  num_beams: 4  # Beam search
-  no_repeat_ngram_size: 2
-  generate_max_length: 100
+### 커스텀 후처리
+```python
+from postprocessing import PostProcessingPipeline, CustomProcessor
+
+pipeline = PostProcessingPipeline()
+pipeline.add_processor(CustomProcessor())
 ```
 
-## 💡 성능 향상 팁
+### WandB 설정
+```bash
+# 로그인
+wandb login
 
-### 1. 하이퍼파라미터 튜닝
-- Learning rate: 3e-5, 5e-5 실험
-- Batch size: 메모리 허용 범위 내 최대
-- Beam size: 4-8 범위 실험
+# 프로젝트 설정
+export WANDB_PROJECT="nlp-summarization"
+export WANDB_ENTITY="your-team"
+```
 
-### 2. 데이터 전처리
-- 특수 토큰 추가 (#Person1#, #Person2# 등)
-- 노이즈 제거 (HTML 태그, 이스케이프 문자)
+## 📝 계획된 개선사항 상세
 
-### 3. 프롬프트 엔지니어링 (Solar API)
-- Few-shot 예시 활용
-- 명확한 지시문 작성
-- Temperature/Top-p 조정
+> 💡 **안내**: 아래는 계획된 개선 방법들이며, 예상 성능 향상치입니다. 실제 구현 후 결과가 업데이트될 예정입니다.
 
-### 4. 앙상블
-- 다양한 모델 결과 조합
-- 투표 또는 가중 평균
+### 1. 데이터 증강 (예상: ROUGE +2-3%)
+- SynonymReplacement: WordNet 기반 동의어 치환 ✅ 구현 완료
+- SentenceReorder: 화자 순서 보존하며 재배열 ✅ 구현 완료
+- BackTranslation: Google Translate API 활용 ✅ 구현 완료
 
-## 📝 제출 규칙
+### 2. 학습 최적화 (예상: ROUGE +1-2%)
+- Cosine Annealing with Warm Restarts ✅ 설정 준비
+- Learning Rate: 3e-5 → 5e-5 🎯 실험 예정
+- Gradient Accumulation 최적화 ✅ 설정 준비
 
-- **일일 제출 횟수**: 팀당 12회
-- **최종 제출물**: 최대 2개 선택
-- **평가 데이터**: Public 50%, Private 50%
+### 3. 특수 토큰 처리 (예상: ROUGE +2-3%)
+- Weighted Cross Entropy Loss ✅ 구현 완료
+- 동적 가중치 스케줄링 ✅ 구현 완료
+- 토큰별 손실 추적 🎯 추가 개발 필요
 
-## ⚠️ 주의사항
+### 4. 빔 서치 개선 (예상: ROUGE +1%)
+- Diverse Beam Search (5 groups) ✅ 설정 준비
+- Length Penalty 조정 (1.0 → 1.2) ✅ 설정 준비
+- No Repeat N-gram 강화 ✅ 설정 준비
 
-1. **외부 데이터셋**: DialogSum 사용 금지
-2. **평가 데이터**: 학습에 사용 금지
-3. **API 사용**: 무료 API만 허용 (Solar는 예외)
-4. **파일 형식**: CSV (fname, summary 컬럼)
+### 5. Solar API 앙상블 (예상: ROUGE +2-3%)
+- 가중 평균 결합 ✅ 코드 구현
+- 신뢰도 기반 동적 가중치 ✅ 코드 구현
+- Few-shot 프롬프트 최적화 🔑 API 키 필요
 
-## 📚 참고 문서
-
-- [대회 개요](docs/competition_overview.md)
-- [베이스라인 코드 상세 분석](docs/baseline_code_analysis.md)
-- [Solar API 상세 분석](docs/solar_api_analysis.md)
-- [ROUGE 평가 지표 설명](docs/rouge_metrics_detail.md)
-- [프로젝트 구조 분석](docs/project_structure_analysis.md)
-- [uv 패키지 관리자 가이드](docs/uv_package_manager_guide.md)
-- [AIStages 환경 설정 가이드](docs/setup_guides/aistages_environment_setup.md) 🆕
-- **대회 가이드**:
-  - [하이퍼파라미터 튜닝 가이드](docs/competition_guides/hyperparameter_tuning_guide.md) 🆕
-  - [텍스트 데이터 분석 가이드](docs/competition_guides/text_data_analysis_guide.md) 🆕
-  - [WandB 실험 관리 가이드](docs/competition_guides/wandb_experiment_tracking_guide.md) 🆕
-  - [DialogSum 데이터셋 분석](docs/competition_guides/dialogsum_dataset_analysis.md) 🆕
-  - [통합 가이드](docs/competition_guides/competition_integration_guide.md) 🆕
-- **팀 진행 상황**:
-  - [팀 이슈 및 인사이트](docs/team_progress/team_issues_and_insights.md) 🆕
-  - [통합 액션 플랜](docs/team_progress/integration_action_plan.md) 🆕
-
-## 🛠️ 트러블슈팅
+## 🐛 트러블슈팅
 
 ### CUDA Out of Memory
-```python
+```bash
 # 배치 크기 감소
-config['training']['per_device_train_batch_size'] = 32
+python code/trainer.py --per_device_train_batch_size 4
 
-# Gradient Accumulation 사용
-config['training']['gradient_accumulation_steps'] = 2
+# Mixed Precision 활성화
+python code/trainer.py --fp16 true --fp16_backend amp
 ```
 
-### Rate Limit (Solar API)
+### 느린 학습 속도
+```bash
+# 데이터로더 워커 증가
+python code/trainer.py --dataloader_num_workers 8
+
+# 캐시 활성화
+export TRANSFORMERS_CACHE=/path/to/cache
+```
+
+### API Rate Limit
 ```python
-# 요청 간격 조정
-if (idx + 1) % 100 == 0:
-    time.sleep(65)  # 1분 대기
+# config에서 조정
+solar_api:
+  rate_limit_per_minute: 50  # 줄이기
+  retry_delay: 10            # 늘리기
 ```
 
-### 토큰화 오류
-```python
-# 특수 토큰 확인
-print(tokenizer.special_tokens_map)
+## 📚 참고 자료
 
-# 최대 길이 조정
-config['tokenizer']['encoder_max_len'] = 1024
-```
+- [프로젝트 문서](docs/)
+- [실험 결과 분석](docs/experiment_results/)
+- [API 문서](docs/api/)
+- [트러블슈팅 가이드](docs/troubleshooting.md)
 
-## 🎯 개발 로드맵
+## 🤝 기여 방법
 
-- [x] 베이스라인 구현
-- [x] Solar API 연동
-- [ ] 데이터 증강
-- [ ] 모델 앙상블
-- [ ] 하이퍼파라미터 최적화
-- [ ] 추가 모델 실험 (T5, GPT)
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-## 📞 연락처
+## 📄 라이선스
 
-문제가 있거나 질문이 있으시면 이슈를 등록해주세요.
+이 프로젝트는 MIT 라이선스를 따릅니다. 자세한 내용은 [LICENSE](LICENSE) 파일을 참조하세요.
+
+## 👥 팀
+
+- 개발자: LYJ
+- 프로젝트 기간: 2025.01
+
+## 🙏 감사의 말
+
+- Upstage AI Lab for providing the dataset and baseline
+- Hugging Face for the excellent transformers library
+- The open-source community for various tools and libraries
 
 ---
 
-**Last Updated**: 2025.01.27
-**Author**: LYJ
-**Branch**: lyj
+**Note**: Solar API 키가 필요한 기능은 별도 설정이 필요합니다. 자세한 내용은 [Solar API 가이드](code/ensemble/README.md)를 참조하세요.
