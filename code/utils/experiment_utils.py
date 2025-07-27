@@ -30,7 +30,7 @@ class ExperimentInfo:
     dataset_info: Dict[str, Any]
     start_time: str
     end_time: Optional[str] = None
-    status: str = "running"  # running, completed, failed
+    status: str = "실행중"  # 실행중, 완료, 실패
     best_metrics: Optional[Dict[str, float]] = None
     final_metrics: Optional[Dict[str, float]] = None
     model_path: Optional[str] = None

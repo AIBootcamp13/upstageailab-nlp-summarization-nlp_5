@@ -36,15 +36,28 @@ from transformers import (
     PreTrainedTokenizer
 )
 
+# QLoRA 및 unsloth 관련 import (선택적)
+try:
+    from unsloth import FastLanguageModel
+    from peft import LoraConfig, get_peft_model, TaskType
+    UNSLOTH_AVAILABLE = True
+except ImportError:
+    # macOS 환경이나 unsloth가 설치되지 않은 경우
+    FastLanguageModel = None
+    LoraConfig = None
+    get_peft_model = None
+    TaskType = None
+    UNSLOTH_AVAILABLE = False
+
 from datasets import Dataset, DatasetDict
 import evaluate
 import wandb
-
 # 로컬 유틸리티 임포트
 from utils.config_manager import ConfigManager
 from utils.data_utils import DataProcessor
 from utils.metrics import RougeCalculator
 from utils.experiment_utils import ExperimentTracker, ModelRegistry
+from utils.path_utils import PathManager, path_manager
 
 
 logger = logging.getLogger(__name__)
@@ -65,7 +78,7 @@ class TrainingResult:
 class WandbCallback(TrainerCallback):
     """WandB 로깅을 위한 커스텀 콜백"""
     
-    def __init__(self, trainer_instance):
+    def __init__(self, trainer_instance: 'DialogueSummarizationTrainer') -> None:
         self.trainer_instance = trainer_instance
         self.best_metrics = {}
         
@@ -119,7 +132,22 @@ class DialogueSummarizationTrainer:
     """
     대화 요약 모델 학습 트레이너
     
-    baseline.ipynb의 학습 로직을 모듈화하고 WandB Sweep과 통합
+    baseline.ipynb의 학습 로직을 모듈화하고 WandB Sweep과 통합하여
+    생산성 높은 실험 환경을 제공합니다.
+    
+    Features:
+        - 다중 모델 아키텍처 지원 (BART, T5, KoBART 등)
+        - 자동 디바이스 감지 및 최적화 (CUDA, MPS, CPU)
+        - 실험 추적 및 모델 등록 시스템
+        - 커스텀 콜백 및 메트릭 계산
+        - 포괄적 에러 처리 및 로깅
+        - WandB 통합 실험 관리
+        
+    Example:
+        >>> config = load_config('configs/bart_base.yaml')
+        >>> trainer = DialogueSummarizationTrainer(config)
+        >>> datasets = trainer.prepare_data()
+        >>> result = trainer.train(datasets)
     """
     
     def __init__(self, config: Dict[str, Any], 
@@ -159,28 +187,28 @@ class DialogueSummarizationTrainer:
         
         logger.info(f"Trainer initialized with config: {self.experiment_name}")
         
-    def setup_paths(self):
+    def setup_paths(self) -> None:
         """경로 설정"""
-        base_output_dir = Path(self.config['general']['output_dir'])
+        # 경로 관리자를 사용하여 경로 관리
+        experiment_name = self.experiment_name
         
         # Sweep 모드일 때는 run ID를 포함
         if self.sweep_mode and wandb.run:
-            self.output_dir = base_output_dir / f"sweep_{wandb.run.id}"
+            experiment_name = f"sweep_{wandb.run.id}"
         else:
             from datetime import datetime
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            self.output_dir = base_output_dir / f"{self.experiment_name}_{timestamp}"
+            experiment_name = f"{self.experiment_name}_{timestamp}"
         
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+        # 경로 관리자를 통한 경로 설정
+        self.output_dir = path_manager.get_output_path(experiment_name)
+        self.model_save_dir = path_manager.get_model_path(experiment_name)
+        self.results_dir = path_manager.ensure_dir(self.output_dir / "results")
         
-        # 하위 디렉토리
-        self.model_save_dir = self.output_dir / "models"
-        self.results_dir = self.output_dir / "results"
-        
-        for dir_path in [self.model_save_dir, self.results_dir]:
-            dir_path.mkdir(parents=True, exist_ok=True)
+        # 로그 디렉토리 설정
+        self.log_dir = path_manager.get_log_path(experiment_name)
     
-    def initialize_components(self):
+    def initialize_components(self) -> None:
         """모든 컴포넌트 초기화"""
         logger.info("Initializing components...")
         
@@ -303,19 +331,29 @@ class DialogueSummarizationTrainer:
             max_length=self.config['tokenizer']['encoder_max_len']
         )
         
-        # 평가 메트릭 함수
-        def compute_metrics(eval_preds):
+        # 평가 메트릭 함수 - HuggingFace Trainer의 콜백으로 사용됨
+        def compute_metrics(eval_preds: Tuple[np.ndarray, np.ndarray]) -> Dict[str, float]:
+            """
+            학습 중 평가 단계에서 ROUGE 메트릭을 계산하는 중첩 함수
+            
+            Args:
+                eval_preds: (predictions, labels) 튜플
+                
+            Returns:
+                ROUGE 점수들을 포함한 딕셔너리
+            """
             preds, labels = eval_preds
             
-            # 디코딩
+            # 토큰 ID를 텍스트로 디코딩 (특수 토큰 제거)
             decoded_preds = self.tokenizer.batch_decode(preds, skip_special_tokens=True)
             decoded_labels = self.tokenizer.batch_decode(labels, skip_special_tokens=True)
             
-            # -100 처리 (패딩)
+            # HuggingFace에서 사용하는 -100 패딩 토큰을 정상 토큰으로 변환
+            # -100은 loss 계산에서 무시되는 라벨이지만 디코딩에서는 문제가 됨
             labels = np.where(labels != -100, labels, self.tokenizer.pad_token_id)
             decoded_labels = self.tokenizer.batch_decode(labels, skip_special_tokens=True)
             
-            # ROUGE 계산
+            # 대화 요약에 특화된 ROUGE 메트릭 계산 (Multi-reference 지원)
             result = self.rouge_calculator.compute_metrics(decoded_preds, decoded_labels)
             
             return result
@@ -323,7 +361,7 @@ class DialogueSummarizationTrainer:
         # 콜백 설정
         callbacks = [WandbCallback(self)]
         
-        # Early Stopping 설정
+        # 조기 종료 설정
         if self.config['training'].get('early_stopping_patience'):
             callbacks.append(
                 EarlyStoppingCallback(
@@ -406,6 +444,11 @@ class DialogueSummarizationTrainer:
             return training_result
             
         except Exception as e:
+            logger.error(f"Training failed with error: {type(e).__name__}: {str(e)}")
+            logger.error(f"Current config: {self.config.get('model', {}).get('checkpoint', 'Unknown')}")
+            logger.error(f"Device: {self.device}")
+            import traceback
+            logger.debug(f"Full traceback: {traceback.format_exc()}")
             logger.error(f"Training failed: {str(e)}")
             if self.experiment_tracker and experiment_id:
                 self.experiment_tracker.end_experiment(
@@ -498,17 +541,41 @@ class DialogueSummarizationTrainer:
     
     def _setup_device(self) -> torch.device:
         """디바이스 설정"""
+        from utils.device_utils import get_optimal_device, setup_device_config
+        
         device_config = self.config['general'].get('device', 'auto')
         
         if device_config == 'auto':
-            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            # 최적 디바이스 자동 선택
+            device, device_info = get_optimal_device()
+            
+            # 디바이스별 최적화 설정 가져오기
+            model_size = self.config.get('model', {}).get('size', 'base')
+            optimization_config = setup_device_config(device_info, model_size)
+            
+            # 최적화 설정을 config에 병합
+            if 'training' not in self.config:
+                self.config['training'] = {}
+            
+            # 기존 설정과 병합 (기존 설정 우선)
+            opt_dict = optimization_config.to_dict()
+            for key, value in opt_dict.items():
+                if key not in self.config['training']:
+                    self.config['training'][key] = value
+            
+            logger.info(f"자동 감지된 디바이스: {device_info}")
+            logger.info(f"최적화 설정 적용됨: batch_size={optimization_config.batch_size}, "
+                       f"mixed_precision={optimization_config.mixed_precision}, "
+                       f"num_workers={optimization_config.num_workers}")
         else:
+            # 수동 설정
             device = torch.device(device_config)
+            logger.info(f"수동 설정된 디바이스: {device}")
         
         logger.info(f"Using device: {device}")
         return device
     
-    def _setup_logging(self):
+    def _setup_logging(self) -> None:
         """로깅 설정"""
         log_level = self.config.get('logging', {}).get('level', 'INFO')
         logging.basicConfig(
@@ -520,7 +587,7 @@ class DialogueSummarizationTrainer:
             ]
         )
     
-    def _load_tokenizer(self):
+    def _load_tokenizer(self) -> None:
         """토크나이저 로딩"""
         model_checkpoint = self.config['model']['checkpoint']
         logger.info(f"Loading tokenizer: {model_checkpoint}")
@@ -536,35 +603,181 @@ class DialogueSummarizationTrainer:
             if self.tokenizer.pad_token is None:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
     
-    def _load_model(self):
-        """모델 로딩"""
+    def _load_model(self) -> None:
+        """모델 로딩 (unsloth 및 QLoRA 지원)"""
         model_checkpoint = self.config['model']['checkpoint']
         architecture = self.config['model']['architecture']
         
+        # QLoRA 설정 확인
+        qlora_config = self.config.get('qlora', {})
+        use_unsloth = qlora_config.get('use_unsloth', False) and UNSLOTH_AVAILABLE
+        use_qlora = qlora_config.get('use_qlora', False)
+        
         logger.info(f"Loading model: {model_checkpoint} ({architecture})")
+        logger.info(f"QLoRA enabled: {use_qlora}, unsloth enabled: {use_unsloth}")
         
-        # 모델 아키텍처에 따른 로딩
-        if architecture in ['kobart', 'bart', 't5', 'mt5']:
-            # Seq2Seq 모델
-            self.model = AutoModelForSeq2SeqLM.from_pretrained(
-                model_checkpoint,
-                torch_dtype=torch.float16 if self.config['training'].get('fp16') else torch.float32
-            )
-        elif architecture in ['kogpt2', 'gpt2', 'gpt-neo']:
-            # Causal LM 모델
-            self.model = AutoModelForCausalLM.from_pretrained(
-                model_checkpoint,
-                torch_dtype=torch.float16 if self.config['training'].get('fp16') else torch.float32
-            )
+        if use_unsloth and architecture in ['kobart', 'bart', 't5', 'mt5']:
+            # unsloth로 모델 로딩 (최대 75% 메모리 감소)
+            self._load_model_with_unsloth(model_checkpoint, qlora_config)
+            
+        elif use_qlora:
+            # 일반 QLoRA 모델 로딩
+            self._load_model_with_qlora(model_checkpoint, architecture, qlora_config)
+            
         else:
-            raise ValueError(f"Unsupported architecture: {architecture}")
+            # 기존 모델 로딩 방식
+            self._load_model_standard(model_checkpoint, architecture)
         
-        # 디바이스로 이동
-        self.model = self.model.to(self.device)
+        # 디바이스로 이동 (QLoRA 모델은 이미 적절한 디바이스에 있음)
+        if not (use_unsloth or use_qlora):
+            self.model = self.model.to(self.device)
         
-        # Gradient checkpointing (메모리 최적화)
+        # 그래디언트 체크포인팅 (메모리 최적화)
         if self.config['training'].get('gradient_checkpointing', False):
-            self.model.gradient_checkpointing_enable()
+            if hasattr(self.model, 'gradient_checkpointing_enable'):
+                self.model.gradient_checkpointing_enable()
+            else:
+                logger.warning("모델이 gradient_checkpointing을 지원하지 않습니다.")
+                
+        
+        def _load_model_with_unsloth(self, model_checkpoint: str, qlora_config: Dict[str, Any]) -> None:
+            """
+            unsloth를 사용한 고효율 모델 로딩 (메모리 75% 감소)
+            
+            Args:
+                model_checkpoint: 모델 체크포인트 경로
+                qlora_config: QLoRA 설정
+            """
+            logger.info("🚀 unsloth로 고효율 모델 로딩 중...")
+            
+            try:
+                # unsloth FastLanguageModel로 모델 로딩
+                model, tokenizer = FastLanguageModel.from_pretrained(
+                    model_name=model_checkpoint,
+                    max_seq_length=self.config['tokenizer'].get('encoder_max_len', 512) + 
+                                  self.config['tokenizer'].get('decoder_max_len', 200),
+                    dtype=torch.float16 if self.config['training'].get('fp16') else torch.float32,
+                    load_in_4bit=qlora_config.get('load_in_4bit', True),
+                )
+                
+                # LoRA 설정 추가
+                model = FastLanguageModel.get_peft_model(
+                    model,
+                    r=qlora_config.get('lora_rank', 16),
+                    target_modules=qlora_config.get('target_modules', [
+                        "q_proj", "k_proj", "v_proj", "out_proj",
+                        "fc1", "fc2"
+                    ]),
+                    lora_alpha=qlora_config.get('lora_alpha', 32),
+                    lora_dropout=qlora_config.get('lora_dropout', 0.1),
+                    bias="none",
+                    use_gradient_checkpointing="unsloth",  # unsloth 최적화
+                    random_state=42,
+                )
+                
+                self.model = model
+                logger.info("✅ unsloth 모델 로딩 성공! 메모리 사용량 75% 감소 예상")
+                
+            except Exception as e:
+                logger.error(f"❌ unsloth 모델 로딩 실패: {e}")
+                logger.info("할백 모드: 일반 QLoRA로 대체")
+                self._load_model_with_qlora(model_checkpoint, 'kobart', qlora_config)
+        
+        def _load_model_with_qlora(self, model_checkpoint: str, architecture: str, qlora_config: Dict[str, Any]) -> None:
+            """
+            일반 QLoRA를 사용한 모델 로딩
+            
+            Args:
+                model_checkpoint: 모델 체크포인트 경로
+                architecture: 모델 아키텍처
+                qlora_config: QLoRA 설정
+            """
+            logger.info("🔋 QLoRA로 메모리 효율적 모델 로딩 중...")
+            
+            try:
+                # 4-bit 양자화 설정
+                from transformers import BitsAndBytesConfig
+                
+                bnb_config = BitsAndBytesConfig(
+                    load_in_4bit=qlora_config.get('load_in_4bit', True),
+                    bnb_4bit_compute_dtype=getattr(torch, qlora_config.get('bnb_4bit_compute_dtype', 'float16')),
+                    bnb_4bit_quant_type=qlora_config.get('bnb_4bit_quant_type', 'nf4'),
+                    bnb_4bit_use_double_quant=qlora_config.get('bnb_4bit_use_double_quant', True),
+                )
+                
+                # 모델 로딩
+                if architecture in ['kobart', 'bart', 't5', 'mt5']:
+                    model = AutoModelForSeq2SeqLM.from_pretrained(
+                        model_checkpoint,
+                        quantization_config=bnb_config,
+                        device_map="auto",
+                        torch_dtype=torch.float16 if self.config['training'].get('fp16') else torch.float32
+                    )
+                else:
+                    model = AutoModelForCausalLM.from_pretrained(
+                        model_checkpoint,
+                        quantization_config=bnb_config,
+                        device_map="auto",
+                        torch_dtype=torch.float16 if self.config['training'].get('fp16') else torch.float32
+                    )
+                
+                # LoRA 설정
+                if LoraConfig is not None:
+                    lora_config = LoraConfig(
+                        r=qlora_config.get('lora_rank', 16),
+                        lora_alpha=qlora_config.get('lora_alpha', 32),
+                        target_modules=qlora_config.get('target_modules', [
+                            "q_proj", "k_proj", "v_proj", "out_proj",
+                            "fc1", "fc2"
+                        ]),
+                        lora_dropout=qlora_config.get('lora_dropout', 0.1),
+                        bias="none",
+                        task_type=TaskType.SEQ_2_SEQ_LM if architecture in ['kobart', 'bart', 't5', 'mt5'] else TaskType.CAUSAL_LM,
+                    )
+                    
+                    model = get_peft_model(model, lora_config)
+                    logger.info("✅ QLoRA 모델 준비 완료!")
+                
+                self.model = model
+                
+            except ImportError:
+                logger.error("❌ bitsandbytes 또는 peft 라이브러리가 설치되지 않음")
+                logger.info("할백 모드: 표준 모델 로딩")
+                self._load_model_standard(model_checkpoint, architecture)
+            except Exception as e:
+                logger.error(f"❌ QLoRA 모델 로딩 실패: {e}")
+                logger.info("할백 모드: 표준 모델 로딩")
+                self._load_model_standard(model_checkpoint, architecture)
+        
+        def _load_model_standard(self, model_checkpoint: str, architecture: str) -> None:
+            """
+            표준 모델 로딩 (기존 방식)
+            
+            Args:
+                model_checkpoint: 모델 체크포인트 경로
+                architecture: 모델 아키텍처
+            """
+            logger.info("📚 표준 모델 로딩 중...")
+            
+            # 모델 아키텍처에 따른 로딩
+            if architecture in ['kobart', 'bart', 't5', 'mt5']:
+                # 시퀀스-투-시퀀스 모델
+                self.model = AutoModelForSeq2SeqLM.from_pretrained(
+                    model_checkpoint,
+                    torch_dtype=torch.float16 if self.config['training'].get('fp16') else torch.float32
+                )
+            elif architecture in ['kogpt2', 'gpt2', 'gpt-neo']:
+                # 인과 언어 모델
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    model_checkpoint,
+                    torch_dtype=torch.float16 if self.config['training'].get('fp16') else torch.float32
+                )
+            else:
+                raise ValueError(f"Unsupported architecture: {architecture}")
+            
+            logger.info("✅ 표준 모델 로딩 완료!")
+    
+    logger.info("✅ 표준 모델 로딩 완료!")
     
     def _get_training_arguments(self) -> Seq2SeqTrainingArguments:
         """학습 인자 생성"""
@@ -615,12 +828,12 @@ class DialogueSummarizationTrainer:
             'generation_num_beams': self.config['generation']['num_beams']
         }
         
-        # Seq2Seq 특화 인자
+        # 시퀀스-투-시퀀스 특화 인자
         seq2seq_args = Seq2SeqTrainingArguments(**args_dict)
         
         return seq2seq_args
     
-    def _save_results(self, result: TrainingResult):
+    def _save_results(self, result: TrainingResult) -> None:
         """결과 저장"""
         # 결과 딕셔너리 생성
         results_dict = {

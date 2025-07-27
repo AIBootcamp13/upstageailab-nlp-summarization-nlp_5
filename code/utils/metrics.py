@@ -556,3 +556,118 @@ def create_compute_metrics_fn(tokenizer, use_korean_tokenizer: bool = True):
     """
     evaluator = MultiReferenceROUGE(tokenizer, use_korean_tokenizer)
     return evaluator.compute_metrics
+
+
+def compute_metrics_for_trainer(tokenizer, 
+                               use_korean_tokenizer: bool = True,
+                               multi_reference: bool = False):
+    """
+    HuggingFace Trainer용 compute_metrics 함수 생성 (개선된 버전)
+    
+    Args:
+        tokenizer: 토크나이저
+        use_korean_tokenizer: 한국어 토크나이저 사용 여부
+        multi_reference: 다중 참조 평가 사용 여부
+        
+    Returns:
+        compute_metrics 함수
+    """
+    evaluator = MultiReferenceROUGE(tokenizer, use_korean_tokenizer)
+    
+    if multi_reference:
+        # 다중 참조를 지원하는 compute_metrics 함수
+        def compute_metrics_multi(eval_preds):
+            predictions, labels = eval_preds
+            
+            # 토큰 디코딩
+            if isinstance(predictions, tuple):
+                predictions = predictions[0]
+            
+            # 예측 텍스트 디코딩
+            pred_texts = tokenizer.batch_decode(
+                predictions, skip_special_tokens=True, clean_up_tokenization_spaces=True
+            )
+            
+            # 레이블이 List[List[str]] 형태인 경우 (다중 참조)
+            if isinstance(labels, list) and all(isinstance(l, list) for l in labels):
+                # 이미 디코딩된 텍스트 리스트
+                return evaluator.evaluate_with_multiple_references(pred_texts, labels)
+            else:
+                # 토큰 형태의 레이블 처리
+                labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
+                label_texts = tokenizer.batch_decode(
+                    labels, skip_special_tokens=True, clean_up_tokenization_spaces=True
+                )
+                
+                # 단일 참조로 처리
+                return evaluator.compute_metrics((predictions, labels))
+        
+        return compute_metrics_multi
+    else:
+        # 기존 단일 참조 compute_metrics
+        return evaluator.compute_metrics
+
+
+def evaluate_competition_format(predictions_file: str,
+                              ground_truth_file: str,
+                              use_korean_tokenizer: bool = True) -> Dict[str, float]:
+    """
+    대회 형식의 평가 수행
+    
+    Args:
+        predictions_file: 예측 파일 경로 (fname, summary)
+        ground_truth_file: 정답 파일 경로 (fname, summary1, summary2, summary3)
+        use_korean_tokenizer: 한국어 토크나이저 사용 여부
+        
+    Returns:
+        평가 결과 딕셔너리
+    """
+    import pandas as pd
+    
+    # 파일 로드
+    pred_df = pd.read_csv(predictions_file)
+    truth_df = pd.read_csv(ground_truth_file)
+    
+    # fname으로 병합
+    merged_df = pred_df.merge(truth_df, on='fname')
+    
+    # RougeCalculator 생성
+    calculator = RougeCalculator(use_korean_tokenizer=use_korean_tokenizer)
+    
+    # 각 샘플에 대해 multi-reference ROUGE 계산
+    rouge_scores = []
+    for _, row in merged_df.iterrows():
+        prediction = row['summary']
+        references = [
+            row.get('summary1', ''),
+            row.get('summary2', ''),
+            row.get('summary3', '')
+        ]
+        # 빈 참조 제거
+        references = [ref for ref in references if ref and isinstance(ref, str)]
+        
+        score = calculator.calculate_multi_reference(prediction, references)
+        rouge_scores.append(score)
+    
+    # 평균 계산
+    avg_rouge1_f1 = np.mean([score.rouge1.f1 for score in rouge_scores])
+    avg_rouge2_f1 = np.mean([score.rouge2.f1 for score in rouge_scores])
+    avg_rougeL_f1 = np.mean([score.rougeL.f1 for score in rouge_scores])
+    avg_combined_f1 = avg_rouge1_f1 + avg_rouge2_f1 + avg_rougeL_f1
+    
+    result = {
+        'rouge1_f1': avg_rouge1_f1,
+        'rouge2_f1': avg_rouge2_f1,
+        'rougeL_f1': avg_rougeL_f1,
+        'rouge_combined_f1': avg_combined_f1,
+        'num_samples': len(rouge_scores)
+    }
+    
+    print(f"\n=== 대회 형식 평가 결과 ===")
+    print(f"샘플 수: {result['num_samples']}")
+    print(f"ROUGE-1 F1: {result['rouge1_f1']:.4f}")
+    print(f"ROUGE-2 F1: {result['rouge2_f1']:.4f}")
+    print(f"ROUGE-L F1: {result['rougeL_f1']:.4f}")
+    print(f"Combined F1: {result['rouge_combined_f1']:.4f}")
+    
+    return result

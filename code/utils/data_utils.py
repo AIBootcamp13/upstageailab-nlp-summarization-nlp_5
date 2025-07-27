@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from transformers import PreTrainedTokenizer
 import torch
 from torch.utils.data import Dataset
+from .path_utils import PathManager, path_manager
 
 
 @dataclass
@@ -26,7 +27,7 @@ class DataSample:
     dialogue_length: int = 0
     summary_length: int = 0
     
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.dialogue_length = len(self.dialogue)
         self.summary_length = len(self.summary)
 
@@ -58,7 +59,7 @@ class TextPreprocessor:
         # 정규 표현식 패턴
         self._compile_patterns()
     
-    def _compile_patterns(self):
+    def _compile_patterns(self) -> None:
         """정규 표현식 패턴 컴파일"""
         # 개행 문자 변형 패턴
         self.newline_pattern = re.compile(r'\\n')
@@ -203,18 +204,18 @@ class DataProcessor:
         self.max_dialogue_length = self.config.get('max_source_length', 1024)
         self.min_summary_length = self.config.get('min_target_length', 5)
         self.max_summary_length = self.config.get('max_target_length', 256)
-    
     def load_dataset(self, file_path: Union[str, Path]) -> pd.DataFrame:
         """
         데이터셋 로딩
         
         Args:
-            file_path: CSV 파일 경로
+            file_path: CSV 파일 경로 (상대 경로 또는 절대 경로)
             
         Returns:
             로딩된 데이터프레임
         """
-        file_path = Path(file_path)
+        # 경로 관리자를 통해 경로 해결
+        file_path = path_manager.resolve_path(file_path)
         
         if not file_path.exists():
             raise FileNotFoundError(f"Dataset file not found: {file_path}")

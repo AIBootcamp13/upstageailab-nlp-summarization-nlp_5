@@ -105,7 +105,7 @@ class TestConfigManager(unittest.TestCase):
         with open(self.legacy_config_path, 'w', encoding='utf-8') as f:
             yaml.dump(self.legacy_config, f)
         
-        # ConfigManager 인스턴스 생성
+        # 구성 관리자 인스턴스 생성
         self.config_manager = ConfigManager(base_dir=self.test_dir)
     
     def tearDown(self):

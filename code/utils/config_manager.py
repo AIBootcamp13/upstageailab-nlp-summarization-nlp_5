@@ -15,6 +15,7 @@ import logging
 from datetime import datetime
 import json
 from collections.abc import MutableMapping
+from utils.path_utils import PathManager, path_manager
 
 
 class ConfigValidationError(Exception):
@@ -26,13 +27,22 @@ class ConfigManager:
     """
     설정 파일 통합 관리자
     
-    기능:
-    - 기존 config.yaml과 새로운 base_config.yaml 모두 지원
-    - YAML 파일 간 상속 및 병합
-    - 환경변수 기반 오버라이드
-    - WandB Sweep 파라미터 동적 병합
-    - 설정 검증 및 기본값 처리
-    - 모델별 특화 설정 로딩
+    6조 방식의 YAML 설정 관리를 NLP 프로젝트에 맞게 개선한 고급 설정 관리자입니다.
+    단순한 설정 로딩을 넘어서 실험 계절막의 이기종 설정 관리를 제공합니다.
+    
+    Features:
+        - 기존 config.yaml과 새로운 base_config.yaml 모두 지원
+        - YAML 파일 간 상속 및 딴 병합 (Deep Merge)
+        - 환경변수 기반 동적 오버라이드
+        - WandB Sweep 파라미터 동적 병합
+        - 포괄적 설정 검증 및 스키마 지원
+        - 모델별 특화 설정 및 설정 마이그레이션
+        - 오류 복구 및 기본값 자동 처리
+        
+    Example:
+        >>> config_manager = ConfigManager()
+        >>> config = config_manager.load_config('base_config.yaml', model_config='bart_base')
+        >>> config = config_manager.merge_sweep_params(wandb_params)
     """
     
     def __init__(self, base_dir: Optional[str] = None, validate: bool = True):
@@ -40,10 +50,11 @@ class ConfigManager:
         ConfigManager 초기화
         
         Args:
-            base_dir: 설정 파일 기본 디렉토리 (기본값: code/)
+            base_dir: 설정 파일 기본 디렉토리 (기본값: 프로젝트 루트)
             validate: 설정 검증 활성화 여부
         """
-        self.base_dir = Path(base_dir) if base_dir else Path.cwd()
+        # 경로 관리자를 통해 프로젝트 루트 경로 사용
+        self.base_dir = path_manager.project_root if base_dir is None else Path(base_dir)
         self.validate = validate
         self.config = None
         self.is_legacy = False
@@ -175,7 +186,7 @@ class ConfigManager:
         
         return config
     
-    def save_config(self, config: Dict[str, Any], save_path: Union[str, Path]):
+    def save_config(self, config: Dict[str, Any], save_path: Union[str, Path]) -> None:
         """
         설정을 YAML 파일로 저장
         
@@ -420,7 +431,7 @@ class ConfigManager:
         
         return config
     
-    def _validate_config(self, config: Dict[str, Any]):
+    def _validate_config(self, config: Dict[str, Any]) -> None:
         """
         설정 검증
         
@@ -588,7 +599,7 @@ class ConfigManager:
         
         return current
     
-    def _set_nested_value(self, config: Dict[str, Any], path: str, value: Any):
+    def _set_nested_value(self, config: Dict[str, Any], path: str, value: Any) -> None:
         """
         중첩된 딕셔너리에 값 설정
         

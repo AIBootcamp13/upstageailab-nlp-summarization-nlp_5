@@ -50,7 +50,7 @@ class SweepRunner:
         self.base_config_path = Path(base_config_path)
         self.sweep_config_name = sweep_config_name
         
-        # ConfigManager 초기화
+        # 구성 관리자 초기화
         self.config_manager = ConfigManager()
         
         # 기본 설정 로딩
