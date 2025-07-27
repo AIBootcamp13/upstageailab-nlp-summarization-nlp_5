@@ -1,0 +1,118 @@
+general:
+  data_path: ../data/
+  model_name: digit82/kobart-summarization
+  output_dir: ./
+  
+# QLoRA 및 unsloth 설정 (메모리 75% 감소)
+qlora:
+  use_unsloth: false  # macOS에서는 false, Ubuntu에서 true로 변경
+  use_qlora: true     # QLoRA 기반 효율적 파인튜닝
+  
+  # LoRA 설정
+  lora_rank: 16       # LoRA rank (낮을수록 메모리 절약)
+  lora_alpha: 32      # LoRA alpha (rank의 2배 권장)
+  lora_dropout: 0.1   # LoRA dropout
+  
+  # 타겟 모듈 (KoBART에 최적화)
+  target_modules:
+    - "q_proj"         # Query projection
+    - "k_proj"         # Key projection  
+    - "v_proj"         # Value projection
+    - "out_proj"       # Output projection
+    - "fc1"            # Feed-forward layer 1
+    - "fc2"            # Feed-forward layer 2
+  
+  # 4-bit 양자화 설정
+  load_in_4bit: true
+  bnb_4bit_compute_dtype: "float16"
+  bnb_4bit_quant_type: "nf4"  # NormalFloat 4-bit
+  bnb_4bit_use_double_quant: true
+inference:
+  batch_size: 32
+  ckt_path: model ckt path
+  early_stopping: true
+  generate_max_length: 200  # 100 → 200: 더 긴 요약 생성
+  no_repeat_ngram_size: 2
+  num_beams: 4
+  remove_tokens:
+  - <usr>
+  - <s>
+  - </s>
+  - <pad>
+  result_path: ./prediction/
+tokenizer:
+  bos_token: <s>
+  decoder_max_len: 200  # 100 → 200: 더 상세한 요약 생성
+  encoder_max_len: 512
+  eos_token: </s>
+  special_tokens:
+  - '#Person1#'
+  - '#Person2#'
+  - '#Person3#'
+  - '#PhoneNumber#'
+  - '#Address#'
+  - '#PassportNumber#'
+  - '#DateOfBirth#'  # 새로 추가
+  - '#SSN#'  # 새로 추가
+  - '#CardNumber#'  # 새로 추가
+  - '#CarNumber#'  # 새로 추가
+  - '#Email#'  # 새로 추가
+training:
+  do_eval: true
+  do_train: true
+  
+  # 평가 전략 최적화 (epoch → steps)
+  eval_strategy: steps  # 조장님 설정: epoch → steps
+  eval_steps: 400  # 새로 추가: 더 정밀한 모니터링
+  
+  # Early Stopping 설정
+  early_stopping_patience: 3
+  early_stopping_threshold: 0.001
+  
+  # 메모리 최적화 설정
+  gradient_checkpointing: true  # 새로 추가: 메모리 사용량 30-40% 감소
+  gradient_checkpointing_kwargs:
+    use_reentrant: false  # 새로 추가: 안정성 향상
+  torch_empty_cache_steps: 10  # 새로 추가: 정기적 메모리 정리
+  
+  # 성능 최적화
+  group_by_length: true  # 새로 추가: 데이터 처리 효율성 향상
+  dataloader_num_workers: 8  # 새로 추가: 데이터 로딩 속도 향상
+  
+  # 기본 학습 설정
+  fp16: true
+  generation_max_length: 200  # 100 → 200: 더 상세한 요약
+  gradient_accumulation_steps: 1
+  learning_rate: 1.0e-05
+  load_best_model_at_end: true
+  
+  # 로깅 설정
+  logging_dir: ./logs
+  logging_strategy: epoch
+  logging_steps: 100  # 새로 추가: 더 빨른 로깅
+  
+  # 옵티마이저 설정
+  lr_scheduler_type: cosine
+  optim: adamw_torch
+  warmup_ratio: 0.1
+  weight_decay: 0.01
+  
+  # 모델 저장 설정
+  num_train_epochs: 20
+  overwrite_output_dir: true
+  save_strategy: steps  # epoch → steps
+  save_steps: 400  # eval_steps와 동일하게 설정
+  save_total_limit: 5
+  
+  # 배치 사이즈 설정
+  per_device_eval_batch_size: 32
+  per_device_train_batch_size: 50
+  
+  # 기타 설정
+  predict_with_generate: true
+  report_to: wandb
+  seed: 42
+wandb:
+  entity: wandb_repo
+  name: run_name
+  project: project_name
