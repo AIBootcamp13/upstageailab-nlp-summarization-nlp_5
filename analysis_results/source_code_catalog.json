@@ -1,0 +1,339 @@
+{
+  "analysis_metadata": {
+    "timestamp": "2025-01-27T14:00:00.000Z",
+    "total_files_analyzed": 15,
+    "analysis_method": "comprehensive_source_analysis"
+  },
+  "project_overview": {
+    "name": "NLP Dialogue Summarization",
+    "main_directory": "code/",
+    "architecture": "modular_ml_pipeline",
+    "primary_language": "Python",
+    "ml_framework": "transformers"
+  },
+  "directory_structure": {
+    "root_files": [
+      {
+        "filename": "auto_experiment_runner.py",
+        "type": "automation_script",
+        "main_class": "AutoExperimentRunner",
+        "key_functions": [
+          "discover_experiment_configs",
+          "run_single_experiment", 
+          "run_all_experiments",
+          "_execute_training"
+        ],
+        "dependencies": [
+          "utils.path_utils",
+          "utils.device_utils", 
+          "utils.experiment_utils",
+          "utils.config_manager"
+        ],
+        "purpose": "자동 실험 실행 시스템 - YAML 설정 기반 실험 순차 실행",
+        "features": [
+          "MPS/CUDA 디바이스 자동 감지",
+          "상대 경로 기준 파일 처리",
+          "실험 결과 자동 추적",
+          "WandB 통합"
+        ]
+      },
+      {
+        "filename": "trainer.py",
+        "type": "training_module",
+        "main_class": "DialogueSummarizationTrainer",
+        "key_functions": [
+          "initialize_components",
+          "prepare_data",
+          "train",
+          "evaluate",
+          "generate_predictions"
+        ],
+        "dependencies": [
+          "transformers",
+          "torch",
+          "wandb",
+          "utils.config_manager",
+          "utils.data_utils",
+          "utils.metrics"
+        ],
+        "purpose": "NLP 대화 요약 모델 학습 모듈 - baseline.ipynb 학습 로직 모듈화",
+        "features": [
+          "WandB Sweep 통합",
+          "다양한 모델 지원",
+          "커스텀 콜백",
+          "실험 추적"
+        ]
+      },
+      {
+        "filename": "run_inference.py",
+        "type": "inference_script",
+        "purpose": "추론 실행 스크립트"
+      },
+      {
+        "filename": "run_solar_ensemble.py", 
+        "type": "ensemble_script",
+        "purpose": "Solar API 앙상블 실행"
+      },
+      {
+        "filename": "parallel_sweep_runner.py",
+        "type": "optimization_script",
+        "purpose": "병렬 하이퍼파라미터 스윕 실행"
+      },
+      {
+        "filename": "sweep_runner.py",
+        "type": "optimization_script", 
+        "purpose": "하이퍼파라미터 스윕 실행"
+      }
+    ],
+    "core/": {
+      "purpose": "핵심 추론 엔진",
+      "files": [
+        {
+          "filename": "inference.py",
+          "type": "inference_engine",
+          "main_class": "InferenceEngine",
+          "key_functions": [
+            "predict_single",
+            "predict_batch", 
+            "predict_from_dataframe",
+            "save_submission"
+          ],
+          "dependencies": [
+            "transformers",
+            "torch",
+            "pandas",
+            "utils.device_utils",
+            "utils.path_utils"
+          ],
+          "purpose": "독립 추론 엔진 - 대회 제출 형식 지원",
+          "features": [
+            "배치 처리",
+            "다양한 입력 형식 지원",
+            "자동 디바이스 감지",
+            "캐시 지원"
+          ]
+        }
+      ]
+    },
+    "utils/": {
+      "purpose": "공통 유틸리티 모듈",
+      "files": [
+        {
+          "filename": "config_manager.py",
+          "type": "configuration_manager",
+          "main_class": "ConfigManager",
+          "key_functions": [
+            "load_config",
+            "merge_sweep_params",
+            "save_config",
+            "_migrate_legacy_config"
+          ],
+          "purpose": "YAML 설정 관리 및 WandB Sweep 파라미터 동적 병합",
+          "features": [
+            "기존/신규 형식 자동 감지",
+            "환경변수 오버라이드",
+            "설정 검증",
+            "모델별 특화 설정"
+          ]
+        },
+        {
+          "filename": "data_utils.py",
+          "type": "data_processing",
+          "main_classes": ["TextPreprocessor", "DataProcessor", "DialogueSummarizationDataset"],
+          "key_functions": [
+            "preprocess_text",
+            "load_dataset",
+            "preprocess_dataset",
+            "split_dataset"
+          ],
+          "purpose": "데이터 전처리, 필터링, 변환 기능",
+          "features": [
+            "한국어 텍스트 정제",
+            "특수 토큰 처리",
+            "데이터 통계 분석",
+            "PyTorch Dataset 지원"
+          ]
+        },
+        {
+          "filename": "device_utils.py",
+          "type": "device_management",
+          "key_functions": [
+            "get_optimal_device",
+            "setup_device_config",
+            "detect_cuda_devices",
+            "detect_mps_device"
+          ],
+          "purpose": "Mac M1/M2 MPS와 CUDA 자동 감지 및 최적화",
+          "features": [
+            "플랫폼별 최적화 설정",
+            "메모리 기반 배치 크기 조정",
+            "Mixed Precision 설정"
+          ]
+        },
+        {
+          "filename": "metrics.py",
+          "type": "evaluation_metrics",
+          "main_classes": ["RougeCalculator", "MultiReferenceROUGE", "MetricTracker"],
+          "key_functions": [
+            "calculate_single_reference",
+            "calculate_multi_reference",
+            "compute_metrics",
+            "evaluate_competition_format"
+          ],
+          "purpose": "Multi-reference ROUGE 평가 지원",
+          "features": [
+            "한국어 토크나이저",
+            "대회 특성 다중 참조",
+            "HuggingFace Trainer 호환",
+            "메트릭 추적"
+          ]
+        },
+        {
+          "filename": "experiment_utils.py",
+          "type": "experiment_management",
+          "main_classes": ["ExperimentTracker", "ModelRegistry"],
+          "key_functions": [
+            "start_experiment",
+            "complete_experiment",
+            "register_model",
+            "get_best_experiments"
+          ],
+          "purpose": "실험 추적 및 모델 등록 관리",
+          "features": [
+            "WandB 연동",
+            "실험 데이터베이스",
+            "성능 비교",
+            "모델 버전 관리"
+          ]
+        },
+        {
+          "filename": "path_utils.py",
+          "type": "path_management",
+          "main_class": "PathManager",
+          "key_functions": [
+            "resolve_path",
+            "ensure_dir",
+            "get_data_path",
+            "get_output_path"
+          ],
+          "purpose": "크로스 플랫폼 상대 경로 관리",
+          "features": [
+            "프로젝트 루트 자동 감지",
+            "플랫폼 독립적 경로",
+            "디렉토리 자동 생성"
+          ]
+        }
+      ]
+    },
+    "data_augmentation/": {
+      "purpose": "데이터 증강 기법",
+      "files": [
+        {
+          "filename": "simple_augmentation.py",
+          "type": "data_augmentation",
+          "main_classes": ["SimpleAugmenter", "SynonymReplacement", "SentenceReorder"],
+          "key_functions": [
+            "augment",
+            "augment_dataset"
+          ],
+          "purpose": "기본 데이터 증강 - 동의어 치환, 문장 순서 변경",
+          "features": [
+            "한국어 동의어 사전",
+            "특수 토큰 보호",
+            "캐시 시스템",
+            "대화 턴 분석"
+          ]
+        },
+        {
+          "filename": "backtranslation.py",
+          "type": "data_augmentation",
+          "main_classes": ["BackTranslationAugmenter", "MultilingualBackTranslation"],
+          "key_functions": [
+            "augment",
+            "_google_backtranslate",
+            "_marian_backtranslate",
+            "_validate_quality"
+          ],
+          "purpose": "백트랜슬레이션 데이터 증강 - 한영한 번역",
+          "features": [
+            "Google Translate API",
+            "MarianMT 로컬 모델",
+            "품질 검증",
+            "다중 언어 지원"
+          ]
+        }
+      ]
+    }
+  },
+  "architecture_analysis": {
+    "design_patterns": [
+      "Factory Pattern (create_trainer, create_inference_engine)",
+      "Singleton Pattern (PathManager)",
+      "Strategy Pattern (다양한 augmentation 방법)",
+      "Observer Pattern (WandB 콜백)"
+    ],
+    "dependency_graph": {
+      "core_dependencies": [
+        "transformers",
+        "torch", 
+        "pandas",
+        "numpy",
+        "pyyaml",
+        "wandb"
+      ],
+      "optional_dependencies": [
+        "googletrans",
+        "rouge",
+        "datasets"
+      ]
+    },
+    "module_relationships": {
+      "trainer.py": ["utils.config_manager", "utils.data_utils", "utils.metrics", "utils.experiment_utils"],
+      "core.inference": ["utils.device_utils", "utils.path_utils", "utils.data_utils"],
+      "auto_experiment_runner": ["utils.path_utils", "utils.device_utils", "utils.experiment_utils"]
+    }
+  },
+  "configuration_system": {
+    "config_files": [
+      "config.yaml (legacy)",
+      "config/base_config.yaml",
+      "config/models/*.yaml",
+      "config/experiments/*.yaml",
+      "config/sweep/*.yaml"
+    ],
+    "config_structure": {
+      "sections": [
+        "meta (실험 메타데이터)",
+        "general (일반 설정)",
+        "model (모델 설정)",
+        "tokenizer (토크나이저 설정)",
+        "training (학습 설정)",
+        "generation (생성 설정)",
+        "evaluation (평가 설정)",
+        "wandb (WandB 설정)"
+      ]
+    }
+  },
+  "key_features": {
+    "device_optimization": {
+      "platforms": ["CUDA", "MPS (Apple Silicon)", "CPU"],
+      "auto_detection": true,
+      "memory_optimization": true
+    },
+    "experiment_management": {
+      "automation": "완전 자동화된 실험 실행",
+      "tracking": "WandB 통합 실험 추적",
+      "hyperparameter_optimization": "Sweep 지원"
+    },
+    "data_processing": {
+      "preprocessing": "한국어 특화 전처리",
+      "augmentation": "다양한 증강 기법",
+      "evaluation": "Multi-reference ROUGE"
+    },
+    "inference": {
+      "formats": ["단일 텍스트", "배치", "DataFrame"],
+      "optimization": "배치 처리 최적화",
+      "submission": "대회 제출 형식 지원"
+    }
+  }
+}

@@ -1,0 +1,302 @@
+{
+  "analysis_metadata": {
+    "timestamp": "2025-01-27T15:00:00.000Z",
+    "analysis_type": "code_documentation_mapping",
+    "total_components_mapped": 13,
+    "gap_analysis_completed": true
+  },
+  "source_code_mapping": {
+    "trainer.py": {
+      "related_documents": [
+        "02_user_guides/model_training/baseline_training.md",
+        "02_user_guides/model_training/hyperparameter_tuning.md",
+        "02_user_guides/experiment_management/wandb_tracking.md",
+        "01_getting_started/competition_overview.md"
+      ],
+      "functionality": "NLP 대화 요약 모델 학습",
+      "documentation_coverage": "comprehensive",
+      "alignment_quality": "excellent"
+    },
+    "core/inference.py": {
+      "related_documents": [
+        "05_deployment/production_guide.md",
+        "03_technical_docs/system_architecture.md",
+        "03_technical_docs/performance_optimization.md"
+      ],
+      "functionality": "독립 추론 엔진",
+      "documentation_coverage": "partial",
+      "alignment_quality": "good",
+      "gaps": [
+        "배치 추론 최적화 가이드 부족",
+        "캐시 시스템 활용법 문서화 필요",
+        "메모리 효율적 추론 방법 설명 부족"
+      ]
+    },
+    "auto_experiment_runner.py": {
+      "related_documents": [
+        "02_user_guides/experiment_management/automation_guide.md",
+        "04_experiments/automation/configuration_guide.md",
+        "04_experiments/automation/nlp_automation_design.md",
+        "07_development/implementation_guide/development_roadmap.md"
+      ],
+      "functionality": "자동 실험 실행 시스템",
+      "documentation_coverage": "excellent",
+      "alignment_quality": "excellent"
+    },
+    "sweep_runner.py + parallel_sweep_runner.py": {
+      "related_documents": [
+        "02_user_guides/model_training/hyperparameter_tuning.md",
+        "04_experiments/automation/best_practices.md",
+        "02_user_guides/experiment_management/wandb_tracking.md"
+      ],
+      "functionality": "하이퍼파라미터 최적화",
+      "documentation_coverage": "good",
+      "alignment_quality": "good"
+    },
+    "utils/config_manager.py": {
+      "related_documents": [
+        "04_experiments/automation/configuration_guide.md",
+        "07_development/implementation_checklist.md",
+        "03_technical_docs/system_architecture.md"
+      ],
+      "functionality": "설정 관리 및 동적 병합",
+      "documentation_coverage": "good",
+      "alignment_quality": "good",
+      "gaps": [
+        "복잡한 설정 구성 방법 가이드 부족",
+        "설정 마이그레이션 절차 문서화 필요"
+      ]
+    },
+    "utils/data_utils.py": {
+      "related_documents": [
+        "02_user_guides/data_analysis/text_preprocessing.md",
+        "02_user_guides/data_analysis/dataset_analysis.md",
+        "01_getting_started/competition_overview.md"
+      ],
+      "functionality": "데이터 전처리 및 변환",
+      "documentation_coverage": "excellent",
+      "alignment_quality": "excellent"
+    },
+    "utils/device_utils.py": {
+      "related_documents": [
+        "07_development/implementation_status/device_auto_detection_guide.md",
+        "03_technical_docs/performance_optimization.md",
+        "01_getting_started/environment_reset.md"
+      ],
+      "functionality": "디바이스 최적화 (MPS/CUDA)",
+      "documentation_coverage": "excellent",
+      "alignment_quality": "excellent"
+    },
+    "utils/metrics.py": {
+      "related_documents": [
+        "02_user_guides/evaluation/rouge_metrics.md",
+        "02_user_guides/evaluation/performance_analysis.md",
+        "01_getting_started/competition_overview.md"
+      ],
+      "functionality": "Multi-reference ROUGE 평가",
+      "documentation_coverage": "good",
+      "alignment_quality": "good"
+    },
+    "utils/experiment_utils.py": {
+      "related_documents": [
+        "02_user_guides/experiment_management/wandb_tracking.md",
+        "04_experiments/automation/best_practices.md",
+        "07_development/comprehensive_guide.md"
+      ],
+      "functionality": "실험 추적 및 모델 등록",
+      "documentation_coverage": "good",
+      "alignment_quality": "good"
+    },
+    "utils/path_utils.py": {
+      "related_documents": [
+        "03_technical_docs/project_structure.md",
+        "07_development/implementation_checklist.md"
+      ],
+      "functionality": "크로스 플랫폼 경로 관리",
+      "documentation_coverage": "partial",
+      "alignment_quality": "fair",
+      "gaps": [
+        "크로스 플랫폼 경로 관리 상세 가이드 부족",
+        "프로젝트 구조와 경로 설계 원칙 문서화 필요"
+      ]
+    },
+    "data_augmentation/simple_augmentation.py": {
+      "related_documents": [
+        "02_user_guides/data_analysis/text_preprocessing.md",
+        "03_technical_docs/algorithms/ensemble_techniques.md"
+      ],
+      "functionality": "기본 데이터 증강",
+      "documentation_coverage": "limited",
+      "alignment_quality": "poor",
+      "gaps": [
+        "데이터 증강 전략 가이드 부재",
+        "증강 기법별 성능 비교 문서 부족",
+        "증강 데이터 품질 평가 방법 미제공"
+      ]
+    },
+    "data_augmentation/backtranslation.py": {
+      "related_documents": [
+        "02_user_guides/data_analysis/text_preprocessing.md",
+        "03_technical_docs/algorithms/ensemble_techniques.md"
+      ],
+      "functionality": "백트랜슬레이션 증강",
+      "documentation_coverage": "limited",
+      "alignment_quality": "poor",
+      "gaps": [
+        "백트랜슬레이션 설정 및 최적화 가이드 부재",
+        "품질 검증 프로세스 문서화 필요",
+        "다중 언어 지원 설정 방법 부족"
+      ]
+    },
+    "run_solar_ensemble.py": {
+      "related_documents": [
+        "03_technical_docs/algorithms/solar_api_integration.md",
+        "05_deployment/production_guide.md"
+      ],
+      "functionality": "Solar API 앙상블",
+      "documentation_coverage": "good",
+      "alignment_quality": "good"
+    }
+  },
+  "gap_analysis": {
+    "underdocumented_code": {
+      "data_augmentation_modules": {
+        "missing_docs": [
+          "데이터 증강 전략 가이드",
+          "증강 기법별 성능 비교",
+          "증강 데이터 품질 평가 방법"
+        ],
+        "current_coverage": "limited",
+        "impact": "high",
+        "reason": "데이터 증강은 성능 향상의 핵심 요소"
+      },
+      "inference_advanced_features": {
+        "missing_docs": [
+          "배치 추론 최적화 가이드",
+          "캐시 시스템 활용법",
+          "메모리 효율적 추론 방법"
+        ],
+        "current_coverage": "partial",
+        "impact": "medium",
+        "reason": "성능 최적화에 중요"
+      },
+      "path_management": {
+        "missing_docs": [
+          "크로스 플랫폼 경로 관리 상세 가이드",
+          "프로젝트 구조와 경로 설계 원칙"
+        ],
+        "current_coverage": "partial",
+        "impact": "low",
+        "reason": "인프라 유틸리티"
+      },
+      "advanced_configuration": {
+        "missing_docs": [
+          "복잡한 설정 구성 방법",
+          "설정 마이그레이션 가이드",
+          "환경별 설정 최적화"
+        ],
+        "current_coverage": "good but incomplete",
+        "impact": "medium",
+        "reason": "고급 사용자 지원"
+      }
+    },
+    "overdocumented_areas": {
+      "security_guidelines": {
+        "issue": "security_guidelines.md 존재하나 실제 보안 기능 구현 미확인",
+        "gap_type": "implementation_gap"
+      },
+      "advanced_ensemble": {
+        "issue": "ensemble_techniques.md 존재하나 실제로는 Solar API 앙상블만 구현",
+        "gap_type": "scope_gap"
+      },
+      "monitoring_system": {
+        "issue": "system_architecture.md에서 모니터링 계층 언급하나 실제로는 WandB 추적만 구현",
+        "gap_type": "feature_gap"
+      }
+    },
+    "inconsistencies": {
+      "performance_metrics": {
+        "documentation": "ROUGE-F1 47.12% → 55-60% 목표",
+        "code_implementation": "실제 달성 성능 확인 필요",
+        "inconsistency_type": "metrics_validation_needed"
+      },
+      "technology_stack": {
+        "documented_stack": ["Hydra", "FastAPI", "Docker", "Kubernetes", "Prometheus", "Grafana"],
+        "actual_implementation": ["WandB", "PyTorch", "Transformers", "YAML 설정"],
+        "inconsistency_type": "scope_mismatch"
+      },
+      "data_processing": {
+        "documentation": "포괄적 데이터 분석 가이드",
+        "code_reality": "기본적인 전처리 + 증강 구현",
+        "inconsistency_type": "detail_level_mismatch"
+      }
+    },
+    "missing_areas": {
+      "testing_framework": {
+        "missing_implementation": "단위 테스트, 통합 테스트 부재",
+        "missing_documentation": "테스트 전략 및 가이드 부재",
+        "impact": "high",
+        "reason": "코드 품질 보장"
+      },
+      "deployment_pipeline": {
+        "missing_implementation": "실제 배포 스크립트 부재",
+        "documented_partially": "production_guide.md 존재하나 구체성 부족",
+        "impact": "medium",
+        "reason": "운영 환경 대응"
+      },
+      "error_handling_system": {
+        "missing_implementation": "체계적 예외 처리 부재",
+        "documented": "error_handling.md 존재",
+        "impact": "medium",
+        "reason": "안정성 확보"
+      }
+    }
+  },
+  "coverage_statistics": {
+    "documentation_coverage_levels": {
+      "excellent": {
+        "count": 3,
+        "components": ["auto_experiment_runner.py", "utils/data_utils.py", "utils/device_utils.py"]
+      },
+      "comprehensive": {
+        "count": 1,
+        "components": ["trainer.py"]
+      },
+      "good": {
+        "count": 5,
+        "components": ["sweep_runner.py + parallel_sweep_runner.py", "utils/config_manager.py", "utils/metrics.py", "utils/experiment_utils.py", "run_solar_ensemble.py"]
+      },
+      "partial": {
+        "count": 2,
+        "components": ["core/inference.py", "utils/path_utils.py"]
+      },
+      "limited": {
+        "count": 2,
+        "components": ["data_augmentation/simple_augmentation.py", "data_augmentation/backtranslation.py"]
+      }
+    },
+    "alignment_quality_distribution": {
+      "excellent": 4,
+      "good": 7,
+      "fair": 1,
+      "poor": 2
+    }
+  },
+  "priority_improvement_areas": {
+    "high_priority": [
+      "데이터 증강 모듈 문서화",
+      "테스트 코드 구현 및 문서화",
+      "성능 지표 검증 및 업데이트"
+    ],
+    "medium_priority": [
+      "추론 엔진 고급 기능 문서화",
+      "배포 파이프라인 구현",
+      "기술 스택 일관성 확보"
+    ],
+    "low_priority": [
+      "경로 관리 유틸리티 문서화",
+      "모니터링 시스템 구현",
+      "보안 기능 구현"
+    ]
+  }
+}

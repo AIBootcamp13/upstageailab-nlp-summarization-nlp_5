@@ -1,0 +1,351 @@
+{
+  "analysis_metadata": {
+    "timestamp": "2025-01-27T14:30:00.000Z",
+    "total_documents_analyzed": 49,
+    "analysis_method": "hierarchical_document_analysis",
+    "structure_type": "9_tier_documentation_system"
+  },
+  "project_overview": {
+    "name": "NLP 대화 요약 프로젝트 문서",
+    "goal": "베이스라인 성능(ROUGE-F1 47.12%)을 55-60%로 향상",
+    "documentation_structure": "사용자 여정 기반 9단계 카테고리",
+    "last_updated": "2025-07-27"
+  },
+  "documentation_hierarchy": {
+    "root_level": {
+      "main_readme": {
+        "file": "README.md",
+        "title": "📚 NLP 대화 요약 프로젝트 문서",
+        "sections": [
+          "프로젝트 개요",
+          "문서 구조 (9단계)",
+          "사용자별 추천 경로",
+          "문서 구조 개편 완료"
+        ],
+        "key_features": [
+          "사용자 여정 기반 네비게이션",
+          "직관적인 문서 발견 시스템",
+          "교차 참조 시스템",
+          "체계적 재구성 완료"
+        ],
+        "user_paths": {
+          "newcomers": ["시작하기", "사용자 가이드", "실험 관리"],
+          "developers": ["기술 문서", "개발자 가이드", "API 참조"],
+          "researchers": ["데이터 분석", "실험 관리", "참고 자료"],
+          "troubleshooters": ["문제 해결", "개발자 가이드", "프로젝트 관리"]
+        }
+      },
+      "supplementary": {
+        "documentation_guidelines": {
+          "file": "documentation_guidelines.md",
+          "purpose": "문서 작성 및 관리 지침"
+        }
+      }
+    },
+    "tier_structure": {
+      "01_getting_started": {
+        "title": "🚀 시작하기",
+        "purpose": "프로젝트를 처음 시작하는 사용자를 위한 필수 가이드",
+        "readme_sections": [
+          "핵심 가이드",
+          "시작 순서",
+          "관련 링크"
+        ],
+        "documents": [
+          {
+            "file": "competition_overview.md",
+            "title": "Dialogue Summarization | 일상 대화 요약 대회",
+            "type": "comprehensive_guide",
+            "sections": [
+              "대회 개요",
+              "데이터 구성 및 특징",
+              "평가 방법 (ROUGE 지표)",
+              "제출 규칙 및 제한사항",
+              "베이스라인 코드 구조",
+              "라이센스 및 일정"
+            ],
+            "key_metrics": {
+              "baseline_performance": "ROUGE-F1 47.1244%",
+              "target_performance": "55-60%",
+              "training_time": "~20분",
+              "inference_time": "~12.6초"
+            },
+            "data_info": {
+              "train": 12457,
+              "dev": 499,
+              "test": 250,
+              "hidden_test": 249
+            }
+          },
+          {
+            "file": "uv_guide.md",
+            "title": "UV 패키지 관리자",
+            "type": "setup_guide"
+          },
+          {
+            "file": "integration_guide.md", 
+            "title": "통합 가이드",
+            "type": "setup_guide"
+          },
+          {
+            "file": "aistages_setup.md",
+            "title": "AIStages 설정",
+            "type": "setup_guide"
+          },
+          {
+            "file": "environment_reset.md",
+            "title": "환경 재설정",
+            "type": "troubleshooting_guide"
+          }
+        ]
+      },
+      "02_user_guides": {
+        "title": "📖 사용자 가이드",
+        "purpose": "일반 사용자를 위한 주요 작업별 상세 가이드",
+        "workflow": ["데이터 분석", "모델 학습", "실험 관리", "평가"],
+        "subcategories": {
+          "data_analysis": {
+            "documents": [
+              {
+                "file": "dataset_analysis.md",
+                "title": "DialogSum 데이터셋 상세 분석 가이드",
+                "type": "analysis_guide",
+                "sections": [
+                  "데이터셋 개요",
+                  "원본과 대회 데이터 비교",
+                  "데이터 품질 분석",
+                  "Special Token 및 약어 처리",
+                  "적용 방안"
+                ],
+                "key_findings": {
+                  "excluded_data": "train(-3), validation(-1), test(-1250)",
+                  "quality_issues": ["정보 누락", "표현 불일치", "Topic 일관성"],
+                  "tokenizer_issues": "약어 및 특수 표현 처리 문제",
+                  "abbreviations_found": ["ATM", "A/S", "AS", "BBC", "CEO"]
+                }
+              },
+              {
+                "file": "text_preprocessing.md",
+                "title": "텍스트 전처리",
+                "type": "preprocessing_guide"
+              }
+            ]
+          },
+          "model_training": {
+            "documents": [
+              {
+                "file": "baseline_training.md",
+                "title": "베이스라인 학습",
+                "type": "training_guide"
+              },
+              {
+                "file": "hyperparameter_tuning.md",
+                "title": "하이퍼파라미터 튜닝",
+                "type": "optimization_guide"
+              }
+            ]
+          },
+          "experiment_management": {
+            "documents": [
+              {
+                "file": "wandb_tracking.md",
+                "title": "WandB 추적",
+                "type": "tracking_guide"
+              },
+              {
+                "file": "automation_guide.md",
+                "title": "자동화 가이드",
+                "type": "automation_guide"
+              }
+            ]
+          },
+          "evaluation": {
+            "documents": [
+              {
+                "file": "rouge_metrics.md",
+                "title": "ROUGE 메트릭",
+                "type": "evaluation_guide"
+              },
+              {
+                "file": "performance_analysis.md",
+                "title": "성능 분석",
+                "type": "analysis_guide"
+              }
+            ]
+          }
+        }
+      },
+      "03_technical_docs": {
+        "title": "🔧 기술 문서",
+        "purpose": "개발자와 고급 사용자를 위한 기술적 상세 정보",
+        "target_users": ["개발자", "연구자", "고급 사용자"],
+        "core_documents": [
+          {
+            "file": "system_architecture.md",
+            "title": "🏗️ 시스템 아키텍처",
+            "type": "architecture_doc",
+            "sections": [
+              "전체 아키텍처",
+              "핵심 컴포넌트",
+              "데이터 플로우",
+              "확장성 고려사항"
+            ],
+            "components": [
+              "데이터 처리 계층",
+              "모델 추론 계층",
+              "평가 검증 계층",
+              "실험 관리 계층",
+              "배포 관리 계층",
+              "모니터링 계층"
+            ],
+            "tech_stack": [
+              "Transformers, PyTorch",
+              "Pandas, NumPy, Datasets", 
+              "Weights & Biases, Hydra",
+              "FastAPI, Docker, Kubernetes",
+              "Prometheus, Grafana"
+            ]
+          },
+          {
+            "file": "performance_optimization.md",
+            "title": "성능 최적화",
+            "type": "optimization_doc"
+          },
+          {
+            "file": "error_handling.md",
+            "title": "에러 처리",
+            "type": "technical_guide"
+          },
+          {
+            "file": "security_guidelines.md",
+            "title": "보안 가이드라인",
+            "type": "security_doc"
+          }
+        ],
+        "subcategories": {
+          "api_reference": ["core_modules.md", "utilities.md"],
+          "architecture": ["project_structure.md", "code_analysis.md"],
+          "algorithms": ["solar_api_integration.md", "ensemble_techniques.md"]
+        }
+      },
+      "04_experiments": {
+        "title": "🧪 실험 관리",
+        "purpose": "모든 실험 관련 정보와 도구를 통합 관리",
+        "workflow": ["베이스라인 설정", "자동화 구성", "실험 실행", "결과 분석"],
+        "performance_targets": {
+          "baseline": "ROUGE-F1 47.12%",
+          "phase1_improvement": "ROUGE-F1 50-52%",
+          "final_target": "ROUGE-F1 55-60%"
+        },
+        "subcategories": {
+          "baseline_results": ["reproduction.md"],
+          "experiment_logs": ["phase1_analysis.md", "final_guide.md"],
+          "automation": ["configuration_guide.md", "best_practices.md", "case_studies.md", "nlp_automation_design.md"]
+        }
+      },
+      "05_deployment": {
+        "title": "🚀 배포 및 운영",
+        "purpose": "모델 배포와 운영을 위한 가이드",
+        "stages": ["모델 최적화", "환경 구성", "서비스 배포", "모니터링"],
+        "documents": [
+          "production_guide.md",
+          "final_report.md"
+        ]
+      },
+      "06_troubleshooting": {
+        "title": "🔧 문제 해결",
+        "purpose": "프로젝트 진행 중 발생할 수 있는 문제들의 해결 방법",
+        "process": ["문제 확인", "문서 검색", "임시 해결", "근본 해결"],
+        "documents": [
+          "common_issues.md",
+          "debugging_guide.md",
+          "bug_fixes/current_issues.md"
+        ]
+      },
+      "07_development": {
+        "title": "👥 개발자 가이드",
+        "purpose": "프로젝트 개발에 참여하는 개발자를 위한 가이드",
+        "process": ["요구사항 분석", "설계 및 계획", "구현 및 테스트", "리뷰 및 배포"],
+        "documents": [
+          "comprehensive_guide.md",
+          "implementation_checklist.md",
+          "priority_1_requirements.md",
+          "priority_2_optional.md"
+        ],
+        "subdirectories": {
+          "implementation_guide": ["development_roadmap.md"],
+          "implementation_status": ["comprehensive_status_report.md", "device_auto_detection_guide.md"]
+        }
+      },
+      "08_project_management": {
+        "title": "📊 프로젝트 관리",
+        "purpose": "팀 협업 및 프로젝트 진행 상황 관리",
+        "activities": ["일일 스탠드업", "주간 회고", "월간 리뷰"],
+        "tools": ["Slack", "GitHub", "WandB", "Notion/문서"],
+        "team_progress_docs": [
+          "integration_action_plan.md",
+          "team_communication_summary.md", 
+          "team_issues_and_insights.md"
+        ]
+      },
+      "09_references": {
+        "title": "📚 외부 참고 자료",
+        "purpose": "관련 논문 및 학습 리소스, 도구 및 라이브러리 참고 문서",
+        "content_types": ["관련 논문", "학습 리소스", "도구 참고 문서"]
+      }
+    }
+  },
+  "cross_references": {
+    "internal_links": {
+      "from_main_readme": [
+        "./01_getting_started/README.md",
+        "./02_user_guides/README.md", 
+        "./03_technical_docs/README.md",
+        "./04_experiments/README.md",
+        "./05_deployment/README.md",
+        "./06_troubleshooting/README.md",
+        "./07_development/README.md",
+        "./08_project_management/README.md",
+        "./09_references/README.md"
+      ],
+      "typical_navigation_patterns": [
+        "시작하기 → 사용자 가이드 → 실험 관리",
+        "기술 문서 → 개발자 가이드 → API 참조",
+        "데이터 분석 → 실험 관리 → 참고 자료",
+        "문제 해결 → 개발자 가이드 → 프로젝트 관리"
+      ]
+    },
+    "external_references": {
+      "competitions": ["AIStages Dialogue Summarization"],
+      "datasets": ["DialogSum", "knkarthick/dialogsum"],
+      "models": ["KoBART", "gogamza/kobart-base-v2", "digit82/kobart-summarization"],
+      "tools": ["WandB", "UV Package Manager", "Solar API"]
+    }
+  },
+  "documentation_quality": {
+    "structure_strengths": [
+      "9단계 체계적 카테고리 구성",
+      "사용자 여정 기반 논리적 구성",
+      "명확한 네비게이션 및 교차 참조",
+      "각 계층별 명확한 목적과 대상 사용자"
+    ],
+    "content_analysis": {
+      "comprehensive_coverage": [
+        "프로젝트 개요부터 배포까지 전 과정",
+        "초보자부터 고급 개발자까지 모든 사용자 레벨",
+        "기술적 세부사항과 실무 가이드 균형"
+      ],
+      "practical_elements": [
+        "코드 예제 포함",
+        "구체적인 성능 지표 제시",
+        "실행 가능한 가이드 제공",
+        "문제 해결 프로세스 명시"
+      ]
+    },
+    "improvement_areas": [
+      "일부 문서의 내용 완성도 검증 필요",
+      "코드 예제와 실제 구현 간 일치성 확인",
+      "문서 간 일관성 및 중복성 검토"
+    ]
+  }
+}
