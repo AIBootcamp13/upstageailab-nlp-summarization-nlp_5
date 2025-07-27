@@ -176,21 +176,37 @@ class SolarAPIClient:
         return messages
     
     def summarize(self, dialogue: str, few_shot_examples: Optional[List[Dict]] = None) -> str:
-        """Solar API를 사용한 요약"""
+        """안정성 강화된 Solar API 요약
+        
+        개선사항:
+        - API 키 검증 및 연결 테스트
+        - 지수 백오프 재시도 메커니즘
+        - 연속 실패 시 폴백 메커니즘
+        - 비용 최적화된 캐싱
+        - 자세한 오류 로깅
+        """
+        # API 클라이언트 상태 검증
+        if not hasattr(self, 'client') or not self.client:
+            logger.warning("⚠️ Solar API 클라이언트가 초기화되지 않음 - 폴백 모드")
+            return ""
+            
         # 캐시 확인
         cache_key = dialogue[:100]  # 대화의 처음 100자를 키로 사용
         if self.config.use_cache and cache_key in self.cache:
-            logger.debug("Using cached Solar summary")
+            logger.debug("💾 캐시된 Solar 요약 사용")
             return self.cache[cache_key]
         
         # 비율 제한 확인
         self._check_rate_limit()
         
-        # API 호출
+        # API 호출 시도
         messages = self.build_prompt(dialogue, few_shot_examples)
+        last_error = None
         
         for attempt in range(self.config.max_retries):
             try:
+                start_time = time.time()
+                
                 response = self.client.chat.completions.create(
                     model=self.config.solar_model,
                     messages=messages,
@@ -200,8 +216,15 @@ class SolarAPIClient:
                     timeout=self.config.timeout
                 )
                 
+                if not response.choices or not response.choices[0].message.content:
+                    raise Exception("비어있는 응답 수신")
+                
                 summary = response.choices[0].message.content.strip()
                 self.request_count += 1
+                processing_time = time.time() - start_time
+                
+                # 성공 로깅
+                logger.debug(f"✅ Solar API 성공 (attempt {attempt + 1}, {processing_time:.2f}s)")
                 
                 # 캐시 저장
                 if self.config.use_cache:
@@ -212,13 +235,37 @@ class SolarAPIClient:
                 return summary
                 
             except Exception as e:
-                logger.warning(f"Solar API error (attempt {attempt + 1}): {str(e)}")
+                last_error = e
+                error_type = type(e).__name__
+                
+                # 상세 오류 로깅
+                logger.warning(
+                    f"⚠️ Solar API 오류 (attempt {attempt + 1}/{self.config.max_retries}): "
+                    f"{error_type} - {str(e)}"
+                )
+                
+                # 마지막 시도가 아니면 재시도
                 if attempt < self.config.max_retries - 1:
-                    time.sleep(self.config.retry_delay * (attempt + 1))
-                else:
-                    logger.error(f"Failed to get Solar summary after {self.config.max_retries} attempts")
-                    return ""
-    
+                    # 지수 백오프 적용
+                    delay = self.config.retry_delay * (2 ** attempt)
+                    delay = min(delay, 60)  # 최대 60초
+                    
+                    logger.info(f"⏱️ {delay}초 후 재시도... ({error_type})")
+                    time.sleep(delay)
+                    
+                    # 타임아웃 오류인 경우 타임아웃 증가
+                    if "timeout" in str(e).lower() or "timed out" in str(e).lower():
+                        original_timeout = self.config.timeout
+                        self.config.timeout = min(self.config.timeout + 15, 120)
+                        logger.info(f"타임아웃 증가: {original_timeout}수 → {self.config.timeout}수")
+        
+        # 모든 시도 실패
+        logger.error(
+            f"❌ Solar API 완전 실패 ({self.config.max_retries}회 시도): "
+            f"{type(last_error).__name__} - {str(last_error)}"
+        )
+        
+        return ""
     async def summarize_async(self, dialogue: str, few_shot_examples: Optional[List[Dict]] = None) -> str:
         """비동기 Solar API 요약"""
         loop = asyncio.get_event_loop()
@@ -438,38 +485,57 @@ class WeightedEnsemble:
         return float(confidence)
     
     def process_single(self, dialogue: str) -> EnsembleResult:
-        """단일 대화 처리"""
+        """단일 대화 처리 - 폴백 메커니즘 강화"""
         start_time = time.time()
         
         # Fine-tuned 모델 요약
-        fine_tuned_summary = self.generate_fine_tuned_summary(dialogue)
+        try:
+            fine_tuned_summary = self.generate_fine_tuned_summary(dialogue)
+        except Exception as e:
+            logger.error(f"❌ Fine-tuned 모델 오류: {str(e)}")
+            fine_tuned_summary = "대화 요약 실패"  # 기본 폴백
         
         # Solar API 요약
-        solar_summary = self.solar_client.summarize(dialogue, self.few_shot_examples)
+        solar_summary = ""
+        solar_failed = False
         
-        # 동적 가중치 계산
-        weights = self.calculate_dynamic_weights(
-            fine_tuned_summary,
-            solar_summary,
-            dialogue
-        )
+        try:
+            solar_summary = self.solar_client.summarize(dialogue, self.few_shot_examples)
+            if not solar_summary:  # 빈 문자열 반환 시 실패로 간주
+                solar_failed = True
+                logger.warning("⚠️ Solar API가 빈 요약 반환")
+        except Exception as e:
+            solar_failed = True
+            logger.error(f"❌ Solar API 오류: {str(e)}")
         
-        # 요약 결합
-        ensemble_summary = self.combine_summaries(
-            fine_tuned_summary,
-            solar_summary,
-            weights
-        )
-        
-        # 신뢰도 계산
-        confidence = self.calculate_confidence(
-            fine_tuned_summary,
-            solar_summary,
-            ensemble_summary
-        )
+        # 폴백 메커니즘
+        if solar_failed or not solar_summary:
+            logger.info("🔄 Solar API 실패 - Fine-tuned 모델만 사용 (Fallback 모드)")
+            ensemble_summary = fine_tuned_summary
+            weights = {'fine_tuned': 1.0, 'solar': 0.0}
+            confidence = 0.7  # Fine-tuned 모델만 사용 시 기본 신뢰도
+            solar_summary = "사용 불가 (폴백 모드)"
+        else:
+            # 정상 앙상블 처리
+            weights = self.calculate_dynamic_weights(
+                fine_tuned_summary,
+                solar_summary,
+                dialogue
+            )
+            
+            ensemble_summary = self.combine_summaries(
+                fine_tuned_summary,
+                solar_summary,
+                weights
+            )
+            
+            confidence = self.calculate_confidence(
+                fine_tuned_summary,
+                solar_summary,
+                ensemble_summary
+            )
         
         processing_time = time.time() - start_time
-        
         return EnsembleResult(
             dialogue=dialogue,
             fine_tuned_summary=fine_tuned_summary,
@@ -477,7 +543,11 @@ class WeightedEnsemble:
             ensemble_summary=ensemble_summary,
             weights_used=weights,
             confidence_score=confidence,
-            processing_time=processing_time
+            processing_time=processing_time,
+            metadata={
+                'solar_failed': solar_failed,
+                'fallback_mode': solar_failed or not solar_summary
+            }
         )
     
     async def process_batch_async(self, dialogues: List[str]) -> List[EnsembleResult]:

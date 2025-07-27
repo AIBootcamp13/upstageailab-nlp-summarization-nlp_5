@@ -49,21 +49,31 @@
 - [ ] 베이스라인 점수 기록
 
 ## 4️⃣ Day 4-5: 하이퍼파라미터 튜닝 (4시간)
-- [ ] Optuna 설치
+- [ ] WandB Sweep 설정
   ```bash
-  pip install optuna
-  ```
-- [ ] 탐색 공간 정의
-  ```python
-  def optuna_hp_space(trial):
-      return {
-          "learning_rate": trial.suggest_loguniform('lr', 1e-5, 5e-4),
-          "batch_size": trial.suggest_categorical('bs', [8, 16, 32])
-      }
-  ```
-- [ ] 20회 탐색 실행
-- [ ] 최적 파라미터 기록
-- [ ] WandB에서 결과 비교
+  # WandB 로그인 (이미 완료되어 있다면 스킵)
+  wandb login
+  - [ ] WandB Sweep YAML 설정 확인
+    ```yaml
+    # config/sweep/hyperparameter_sweep.yaml 예시
+    method: bayes
+    metric:
+      name: rouge_combined_f1
+      goal: maximize
+    parameters:
+      learning_rate:
+        distribution: log_uniform_values
+        min: 1.0e-6
+        max: 1.0e-4
+    ```
+  - [ ] Sweep 실행
+    ```bash
+    # 하이퍼파라미터 튜닝 (50회)
+    python code/sweep_runner.py \
+        --base-config config/base_config.yaml \
+        --sweep-config hyperparameter_sweep \
+        --count 50
+    ```
 
 ## 5️⃣ Day 6-7: 성능 개선 (6시간)
 - [ ] 데이터 증강 적용
@@ -91,7 +101,7 @@
 | 단계 | ROUGE-L 목표 | 비고 |
 |------|-------------|------|
 | 베이스라인 | 0.47+ | 기본 설정 |
-| HP 튜닝 후 | 0.49+ | Optuna 최적화 |
+| HP 튜닝 후 | 0.49+ | WandB Sweep 최적화 |
 | 데이터 증강 | 0.50+ | 전처리 개선 |
 | 최종 | 0.52+ | 앙상블 포함 |
 

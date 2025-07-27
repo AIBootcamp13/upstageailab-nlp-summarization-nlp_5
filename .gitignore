@@ -101,16 +101,6 @@ credentials.json
 *.key
 *.pem
 
-# Test artifacts
-htmlcov/
-.tox/
-.coverage
-.coverage.*
-coverage.xml
-*.cover
-.hypothesis/
-.pytest_cache/
-
 # Documentation build
 docs/_build/
 docs/.doctrees/
@@ -124,4 +114,9 @@ docs/.doctrees/
 temp/
 tmp/
 scratch/
-debug/
+debug/.git/
+
+# Exclude git directory
+.git/
+.git/
+.git/*

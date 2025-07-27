@@ -26,7 +26,7 @@ sys.path.append(str(Path(__file__).parent.parent / 'code'))
 
 from trainer import DialogueSummarizationTrainer
 from core.inference import InferenceEngine
-from utils.config_manager import ConfigManager
+from utils import load_config
 from utils.memory_monitor import MemoryMonitor
 
 

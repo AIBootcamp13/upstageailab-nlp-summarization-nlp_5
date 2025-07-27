@@ -266,11 +266,10 @@ class ParallelSweepRunner:
         # 임시 스크립트로 Sweep ID만 생성
         create_script = f"""
 import wandb
-from utils.config_manager import ConfigManager
+from utils import load_config
 
 # 설정 로딩
-cm = ConfigManager()
-config = cm.load_config("{self.base_config_path}", sweep_config="{sweep_config_name}")
+config = load_config("{self.base_config_path}")
 
 # Sweep 설정 추출
 sweep_config = config['meta']['sweep_config']

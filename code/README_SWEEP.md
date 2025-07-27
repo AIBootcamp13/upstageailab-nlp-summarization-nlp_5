@@ -14,7 +14,7 @@
 
 ### 2. sweep_runner.py
 - WandB Sweep 실행 및 관리
-- ConfigManager와 통합하여 동적 설정 병합
+- 간단한 YAML 설정 로딩 및 동적 파라미터 병합
 - 실험 결과 자동 저장 및 분석
 
 ### 3. parallel_sweep_runner.py

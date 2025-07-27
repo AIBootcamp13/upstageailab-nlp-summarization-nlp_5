@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from utils.path_utils import PathManager
 from utils.device_utils import get_optimal_device, setup_device_config
 from utils.experiment_utils import ExperimentTracker, ModelRegistry
-from utils.config_manager import ConfigManager
+from utils import load_config
 
 class AutoExperimentRunner:
     """자동 실험 실행 관리자 (상대 경로 기준)"""
@@ -121,15 +121,13 @@ class AutoExperimentRunner:
         relative_path = config_path.relative_to(PathManager.get_project_root())
         
         # 기본 설정 로딩
-        base_manager = ConfigManager(self.base_config_path.relative_to(PathManager.get_project_root()))
-        base_config = base_manager.get_config()
+        base_config = load_config(self.base_config_path)
         
         # 실험별 설정 로딩
-        exp_manager = ConfigManager(str(relative_path))
-        exp_config = exp_manager.get_config()
+        exp_config = load_config(experiment_config_path)
         
         # 설정 병합 (실험 설정이 우선)
-        merged_config = base_manager.merge_configs(base_config, exp_config)
+        merged_config = self._merge_configs(base_config, exp_config)
         
         # 디바이스 최적화 적용
         optimized_config = setup_device_config(merged_config)
@@ -290,6 +288,30 @@ class AutoExperimentRunner:
                     pass
         
         return result
+    
+    def _merge_configs(self, base_config: Dict[str, Any], exp_config: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        두 설정을 병합 (실험 설정이 우선)
+        
+        Args:
+            base_config: 기본 설정
+            exp_config: 실험별 설정
+            
+        Returns:
+            병합된 설정
+        """
+        import copy
+        merged = copy.deepcopy(base_config)
+        
+        def deep_merge(target: Dict, source: Dict):
+            for key, value in source.items():
+                if key in target and isinstance(target[key], dict) and isinstance(value, dict):
+                    deep_merge(target[key], value)
+                else:
+                    target[key] = value
+        
+        deep_merge(merged, exp_config)
+        return merged
     
     def run_all_experiments(self, 
                           config_dir: str = "config/experiments",

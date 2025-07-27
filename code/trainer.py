@@ -53,7 +53,7 @@ from datasets import Dataset, DatasetDict
 import evaluate
 import wandb
 # 로컬 유틸리티 임포트
-from utils.config_manager import ConfigManager
+from utils import load_config
 from utils.data_utils import DataProcessor
 from utils.metrics import RougeCalculator
 from utils.experiment_utils import ExperimentTracker, ModelRegistry
@@ -887,8 +887,7 @@ def create_trainer(config: Union[str, Dict[str, Any]],
     """
     # 설정 로딩
     if isinstance(config, str):
-        config_manager = ConfigManager()
-        config_dict = config_manager.load_config(config)
+        config_dict = load_config(config)
     else:
         config_dict = config
     

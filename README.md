@@ -102,10 +102,12 @@ nlp-sum-lyj/
 - 길이 최적화
 - 특수 토큰 검증
 
-### 5. Solar API 앙상블 (향후 계획)
+### 5. Solar API 앙상블 (안정성 강화)
 - Fine-tuned 모델 + Solar API
+- **오류 처리 강화**: 지수 백오프 재시도, 타임아웃 증가, 연결 테스트
+- **폴백 메커니즘**: Solar API 실패 시 Fine-tuned 모델로 자동 전환
+- **비용 최적화**: 캐싱, rate limiting, 연속 실패 모니터링
 - 동적 가중치 결합
-- 신뢰도 기반 선택
 - **현재 상태**: 코드 구현 완료, API 키 필요
 
 ## 🚀 하이퍼파라미터 최적화 (WandB Sweep)
@@ -124,8 +126,7 @@ python code/sweep_runner.py \
   --sweep-config model_comparison_sweep \
   --count 20
 ```
-
-✅ **장점**: Optuna와 동등한 베이지안 최적화 + WandB 실험 추적 통합
+✅ **장점**: WandB Sweep 베이지안 최적화 + WandB 실험 추적 완전 통합
 
 ## 📨 실험 재현
 

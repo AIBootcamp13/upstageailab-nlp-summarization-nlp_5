@@ -21,7 +21,7 @@ from functools import partial
 
 # 로컬 모듈 임포트
 from trainer import DialogueSummarizationTrainer, create_trainer
-from utils.config_manager import ConfigManager
+from utils import load_config
 
 
 logger = logging.getLogger(__name__)
@@ -50,14 +50,8 @@ class SweepRunner:
         self.base_config_path = Path(base_config_path)
         self.sweep_config_name = sweep_config_name
         
-        # 구성 관리자 초기화
-        self.config_manager = ConfigManager()
-        
         # 기본 설정 로딩
-        self.base_config = self.config_manager.load_config(
-            self.base_config_path,
-            sweep_config=sweep_config_name
-        )
+        self.base_config = load_config(self.base_config_path)
         
         # WandB 설정
         self.project_name = project_name or self.base_config.get('wandb', {}).get('project', 'nlp-dialogue-summarization')
@@ -95,7 +89,7 @@ class SweepRunner:
             logger.info(f"Sweep parameters: {sweep_params}")
             
             # 기본 설정에 Sweep 파라미터 병합
-            config = self.config_manager.merge_sweep_params(sweep_params)
+            config = self._merge_sweep_params(sweep_params)
             
             # 실험명 생성
             experiment_name = self._generate_experiment_name(sweep_params)
@@ -229,6 +223,42 @@ class SweepRunner:
         sweep_config['program'] = 'sweep_runner.py'
         
         return sweep_config
+    
+    def _merge_sweep_params(self, sweep_params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Sweep 파라미터를 기본 설정에 병합
+        
+        Args:
+            sweep_params: WandB에서 받은 파라미터
+            
+        Returns:
+            병합된 설정
+        """
+        import copy
+        config = copy.deepcopy(self.base_config)
+        
+        # 간단한 파라미터 매핑
+        param_mapping = {
+            'learning_rate': ('training', 'learning_rate'),
+            'per_device_train_batch_size': ('training', 'per_device_train_batch_size'),
+            'per_device_eval_batch_size': ('training', 'per_device_eval_batch_size'),
+            'num_train_epochs': ('training', 'num_train_epochs'),
+            'warmup_ratio': ('training', 'warmup_ratio'),
+            'weight_decay': ('training', 'weight_decay'),
+            'encoder_max_len': ('tokenizer', 'encoder_max_len'),
+            'decoder_max_len': ('tokenizer', 'decoder_max_len'),
+            'num_beams': ('generation', 'num_beams'),
+            'length_penalty': ('generation', 'length_penalty'),
+        }
+        
+        for param_name, param_value in sweep_params.items():
+            if param_name in param_mapping:
+                section, key = param_mapping[param_name]
+                if section not in config:
+                    config[section] = {}
+                config[section][key] = param_value
+        
+        return config
     
     def _generate_experiment_name(self, sweep_params: Dict[str, Any]) -> str:
         """
