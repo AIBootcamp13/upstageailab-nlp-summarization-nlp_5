@@ -57,7 +57,7 @@ for i in "${!EXPERIMENTS[@]}"; do
     
     # 실험 실행
     EXPERIMENT_START=$(date +%s)
-    if python code/auto_experiment_runner.py --config "${YAML_FILE}" 2>&1 | tee "$LOG_FILE"; then
+    echo "🚀 실험 시작: $(date)"
     
     # 실험 실행 (로그 파일에 저장하면서 화면에도 출력)
     if python code/auto_experiment_runner.py --config "${YAML_FILE}" 2>&1 | tee "$LOG_FILE"; then
