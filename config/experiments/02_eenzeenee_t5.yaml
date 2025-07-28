@@ -8,6 +8,10 @@ general:
   model_type: seq2seq
   name: eenzeenee_korean_summarization
 
+model:
+  architecture: T5
+  checkpoint: eenzeenee/t5-base-korean-summarization
+
 input_prefix: "summarize: "
 
 tokenizer:

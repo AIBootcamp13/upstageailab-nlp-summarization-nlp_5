@@ -8,6 +8,10 @@ general:
   model_type: seq2seq
   name: mt5_xlsum_optimized
 
+model:
+  architecture: mT5
+  checkpoint: csebuetnlp/mT5_multilingual_XLSum
+
 input_prefix: ""  # mT5는 prefix 없이 사용
 
 tokenizer:

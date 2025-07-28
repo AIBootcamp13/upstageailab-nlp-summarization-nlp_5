@@ -7,6 +7,10 @@ general:
   data_path: ../data/
   name: baseline_kobart
 
+model:
+  architecture: BART
+  checkpoint: digit82/kobart-summarization
+
 tokenizer:
   bos_token: <s>
   eos_token: </s>
