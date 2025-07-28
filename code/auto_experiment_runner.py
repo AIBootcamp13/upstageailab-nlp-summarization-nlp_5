@@ -126,7 +126,7 @@ class AutoExperimentRunner:
         base_config = load_config(self.base_config_path)
         
         # 실험별 설정 로딩
-        relative_path = config_path.relative_to(path_manager.project_root)
+        exp_config = load_config(config_path)
         
         # 설정 병합 (실험 설정이 우선)
         merged_config = self._merge_configs(base_config, exp_config)
