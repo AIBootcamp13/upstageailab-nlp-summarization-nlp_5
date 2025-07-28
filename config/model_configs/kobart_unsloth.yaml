@@ -1,0 +1,80 @@
+# KoBART with unsloth Configuration
+meta:
+  experiment_name: kobart_unsloth
+  description: KoBART model with unsloth optimization for efficient training
+
+model:
+  architecture: kobart
+  checkpoint: gogamza/kobart-base-v2
+  size: base
+
+tokenizer:
+  encoder_max_len: 512
+  decoder_max_len: 128
+  
+data:
+  train_path: data/train.csv
+  val_path: data/dev.csv
+  test_path: data/test.csv
+  min_source_length: 10
+  max_source_length: 1024
+  min_target_length: 5
+  max_target_length: 256
+
+training:
+  per_device_train_batch_size: 16  # 더 큰 배치 사이즈 가능 (unsloth)
+  per_device_eval_batch_size: 32
+  gradient_accumulation_steps: 1
+  learning_rate: 3e-4
+  num_train_epochs: 3
+  warmup_ratio: 0.1
+  weight_decay: 0.01
+  lr_scheduler_type: cosine
+  evaluation_strategy: steps
+  eval_steps: 500
+  save_strategy: steps
+  save_steps: 500
+  save_total_limit: 3
+  load_best_model_at_end: true
+  fp16: true
+  gradient_checkpointing: false  # unsloth가 자체 최적화 수행
+  early_stopping_patience: 3
+  dataloader_num_workers: 4
+  optim: adamw_8bit  # 8-bit optimizer
+
+generation:
+  max_length: 128
+  num_beams: 4
+  length_penalty: 1.0
+  no_repeat_ngram_size: 2
+  early_stopping: true
+  do_sample: false
+
+evaluation:
+  rouge_use_stemmer: true
+  rouge_tokenize_korean: true
+
+general:
+  seed: 42
+  device: auto
+
+logging:
+  level: INFO
+  
+qlora:
+  use_unsloth: true
+  use_qlora: true
+  load_in_4bit: true
+  lora_rank: 16
+  lora_alpha: 32
+  lora_dropout: 0.1
+  target_modules: 
+    - q_proj
+    - k_proj
+    - v_proj
+    - out_proj
+    - fc1
+    - fc2
+  bnb_4bit_compute_dtype: float16
+  bnb_4bit_quant_type: nf4
+  bnb_4bit_use_double_quant: true
