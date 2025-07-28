@@ -1,5 +1,5 @@
 #!/bin/bash
-# Ubuntu 서버(aistages)에서 실험 실행 전 환경 검증 스크립트
+# 크로스 플랫폼 (macOS/Ubuntu) 실험 환경 검증 스크립트
 # 이 스크립트는 실험 실행 전에 모든 환경을 점검하고 문제를 사전에 감지합니다.
 
 set -e  # 오류 발생 시 즉시 중단
@@ -11,6 +11,14 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 BOLD='\033[1m'
+
+# OS 감지
+OS_TYPE="unknown"
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    OS_TYPE="macos"
+elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    OS_TYPE="linux"
+fi
 
 # 로그 파일 설정
 LOG_DIR="./validation_logs"
@@ -53,36 +61,67 @@ check_system_info() {
     print_header "시스템 정보 확인"
     
     # OS 정보
-    if [[ -f /etc/os-release ]]; then
-        . /etc/os-release
-        print_info "OS: $NAME $VERSION"
-        
-        if [[ "$ID" == "ubuntu" ]]; then
-            print_success "Ubuntu 시스템 확인됨"
-        else
-            print_warning "Ubuntu가 아닌 시스템: $ID"
-            ((WARNINGS++))
+    if [[ "$OS_TYPE" == "macos" ]]; then
+        OS_VERSION=$(sw_vers -productVersion)
+        print_info "OS: macOS $OS_VERSION"
+        print_success "macOS 시스템 확인됨"
+    elif [[ "$OS_TYPE" == "linux" ]]; then
+        if [[ -f /etc/os-release ]]; then
+            . /etc/os-release
+            print_info "OS: $NAME $VERSION"
+            
+            if [[ "$ID" == "ubuntu" ]]; then
+                print_success "Ubuntu 시스템 확인됨"
+            else
+                print_warning "Ubuntu가 아닌 Linux: $ID"
+                ((WARNINGS++))
+            fi
         fi
     else
-        print_error "OS 정보를 확인할 수 없습니다"
+        print_error "지원하지 않는 OS: $OSTYPE"
         ((ERRORS++))
     fi
     
     # 하드웨어 정보
-    print_info "CPU: $(nproc) cores"
-    print_info "메모리: $(free -h | grep '^Mem:' | awk '{print $2}') total, $(free -h | grep '^Mem:' | awk '{print $7}') available"
-    print_info "디스크: $(df -h . | tail -1 | awk '{print $4}') available"
+    if [[ "$OS_TYPE" == "macos" ]]; then
+        # macOS
+        CPU_COUNT=$(sysctl -n hw.physicalcpu)
+        print_info "CPU: $CPU_COUNT cores"
+        
+        # 메모리 (macOS)
+        MEM_TOTAL=$(( $(sysctl -n hw.memsize) / 1024 / 1024 / 1024 ))
+        print_info "메모리: ${MEM_TOTAL}GB total"
+        
+        # 디스크 (macOS)
+        DISK_INFO=$(df -h . | tail -1 | awk '{print $4}')
+        print_info "디스크: $DISK_INFO available"
+    else
+        # Linux
+        print_info "CPU: $(nproc) cores"
+        print_info "메모리: $(free -h | grep '^Mem:' | awk '{print $2}') total, $(free -h | grep '^Mem:' | awk '{print $7}') available"
+        print_info "디스크: $(df -h . | tail -1 | awk '{print $4}') available"
+    fi
     
     # GPU 정보
-    if command -v nvidia-smi &> /dev/null; then
-        GPU_COUNT=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
-        print_success "GPU 감지됨: $GPU_COUNT 개"
-        nvidia-smi --query-gpu=name,memory.total --format=csv,noheader | while read line; do
-            print_info "  - $line"
-        done
+    if [[ "$OS_TYPE" == "macos" ]]; then
+        # macOS - MPS 지원 확인
+        if python3 -c "import torch; print(torch.backends.mps.is_available())" 2>/dev/null | grep -q "True"; then
+            print_success "Apple Silicon GPU (MPS) 사용 가능"
+        else
+            print_info "MPS를 사용할 수 없음 (Intel Mac 또는 PyTorch 버전 확인 필요)"
+        fi
     else
-        print_warning "nvidia-smi를 찾을 수 없음 (GPU 없거나 드라이버 미설치)"
-        ((WARNINGS++))
+        # Linux - NVIDIA GPU
+        if command -v nvidia-smi &> /dev/null; then
+            GPU_COUNT=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
+            print_success "GPU 감지됨: $GPU_COUNT 개"
+            nvidia-smi --query-gpu=name,memory.total --format=csv,noheader | while read line; do
+                print_info "  - $line"
+            done
+        else
+            print_warning "nvidia-smi를 찾을 수 없음 (GPU 없거나 드라이버 미설치)"
+            ((WARNINGS++))
+        fi
     fi
 }
 
@@ -121,12 +160,22 @@ check_python_env() {
         ((WARNINGS++))
     fi
     
-    # pip 확인
-    if python3 -m pip --version &> /dev/null; then
-        print_success "pip 사용 가능"
-    else
-        print_error "pip를 찾을 수 없습니다"
+    # uv 패키지 매니저 확인 (필수)
+    if ! command -v uv &> /dev/null; then
+        print_error "uv 패키지 매니저가 설치되지 않았습니다"
+        print_error "uv를 먼저 설치해주세요: https://github.com/astral-sh/uv"
         ((ERRORS++))
+    else
+        print_success "uv 패키지 매니저 사용 가능"
+        
+        # uv pip 확인
+        if uv pip list &> /dev/null; then
+            print_success "uv pip 사용 가능"
+        else
+            print_error "uv pip를 사용할 수 없습니다"
+            print_warning "가상환경이 활성화되었는지 확인해주세요"
+            ((ERRORS++))
+        fi
     fi
 }
 
@@ -177,27 +226,58 @@ check_python_packages() {
     fi
     
     # 핵심 패키지 확인
-    CORE_PACKAGES=("torch" "transformers" "datasets" "pandas" "numpy" "wandb" "pyyaml" "tqdm")
+    CORE_PACKAGES=(
+        "torch"
+        "transformers"
+        "datasets"
+        "pandas"
+        "numpy"
+        "wandb"
+        "yaml:pyyaml"  # import명:표시명
+        "tqdm"
+    )
     
-    for package in "${CORE_PACKAGES[@]}"; do
-        if python3 -c "import $package" 2>/dev/null; then
-            VERSION=$(python3 -c "import $package; print(getattr($package, '__version__', 'unknown'))" 2>/dev/null || echo "unknown")
-            print_success "$package: $VERSION"
+    for package_info in "${CORE_PACKAGES[@]}"; do
+        if [[ "$package_info" == *":"* ]]; then
+            # import명과 표시명이 다른 경우
+            import_name="${package_info%%:*}"
+            display_name="${package_info##*:}"
         else
-            print_error "$package: 설치되지 않음"
+            import_name="$package_info"
+            display_name="$package_info"
+        fi
+        
+        if python3 -c "import $import_name" 2>/dev/null; then
+            VERSION=$(python3 -c "import $import_name; print(getattr($import_name, '__version__', 'unknown'))" 2>/dev/null || echo "unknown")
+            print_success "$display_name: $VERSION"
+        else
+            print_error "$display_name: 설치되지 않음"
             ((ERRORS++))
         fi
     done
     
-    # PyTorch CUDA 확인
-    print_info "PyTorch CUDA 지원 확인..."
-    CUDA_AVAILABLE=$(python3 -c "import torch; print(torch.cuda.is_available())" 2>/dev/null || echo "False")
-    if [[ "$CUDA_AVAILABLE" == "True" ]]; then
-        CUDA_COUNT=$(python3 -c "import torch; print(torch.cuda.device_count())" 2>/dev/null || echo "0")
-        print_success "PyTorch CUDA 사용 가능 (GPU: $CUDA_COUNT개)"
+    # PyTorch 디바이스 확인
+    print_info "PyTorch 디바이스 지원 확인..."
+    
+    if [[ "$OS_TYPE" == "macos" ]]; then
+        # macOS - MPS 확인
+        MPS_AVAILABLE=$(python3 -c "import torch; print(torch.backends.mps.is_available())" 2>/dev/null || echo "False")
+        if [[ "$MPS_AVAILABLE" == "True" ]]; then
+            print_success "PyTorch MPS (Metal Performance Shaders) 사용 가능"
+        else
+            print_warning "PyTorch MPS를 사용할 수 없음 (CPU 모드로 실행됨)"
+            ((WARNINGS++))
+        fi
     else
-        print_warning "PyTorch CUDA를 사용할 수 없음"
-        ((WARNINGS++))
+        # Linux - CUDA 확인
+        CUDA_AVAILABLE=$(python3 -c "import torch; print(torch.cuda.is_available())" 2>/dev/null || echo "False")
+        if [[ "$CUDA_AVAILABLE" == "True" ]]; then
+            CUDA_COUNT=$(python3 -c "import torch; print(torch.cuda.device_count())" 2>/dev/null || echo "0")
+            print_success "PyTorch CUDA 사용 가능 (GPU: $CUDA_COUNT개)"
+        else
+            print_warning "PyTorch CUDA를 사용할 수 없음"
+            ((WARNINGS++))
+        fi
     fi
 }
 
@@ -219,11 +299,22 @@ check_data_files() {
             # CSV 헤더 확인
             if [[ -f "$filepath" ]]; then
                 header=$(head -n1 "$filepath")
-                if [[ "$header" == *"id"* && "$header" == *"dialogue"* && "$header" == *"summary"* ]]; then
-                    print_success "  → 필수 컬럼 확인됨"
+                if [[ "$datafile" == "test.csv" ]]; then
+                    # test.csv는 fname과 dialogue만 필요
+                    if [[ "$header" == *"fname"* && "$header" == *"dialogue"* ]]; then
+                        print_success "  → 필수 컬럼 확인됨"
+                    else
+                        print_error "  → 필수 컬럼 누락 (fname, dialogue 필요)"
+                        ((ERRORS++))
+                    fi
                 else
-                    print_error "  → 필수 컬럼 누락 (id, dialogue, summary 필요)"
-                    ((ERRORS++))
+                    # train.csv와 dev.csv는 summary도 필요
+                    if [[ "$header" == *"fname"* && "$header" == *"dialogue"* && "$header" == *"summary"* ]]; then
+                        print_success "  → 필수 컬럼 확인됨"
+                    else
+                        print_error "  → 필수 컬럼 누락 (fname, dialogue, summary 필요)"
+                        ((ERRORS++))
+                    fi
                 fi
             fi
         else
@@ -284,16 +375,26 @@ check_resources() {
     print_header "시스템 리소스 확인"
     
     # 메모리 확인
-    MEM_AVAILABLE=$(free -g | grep '^Mem:' | awk '{print $7}')
-    if [[ $MEM_AVAILABLE -lt 16 ]]; then
-        print_warning "사용 가능한 메모리가 16GB 미만입니다 ($MEM_AVAILABLE GB)"
+    if [[ "$OS_TYPE" == "macos" ]]; then
+        # macOS - vm_stat 사용
+        MEM_PAGE_SIZE=$(vm_stat | grep "page size" | awk '{print $8}')
+        MEM_FREE_PAGES=$(vm_stat | grep "Pages free" | awk '{print $3}' | sed 's/\.//')
+        MEM_INACTIVE_PAGES=$(vm_stat | grep "Pages inactive" | awk '{print $3}' | sed 's/\.//')
+        MEM_AVAILABLE_GB=$(( (MEM_FREE_PAGES + MEM_INACTIVE_PAGES) * MEM_PAGE_SIZE / 1024 / 1024 / 1024 ))
+    else
+        # Linux - free 명령어 사용
+        MEM_AVAILABLE_GB=$(free -g | grep '^Mem:' | awk '{print $7}')
+    fi
+    
+    if [[ $MEM_AVAILABLE_GB -lt 16 ]]; then
+        print_warning "사용 가능한 메모리가 16GB 미만입니다 ($MEM_AVAILABLE_GB GB)"
         ((WARNINGS++))
     else
-        print_success "메모리 충분: $MEM_AVAILABLE GB 사용 가능"
+        print_success "메모리 충분: $MEM_AVAILABLE_GB GB 사용 가능"
     fi
     
     # 디스크 공간 확인
-    DISK_AVAILABLE=$(df -BG . | tail -1 | awk '{print $4}' | sed 's/G//')
+    DISK_AVAILABLE=$(df -BG . 2>/dev/null | tail -1 | awk '{print $4}' | sed 's/G//' || df -g . | tail -1 | awk '{print $4}')
     if [[ $DISK_AVAILABLE -lt 50 ]]; then
         print_warning "디스크 여유 공간이 50GB 미만입니다 ($DISK_AVAILABLE GB)"
         ((WARNINGS++))
@@ -302,7 +403,14 @@ check_resources() {
     fi
     
     # CPU 사용률 확인
-    CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1}')
+    if [[ "$OS_TYPE" == "macos" ]]; then
+        # macOS - top 명령어가 다르게 동작
+        CPU_USAGE=$(ps aux | awk '{sum+=$3} END {print sum}')
+        CPU_USAGE=${CPU_USAGE%.*}  # 소수점 제거
+    else
+        # Linux
+        CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1}')
+    fi
     print_info "현재 CPU 사용률: ${CPU_USAGE}%"
 }
 
@@ -411,6 +519,7 @@ run_prerun_test() {
 print_summary() {
     print_header "검증 결과 요약"
     
+    echo -e "${BOLD}실행 환경: ${OS_TYPE}${NC}" | tee -a "$LOG_FILE"
     echo -e "${BOLD}총 오류: ${RED}$ERRORS${NC}" | tee -a "$LOG_FILE"
     echo -e "${BOLD}총 경고: ${YELLOW}$WARNINGS${NC}" | tee -a "$LOG_FILE"
     
@@ -424,6 +533,12 @@ print_summary() {
         
         echo -e "\n${BLUE}실험 실행 명령어:${NC}" | tee -a "$LOG_FILE"
         echo -e "  ${BOLD}./run_auto_experiments.sh${NC}" | tee -a "$LOG_FILE"
+        
+        if [[ "$OS_TYPE" == "macos" ]]; then
+            echo -e "\n${YELLOW}macOS 참고사항:${NC}" | tee -a "$LOG_FILE"
+            echo -e "  - MPS를 사용할 수 없다면 CPU로 실행됩니다" | tee -a "$LOG_FILE"
+            echo -e "  - 학습 속도가 느릴 수 있으므로 작은 배치 크기 권장" | tee -a "$LOG_FILE"
+        fi
         
         return 0
     else
@@ -441,8 +556,9 @@ print_summary() {
 
 # 메인 실행
 main() {
-    echo -e "${BOLD}${BLUE}NLP 대화 요약 실험 환경 검증${NC}"
+    echo -e "${BOLD}${BLUE}NLP 대화 요약 실험 환경 검증 (크로스 플랫폼)${NC}"
     echo -e "시작 시간: $(date)"
+    echo -e "실행 환경: $OS_TYPE"
     echo -e "로그 파일: $LOG_FILE\n"
     
     # 각 검증 단계 실행

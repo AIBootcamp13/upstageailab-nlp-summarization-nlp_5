@@ -79,11 +79,11 @@ class PrerunTester:
     def test_config_loading(self) -> Tuple[bool, Dict]:
         """설정 파일 로딩 테스트"""
         try:
-            from code.utils.config_manager import ConfigManager
+            from code.utils import load_config
             
             # 기본 설정 로딩
-            config_manager = ConfigManager("config/base_config.yaml")
-            base_config = config_manager.get_config()
+            # 기본 설정 로딩
+            base_config = load_config("config/base_config.yaml")
             
             # 필수 키 확인
             required_keys = ['model', 'training', 'tokenizer', 'data']
@@ -292,8 +292,8 @@ class PrerunTester:
         try:
             from code.utils.device_utils import get_optimal_device
             
-            device = get_optimal_device()
-            print(f"  감지된 디바이스: {device}")
+            device, device_info = get_optimal_device()
+            print(f"  감지된 디바이스: {device} ({device_info})")
             
             # PyTorch 디바이스 정보
             import torch
@@ -302,6 +302,7 @@ class PrerunTester:
             
             details = {
                 "device": str(device),
+                "device_info": str(device_info),
                 "cuda_available": cuda_available,
                 "cuda_count": cuda_count
             }
@@ -336,7 +337,7 @@ class PrerunTester:
             predictions = ["날씨가 좋다고 대화를 나눴다."]
             references = ["두 사람이 날씨에 대해 이야기했다."]
             
-            # ROUGE 계산
+            # 더미 토크나이저
             scores = calculator.compute_metrics(predictions, references)
             
             print(f"  ROUGE-1: {scores.get('rouge1', 0):.4f}")

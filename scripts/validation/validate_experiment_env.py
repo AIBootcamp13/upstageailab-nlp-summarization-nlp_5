@@ -384,7 +384,13 @@ class ExperimentValidator:
                 try:
                     import pandas as pd
                     df = pd.read_csv(filepath, nrows=5)
-                    required_columns = ['id', 'dialogue', 'summary']
+                    
+                    # test.csv는 summary가 없음
+                    if filename == 'test.csv':
+                        required_columns = ['fname', 'dialogue']
+                    else:
+                        required_columns = ['fname', 'dialogue', 'summary']
+                    
                     missing_cols = [col for col in required_columns if col not in df.columns]
                     
                     if missing_cols:
@@ -435,8 +441,14 @@ class ExperimentValidator:
                     with open(filepath, 'r', encoding='utf-8') as f:
                         config = yaml.safe_load(f)
                     
-                    # 필수 키 확인
-                    required_keys = ['model', 'training', 'tokenizer', 'generation']
+                    # 필수 키 확인 (config.yaml의 구조에 맞게 수정)
+                    if config_file == 'config.yaml':
+                        # config.yaml은 general 키만 확인
+                        required_keys = ['general']
+                    else:
+                        # base_config.yaml 등은 기존 키 확인
+                        required_keys = ['model', 'training', 'tokenizer', 'generation']
+                    
                     missing_keys = [key for key in required_keys if key not in config]
                     
                     if missing_keys:
@@ -585,7 +597,6 @@ class ExperimentValidator:
         modules_to_test = [
             "code.trainer",
             "code.auto_experiment_runner",
-            "code.utils.config_manager",
             "code.utils.data_utils",
             "code.utils.metrics",
             "code.utils.device_utils",
