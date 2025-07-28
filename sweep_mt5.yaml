@@ -1,0 +1,39 @@
+# WandB Sweep 설정 - mT5 모델 하이퍼파라미터 튜닝
+program: code/trainer.py
+method: bayes  # bayes, grid, random  
+project: nlp-5
+metric:
+  goal: maximize
+  name: eval/rouge-2
+parameters:
+  learning_rate:
+    values: [1e-5, 3e-5, 5e-5]
+  per_device_train_batch_size:
+    values: [1, 2, 4]  # 대형 모델용
+  gradient_accumulation_steps:
+    values: [4, 8, 16]  # 더 많은 accumulation
+  warmup_ratio:
+    values: [0.1, 0.2, 0.3]
+  weight_decay:
+    values: [0.0, 0.01, 0.1]
+  # LoRA 특화 파라미터
+  lora_rank:
+    values: [8, 16, 32]
+  lora_alpha:
+    values: [16, 32, 64]
+  lora_dropout:
+    values: [0.05, 0.1, 0.2]
+  # 생성 파라미터
+  generation_num_beams:
+    values: [4, 6, 8]
+  generation_max_length:
+    values: [128, 256, 512]
+  # 실험 설정
+  config:
+    value: config.yaml
+  config-section:
+    value: xlsum_mt5
+  train-data:
+    value: data/train.csv
+  val-data:
+    value: data/dev.csv

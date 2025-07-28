@@ -1,0 +1,32 @@
+# WandB Sweep 설정 - eenzeenee 모델 하이퍼파라미터 튜닝
+program: code/trainer.py
+method: bayes  # bayes, grid, random
+project: nlp-5
+metric:
+  goal: maximize
+  name: eval/rouge-2
+parameters:
+  learning_rate:
+    values: [1e-5, 3e-5, 5e-5]
+  per_device_train_batch_size:
+    values: [2, 4, 8]
+  gradient_accumulation_steps:
+    values: [2, 4, 8]
+  warmup_ratio:
+    values: [0.1, 0.2, 0.3]
+  weight_decay:
+    values: [0.0, 0.01, 0.1]
+  # eenzeenee 모델 특화 파라미터
+  generate_max_length:
+    values: [64, 96, 128]
+  num_beams:
+    values: [3, 4, 5]
+  # 실험 설정
+  config:
+    value: config.yaml
+  config-section:
+    value: eenzeenee
+  train-data:
+    value: data/train.csv
+  val-data:
+    value: data/dev.csv
