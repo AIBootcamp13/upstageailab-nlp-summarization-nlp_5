@@ -3,11 +3,24 @@
 
 set -e  # 오류 시 중단
 
-# 환경 변수 설정
-export WANDB_MODE=offline
+# .env 파일에서 환경 변수 로드
+if [ -f .env ]; then
+    echo "🔑 .env 파일에서 환경 변수 로드 중..."
+    set -a  # 모든 변수를 export
+    source .env
+    set +a  # export 모드 해제
+    echo "✅ WandB API 키 로드 완료"
+    echo "   Entity: $WANDB_ENTITY"
+    echo "   Project: $WANDB_PROJECT"
+else
+    echo "⚠️  .env 파일을 찾을 수 없습니다!"
+    echo "👉 .env.template을 복사하여 .env 파일을 생성하세요."
+    exit 1
+fi
+
+# 추가 환경 변수 설정
 export TOKENIZERS_PARALLELISM=false
 export PYTHONWARNINGS="ignore"
-
 echo "🚀 5개 주요 모델 정상 실험 순차 실행"
 echo "======================================="
 echo "📋 실험 목록:"

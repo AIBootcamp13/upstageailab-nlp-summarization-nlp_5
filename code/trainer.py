@@ -9,6 +9,14 @@ import os
 import sys
 from pathlib import Path
 
+# .env 파일 로드 (WandB API 키 등)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    print("⚠️ python-dotenv가 설치되지 않았습니다. .env 파일을 로드할 수 없습니다.")
+    pass
+
 # 프로젝트 루트 디렉토리를 Python 경로에 추가
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
@@ -963,8 +971,13 @@ if __name__ == "__main__":
     
     # WandB 초기화 (비 Sweep 모드)
     if not args.sweep:
+        # .env에서 로드된 WandB 설정 확인
+        wandb_entity = os.getenv('WANDB_ENTITY', 'lyjune37-juneictlab')
+        wandb_project = os.getenv('WANDB_PROJECT', 'nlp-5')
+        
         wandb.init(
-            project="nlp-dialogue-summarization",
+            entity=wandb_entity,
+            project=wandb_project,
             name="manual_training",
             config={"manual_run": True}
         )
