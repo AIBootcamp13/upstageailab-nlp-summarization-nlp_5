@@ -338,7 +338,7 @@ class ModelRegistry:
         모델명에 따른 모델 정보 반환
         
         Args:
-            model_name: 모델 이름 (e.g., 'eenzeenee/t5-base-korean-summarization')
+            model_name: 모델 이름 (e.g., 't5-base-korean-summarization')
             
         Returns:
             모델 정보 딕셔너리 또는 None

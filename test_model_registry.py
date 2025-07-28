@@ -15,7 +15,7 @@ def test_get_model_info():
     
     # 테스트 케이스들
     test_cases = [
-        ("eenzeenee/t5-base-korean-summarization", "seq2seq", "t5"),
+        ("t5-base-korean-summarization", "seq2seq", "t5"),
         ("digit82/kobart-summarization", "seq2seq", "bart"),
         ("csebuetnlp/mT5_multilingual_XLSum", "seq2seq", "t5"),
         ("unknown-model/test", None, None),

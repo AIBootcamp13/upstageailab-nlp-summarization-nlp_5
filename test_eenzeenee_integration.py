@@ -28,7 +28,7 @@ def test_config_exists():
         # 필수 설정 확인
         required_settings = [
             'eenzeenee:',
-            'model_name: eenzeenee/t5-base-korean-summarization',
+            'model_name: t5-base-korean-summarization',
             'input_prefix: "summarize: "',
             'model_type: seq2seq'
         ]
@@ -64,7 +64,7 @@ def test_trainer_config_mapping():
         # config_mapping 확인
         required_mappings = [
             'eenzeenee.yaml',
-            'eenzeenee/t5-base-korean-summarization'
+            't5-base-korean-summarization'
         ]
         
         for mapping in required_mappings:

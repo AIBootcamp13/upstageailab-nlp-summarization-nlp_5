@@ -1,7 +1,7 @@
 """
 eenzeenee T5 한국어 요약 모델 전용 유틸리티
 
-eenzeenee/t5-base-korean-summarization 모델을 위한 전처리, 설정, 메타정보 제공 기능을 담당합니다.
+t5-base-korean-summarization 모델을 위한 전처리, 설정, 메타정보 제공 기능을 담당합니다.
 paust/pko-t5-base를 기반으로 한국어 대화 요약 태스크에 최적화되어 있습니다.
 """
 
@@ -14,7 +14,7 @@ from dataclasses import dataclass
 logger = logging.getLogger(__name__)
 
 # eenzeenee T5 한국어 요약 모델 상수
-EENZEENEE_MODEL_NAME = "eenzeenee/t5-base-korean-summarization"
+EENZEENEE_MODEL_NAME = "t5-base-korean-summarization"
 
 
 def eenzeenee_whitespace_handler(text: str) -> str:
@@ -212,7 +212,7 @@ def is_eenzeenee_compatible_model(model_name: str) -> bool:
         bool: eenzeenee 모델 여부
         
     Example:
-        >>> is_eenzeenee_compatible_model("eenzeenee/t5-base-korean-summarization")
+        >>> is_eenzeenee_compatible_model("t5-base-korean-summarization")
         True
         >>> is_eenzeenee_compatible_model("google/t5-base")
         False
@@ -226,7 +226,7 @@ def is_eenzeenee_compatible_model(model_name: str) -> bool:
     eenzeenee_patterns = [
         'eenzeenee',
         't5-base-korean-summarization',
-        'eenzeenee/t5-base',
+        't5-base-korean',
         'eenzeenee/xsum-t5'  # 이전 명명 호환성
     ]
     

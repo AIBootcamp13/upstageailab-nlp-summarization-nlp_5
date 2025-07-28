@@ -6,7 +6,7 @@ general:
 # eenzeenee T5 한국어 요약 모델 설정
 eenzeenee:
   general:
-    model_name: eenzeenee/t5-base-korean-summarization
+    model_name: t5-base-korean-summarization
     data_path: ../data/
     output_dir: ./eenzeenee_outputs/
     model_type: seq2seq  # AutoModelForSeq2SeqLM 자동 선택
