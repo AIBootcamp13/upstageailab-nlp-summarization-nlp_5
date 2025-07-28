@@ -167,7 +167,7 @@ class AutoExperimentRunner:
                 description=f"자동 실험: {config_path.name}",
                 config=config,
                 device=self.device,
-                config_file=str(config_path.relative_to(path_manager.get_project_root()))
+                config_file=str(config_path.relative_to(path_manager.project_root))
             )
             
             # 실제 학습 실행
