@@ -332,7 +332,86 @@ class ModelRegistry:
             data = json.load(f)
         
         return ModelInfo(**data)
-
+        
+        def get_model_info(self, model_name: str) -> Optional[Dict[str, Any]]:
+        """
+        모델명에 따른 모델 정보 반환
+        
+        Args:
+            model_name: 모델 이름 (e.g., 'eenzeenee/t5-base-korean-summarization')
+            
+        Returns:
+            모델 정보 딕셔너리 또는 None
+        """
+        # 알려진 모델들에 대한 정보 매핑
+        model_name_lower = model_name.lower()
+        
+        # T5 기반 모델들
+        if any(keyword in model_name_lower for keyword in ['t5', 'flan-t5', 'mt5']):
+            return {
+                'type': 'seq2seq',
+                'architecture': 't5',
+                'model_class': 'AutoModelForSeq2SeqLM',
+                'tokenizer_class': 'AutoTokenizer',
+                'supports_generate': True
+            }
+        
+        # BART 기반 모델들
+        elif 'bart' in model_name_lower:
+            return {
+                'type': 'seq2seq',
+                'architecture': 'bart',
+                'model_class': 'AutoModelForSeq2SeqLM',
+                'tokenizer_class': 'AutoTokenizer',
+                'supports_generate': True
+            }
+        
+        # GPT 기반 모델들
+        elif any(keyword in model_name_lower for keyword in ['gpt', 'kogpt']):
+            return {
+                'type': 'causal_lm',
+                'architecture': 'gpt',
+                'model_class': 'AutoModelForCausalLM',
+                'tokenizer_class': 'AutoTokenizer',
+                'supports_generate': True
+            }
+        
+        # Llama 기반 모델들
+        elif 'llama' in model_name_lower:
+            return {
+                'type': 'causal_lm',
+                'architecture': 'llama',
+                'model_class': 'AutoModelForCausalLM',
+                'tokenizer_class': 'AutoTokenizer',
+                'supports_generate': True
+            }
+        
+        # eenzeenee 모델 직접 지원
+        elif 'eenzeenee' in model_name_lower:
+            return {
+                'type': 'seq2seq',
+                'architecture': 't5',
+                'model_class': 'AutoModelForSeq2SeqLM',
+                'tokenizer_class': 'AutoTokenizer',
+                'supports_generate': True,
+                'requires_prefix': True,
+                'input_prefix': 'summarize: '
+            }
+        
+        # 기본 지원 모델들 (KoBART 등)
+        elif any(keyword in model_name_lower for keyword in ['kobart', 'digit82']):
+            return {
+                'type': 'seq2seq',
+                'architecture': 'bart',
+                'model_class': 'AutoModelForSeq2SeqLM',
+                'tokenizer_class': 'AutoTokenizer',
+                'supports_generate': True
+            }
+        
+        # 알 수 없는 모델의 경우 None 반환
+        self.logger.warning(f"Unknown model: {model_name}. Returning None.")
+        return None
+        
 
 # 편의 함수들
 def create_experiment_tracker(experiments_dir: str = "./experiments") -> ExperimentTracker:

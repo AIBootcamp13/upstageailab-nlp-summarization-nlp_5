@@ -36,22 +36,6 @@ from transformers import (
     PreTrainedTokenizer
 )
 
-from code.utils import load_config
-from code.utils.data_utils import DataProcessor
-from code.utils.metrics import RougeCalculator
-from code.utils.experiment_utils import ExperimentTracker, ModelRegistry
-from code.utils.path_utils import PathManager, path_manager
-from code.utils.xlsum_utils import (
-    xlsum_whitespace_handler,
-    get_xlsum_generation_config,
-    get_xlsum_tokenizer_config,
-    preprocess_for_xlsum,
-    get_xlsum_model_info,
-    is_xlsum_compatible_model,
-    get_xlsum_preprocessing_prompt,
-    XLSUM_MODEL_NAME
-)
-
 # QLoRA 및 unsloth 관련 import (선택적)
 try:
     from unsloth import FastLanguageModel
@@ -65,937 +49,921 @@ except ImportError:
     TaskType = None
     UNSLOTH_AVAILABLE = False
 
-# Device-specific imports
-import platform
-if platform.system() == "Darwin":  # macOS
-    os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
-    os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+from datasets import Dataset, DatasetDict
+import evaluate
+import wandb
+# 로컬 유틸리티 임포트
+from utils import load_config
+from utils.data_utils import DataProcessor
+from utils.metrics import RougeCalculator
+from utils.experiment_utils import ExperimentTracker, ModelRegistry
+from utils.path_utils import PathManager, path_manager
 
-# WandB
-try:
-    import wandb
-    WANDB_AVAILABLE = True
-except ImportError:
-    WANDB_AVAILABLE = False
-    
-# 로깅 설정
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+
 logger = logging.getLogger(__name__)
 
 
 @dataclass
-class TrainingConfig:
-    """학습 설정 데이터 클래스"""
-    # 모델 관련
-    model_name: str = "gogamza/kobart-base-v2"
-    use_unsloth: bool = False
-    use_qlora: bool = False
-    model_type: str = "seq2seq"  # seq2seq or causal_lm
-    
-    # 학습 하이퍼파라미터
-    num_train_epochs: int = 3
-    learning_rate: float = 2e-5
-    per_device_train_batch_size: int = 16
-    per_device_eval_batch_size: int = 16
-    gradient_accumulation_steps: int = 1
-    warmup_steps: int = 500
-    weight_decay: float = 0.01
-    max_grad_norm: float = 1.0
-    
-    # 데이터 관련
-    max_input_length: int = 512
-    max_target_length: int = 128
-    num_beams: int = 4
-    
-    # 저장 및 평가
-    output_dir: str = "./outputs"
-    evaluation_strategy: str = "epoch"
-    save_strategy: str = "epoch"
-    save_total_limit: int = 3
-    load_best_model_at_end: bool = True
-    metric_for_best_model: str = "eval_rouge_l"
-    greater_is_better: bool = True
-    
-    # 기타
-    seed: int = 42
-    fp16: bool = False
-    push_to_hub: bool = False
-    gradient_checkpointing: bool = False
-    optim: str = "adamw_torch"
-    
-    # QLoRA 설정
-    lora_r: int = 16
-    lora_alpha: int = 32
-    lora_dropout: float = 0.1
-    
-    # 실험 관련
-    experiment_name: str = "nmt_baseline"
-    run_name: Optional[str] = None
-    tags: List[str] = field(default_factory=list)
-    
-    # Device 설정
-    device: Optional[str] = None
-    no_cuda: bool = False
-    
-    @classmethod
-    def from_dict(cls, config_dict: Dict[str, Any]) -> 'TrainingConfig':
-        """딕셔너리로부터 설정 생성"""
-        return cls(**{k: v for k, v in config_dict.items() if k in cls.__annotations__})
+class TrainingResult:
+    """학습 결과 데이터 클래스"""
+    best_metrics: Dict[str, float]
+    final_metrics: Dict[str, float]
+    model_path: str
+    config_used: Dict[str, Any]
+    training_history: List[Dict[str, Any]] = field(default_factory=list)
+    wandb_run_id: Optional[str] = None
+    experiment_id: Optional[str] = None
 
 
-class CustomMetricsCallback(TrainerCallback):
-    """커스텀 메트릭 계산을 위한 콜백"""
+class WandbCallback(TrainerCallback):
+    """WandB 로깅을 위한 커스텀 콜백"""
     
-    def __init__(self, trainer_instance):
+    def __init__(self, trainer_instance: 'DialogueSummarizationTrainer') -> None:
         self.trainer_instance = trainer_instance
+        self.best_metrics = {}
         
-    def on_evaluate(self, args, state: TrainerState, control: TrainerControl, metrics=None, **kwargs):
-        """평가 시 추가 메트릭 계산"""
-        if metrics is not None:
-            # ROUGE 점수를 백분율로 변환
-            for key in metrics:
-                if 'rouge' in key and not key.endswith('_percent'):
-                    metrics[f"{key}_percent"] = metrics[key] * 100
-                    
-            # 주요 메트릭 로깅
-            logger.info(f"Evaluation at step {state.global_step}:")
-            logger.info(f"  - ROUGE-1: {metrics.get('eval_rouge_1', 0)*100:.2f}%")
-            logger.info(f"  - ROUGE-2: {metrics.get('eval_rouge_2', 0)*100:.2f}%")
-            logger.info(f"  - ROUGE-L: {metrics.get('eval_rouge_l', 0)*100:.2f}%")
-            logger.info(f"  - Loss: {metrics.get('eval_loss', 0):.4f}")
-
-
-class NMTTrainer:
-    """대화 요약 모델 학습을 위한 트레이너 클래스"""
-    
-    def __init__(self, config: Union[Dict, TrainingConfig], wandb_config: Optional[Dict] = None):
-        """
-        Args:
-            config: 학습 설정 (딕셔너리 또는 TrainingConfig 객체)
-            wandb_config: WandB 설정 (선택적)
-        """
-        # 설정 초기화
-        if isinstance(config, dict):
-            self.config = TrainingConfig.from_dict(config)
-        else:
-            self.config = config
+    def on_evaluate(self, args, state: TrainerState, control: TrainerControl, 
+                   metrics: Dict[str, float], **kwargs):
+        """평가 시 WandB에 메트릭 로깅"""
+        if wandb.run is not None:
+            # ROUGE 점수 결합 (F1 기준)
+            rouge_combined = (
+                metrics.get('eval_rouge1', 0) * 0.33 +
+                metrics.get('eval_rouge2', 0) * 0.33 +
+                metrics.get('eval_rougeL', 0) * 0.34
+            )
             
-        # WandB 설정 병합
-        if wandb_config:
-            for key, value in wandb_config.items():
-                if hasattr(self.config, key):
-                    setattr(self.config, key, value)
-                    
-        # 경로 설정
-        self.path_manager = path_manager
-        self.output_dir = Path(self.config.output_dir)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+            log_metrics = {
+                'eval/rouge1_f1': metrics.get('eval_rouge1', 0),
+                'eval/rouge2_f1': metrics.get('eval_rouge2', 0),
+                'eval/rougeL_f1': metrics.get('eval_rougeL', 0),
+                'eval/rouge_combined_f1': rouge_combined,
+                'eval/loss': metrics.get('eval_loss', 0),
+                'epoch': state.epoch,
+                'step': state.global_step
+            }
+            
+            # 베스트 메트릭 업데이트
+            if rouge_combined > self.best_metrics.get('rouge_combined_f1', 0):
+                self.best_metrics = {
+                    'rouge1_f1': metrics.get('eval_rouge1', 0),
+                    'rouge2_f1': metrics.get('eval_rouge2', 0),
+                    'rougeL_f1': metrics.get('eval_rougeL', 0),
+                    'rouge_combined_f1': rouge_combined,
+                    'loss': metrics.get('eval_loss', 0)
+                }
+                log_metrics['best/rouge_combined_f1'] = rouge_combined
+            
+            wandb.log(log_metrics)
+            
+            # 실험 추적기에도 로깅
+            if self.trainer_instance.experiment_tracker:
+                self.trainer_instance.experiment_tracker.log_metrics(
+                    metrics, step=state.global_step
+                )
+    
+    def on_train_end(self, args, state: TrainerState, control: TrainerControl, **kwargs):
+        """학습 종료 시 최종 결과 로깅"""
+        if wandb.run is not None:
+            wandb.run.summary.update(self.best_metrics)
+
+
+class DialogueSummarizationTrainer:
+    """
+    대화 요약 모델 학습 트레이너
+    
+    baseline.ipynb의 학습 로직을 모듈화하고 WandB Sweep과 통합하여
+    생산성 높은 실험 환경을 제공합니다.
+    
+    Features:
+        - 다중 모델 아키텍처 지원 (BART, T5, KoBART 등)
+        - 자동 디바이스 감지 및 최적화 (CUDA, MPS, CPU)
+        - 실험 추적 및 모델 등록 시스템
+        - 커스텀 콜백 및 메트릭 계산
+        - 포괄적 에러 처리 및 로깅
+        - WandB 통합 실험 관리
         
-        # Device 설정
-        self._setup_device()
+    Example:
+        >>> config = load_config('configs/bart_base.yaml')
+        >>> trainer = DialogueSummarizationTrainer(config)
+        >>> datasets = trainer.prepare_data()
+        >>> result = trainer.train(datasets)
+    """
+    
+    def __init__(self, config: Dict[str, Any], 
+                 sweep_mode: bool = False,
+                 experiment_name: Optional[str] = None):
+        """
+        트레이너 초기화
+        
+        Args:
+            config: 설정 딕셔너리 (ConfigManager로부터)
+            sweep_mode: WandB Sweep 모드 여부
+            experiment_name: 실험명 (None이면 자동 생성)
+        """
+        self.config = config
+        self.sweep_mode = sweep_mode
+        self.experiment_name = experiment_name or config.get('meta', {}).get('experiment_name', 'dialogue_summarization')
+        
+        # 디바이스 설정
+        self.device = self._setup_device()
+        
+        # 경로 설정
+        self.setup_paths()
         
         # 컴포넌트 초기화
         self.model = None
         self.tokenizer = None
         self.data_processor = None
+        self.rouge_calculator = None
         self.trainer = None
-        self.metrics_calculator = RougeCalculator()
         
-        # 실험 추적
-        self.experiment_tracker = ExperimentTracker(
-            project_name="nlp-dialogue-summarization",
-            experiment_name=self.config.experiment_name,
-            config=self.config.__dict__
-        )
+        # 실험 관리
+        self.experiment_tracker = None
+        self.model_registry = None
         
-        logger.info(f"Trainer initialized with config: {self.config.model_name}")
+        # 로깅 설정
+        self._setup_logging()
         
-    def _setup_device(self):
-        """디바이스 설정"""
-        if self.config.device:
-            self.device = torch.device(self.config.device)
+        logger.info(f"Trainer initialized with config: {self.experiment_name}")
+        
+    def setup_paths(self) -> None:
+        """경로 설정"""
+        # 경로 관리자를 사용하여 경로 관리
+        experiment_name = self.experiment_name
+        
+        # Sweep 모드일 때는 run ID를 포함
+        if self.sweep_mode and wandb.run:
+            experiment_name = f"sweep_{wandb.run.id}"
         else:
-            if platform.system() == "Darwin" and torch.backends.mps.is_available():
-                self.device = torch.device("mps")
-            elif torch.cuda.is_available() and not self.config.no_cuda:
-                self.device = torch.device("cuda")
-            else:
-                self.device = torch.device("cpu")
+            from datetime import datetime
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            experiment_name = f"{self.experiment_name}_{timestamp}"
         
-        logger.info(f"Using device: {self.device}")
+        # 경로 관리자를 통한 경로 설정
+        self.output_dir = path_manager.get_output_path(experiment_name)
+        self.model_save_dir = path_manager.get_model_path(experiment_name)
+        self.results_dir = path_manager.ensure_dir(self.output_dir / "results")
         
-        # GPU 메모리 정보 로깅
-        if self.device.type == "cuda":
-            gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
-            logger.info(f"GPU Memory: {gpu_memory:.1f}GB")
+        # 로그 디렉토리 설정
+        self.log_dir = path_manager.get_log_path(experiment_name)
     
-    def _get_model_specific_config(self, model_name: str) -> Dict[str, Any]:
-        """
-        모델별 특화 설정 반환
+    def initialize_components(self) -> None:
+        """모든 컴포넌트 초기화"""
+        logger.info("Initializing components...")
         
-        Args:
-            model_name: 모델 이름 (예: 'facebook/bart-base', 't5-base')
-            
-        Returns:
-            모델별 설정 딕셔너리
-            
-        Raises:
-            FileNotFoundError: 설정 파일이 없는 경우
-            ValueError: 지원하지 않는 모델인 경우
-        """
-        # 모델명에서 설정 파일명 매핑 (긴 키부터 우선 정렬)
-        config_mapping = [
-            ('google/flan-t5', 'flan_t5_base.yaml'),
-            ('google/mt5', 'mt5_base.yaml'),
-            ('facebook/bart', 'bart_base.yaml'),
-            ('gogamza/kobart', 'kobart_unsloth.yaml'),
-            ('skt/kogpt2', 'kogpt2.yaml'),
-            ('flan-t5', 'flan_t5_base.yaml'),
-            ('t5-base', 't5_base.yaml'),
-            ('t5-small', 't5_base.yaml'),
-            ('t5-large', 't5_base.yaml'),
-            ('kogpt2', 'kogpt2.yaml'),
-            ('kobart', 'kobart_unsloth.yaml'),
-            ('bart', 'bart_base.yaml'),
-            ('mt5', 'mt5_base.yaml')
-        ]
-        
-        # 모델명에 따른 설정 파일 결정 (긴 키부터 우선 매칭)
-        config_file = None
-        model_name_lower = model_name.lower()
-        
-        for key, config in config_mapping:
-            if key in model_name_lower:
-                config_file = config
-                break
-        
-        if config_file is None:
-            # 기본 설정 파일 또는 예외 처리
-            logger.warning(f"No specific config found for model: {model_name}, using default")
-            return {}
-        
-        try:
-            # config/model_configs/ 경로에서 YAML 로딩
-            config_path = Path(self.path_manager.project_root) / "config" / "model_configs" / config_file
-            
-            if not config_path.exists():
-                logger.warning(f"Config file not found: {config_path}")
-                return {}
-            
-            config = load_config(str(config_path))
-            logger.info(f"Loaded model-specific config from: {config_path}")
-            return config
-            
-        except Exception as e:
-            logger.error(f"Failed to load model config {config_file}: {e}")
-            return {}
-        
-        def _load_model_with_qlora(self):
-            """
-            QLoRA 설정이 적용된 모델 로드
-            
-            4-bit 양자화와 LoRA 어댑터를 적용한 모델을 로드합니다.
-            메모리 효율성을 위해 4-bit 전정밀도 양자화를 사용합니다.
-            
-            Raises:
-                ImportError: QLoRA 관련 라이브러리가 설치되지 않은 경우
-                ValueError: 모델 로딩에 실패한 경우
-            """
-            if not UNSLOTH_AVAILABLE:
-                logger.warning("QLoRA support requires unsloth library, falling back to standard loading")
-                self._load_standard_model()
-                return
-                
-            from transformers import BitsAndBytesConfig
-            import torch
-            
-            logger.info("Loading model with QLoRA...")
-            
-            # BitsAndBytesConfig 설정
-            qlora_config = self.config.__dict__.get('qlora', {})
-            bnb_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_use_double_quant=qlora_config.get('bnb_4bit_use_double_quant', True),
-                bnb_4bit_quant_type=qlora_config.get('bnb_4bit_quant_type', "nf4"),
-                bnb_4bit_compute_dtype=getattr(torch, qlora_config.get('bnb_4bit_compute_dtype', 'float16'))
+        # 실험 추적기 초기화
+        if self.config.get('experiment_tracking', {}).get('enabled', True):
+            self.experiment_tracker = ExperimentTracker(
+                experiments_dir=self.output_dir / "experiments"
             )
-            
-            # 모델 타입 결정
-            model_name_lower = self.config.model_name.lower()
-            if any(x in model_name_lower for x in ['t5', 'bart', 'pegasus']):
-                model_class = AutoModelForSeq2SeqLM
-                self.config.model_type = "seq2seq"
-                task_type = TaskType.SEQ_2_SEQ_LM
-            else:
-                model_class = AutoModelForCausalLM
-                self.config.model_type = "causal"
-                task_type = TaskType.CAUSAL_LM
-            
-            # 모델 로드
-            try:
-                self.model = model_class.from_pretrained(
-                    self.config.model_name,
-                    quantization_config=bnb_config,
-                    device_map="auto",
-                    trust_remote_code=True
-                )
-                logger.info(f"Model {self.config.model_name} loaded with QLoRA configuration")
-            except Exception as e:
-                logger.error(f"Failed to load model with QLoRA: {e}")
-                raise ValueError(f"Model loading failed: {e}")
-            
-            # 토크나이저 로드
-            try:
-                self.tokenizer = AutoTokenizer.from_pretrained(
-                    self.config.model_name,
-                    trust_remote_code=True
-                )
-            
-                # 토크나이저 설정
-                if self.tokenizer.pad_token is None:
-                    self.tokenizer.pad_token = self.tokenizer.eos_token
-                    self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
-                    
-                logger.info(f"Tokenizer loaded for {self.config.model_name}")
-            except Exception as e:
-                logger.error(f"Failed to load tokenizer: {e}")
-                raise ValueError(f"Tokenizer loading failed: {e}")
-            
-            # LoRA 설정
-            target_modules = qlora_config.get('target_modules', ['q_proj', 'k_proj', 'v_proj', 'o_proj'])
-            lora_config = LoraConfig(
-                task_type=task_type,
-                inference_mode=False,
-                r=qlora_config.get('lora_rank', self.config.lora_r),
-                lora_alpha=qlora_config.get('lora_alpha', self.config.lora_alpha),
-                lora_dropout=qlora_config.get('lora_dropout', self.config.lora_dropout),
-                target_modules=target_modules,
-                bias="none"
+            self.model_registry = ModelRegistry(
+                models_dir=self.output_dir / "models"
             )
-            
-            # PEFT 모델 적용
-            from peft import get_peft_model
-            self.model = get_peft_model(self.model, lora_config)
-            
-            # 학습 가능한 파라미터 정보 출력
-            self.model.print_trainable_parameters()
-            
-            # 모델 정보 로깅
-            total_params = sum(p.numel() for p in self.model.parameters())
-            trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
-            logger.info(f"QLoRA Model loaded successfully:")
-            logger.info(f"  - Total parameters: {total_params:,}")
-            logger.info(f"  - Trainable parameters: {trainable_params:,} ({trainable_params/total_params*100:.2f}%)")
-            logger.info(f"  - Target modules: {target_modules}")
-        def load_model_and_tokenizer(self):
-            """모델과 토크나이저 로드 - 개선된 버전"""
-            # 모델별 설정 로드
-            try:
-                model_specific_config = self._get_model_specific_config(self.config.model_name)
-                # 모델별 설정으로 기본 설정 업데이트
-                for key, value in model_specific_config.get('training', {}).items():
-                    if hasattr(self.config, key):
-                        setattr(self.config, key, value)
-                logger.info(f'Model-specific config loaded for {self.config.model_name}')
-            except Exception as e:
-                logger.warning(f'모델별 설정 로드 실패, 기본 설정 사용: {e}')
-            
-            # 로딩 방법 결정
-            if self.config.use_unsloth and UNSLOTH_AVAILABLE:
-                logger.info('Loading model with Unsloth...')
-                self._load_model_with_unsloth()
-            elif self.config.use_qlora:
-                logger.info('Loading model with QLoRA...')
-                self._load_model_with_qlora()
-            else:
-                logger.info('Loading standard model...')
-                self._load_standard_model()
-            
-            # 공통 후처리
-            self._setup_model_postprocess()
         
-        def _load_standard_model(self):
-            """표준 모델 로딩"""
-            model_registry = ModelRegistry()
+        # 토크나이저 로딩
+        self._load_tokenizer()
         
-        # 모델 정보 획득
-        model_info = model_registry.get_model_info(self.config.model_name)
-        if not model_info:
-            raise ValueError(f"Unknown model: {self.config.model_name}")
-        
-        logger.info(f'Loading model: {self.config.model_name}')
-        
-        # 토크나이저 로드
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            self.config.model_name,
-            trust_remote_code=True
-        )
-        
-        # 모델 타입에 따라 로드
-        if model_info.get('type') == 'causal_lm':
-            model_class = AutoModelForCausalLM
-            self.config.model_type = 'causal_lm'
-        else:
-            model_class = AutoModelForSeq2SeqLM
-            self.config.model_type = 'seq2seq'
-        
-        # 모델 로드
-        self.model = model_class.from_pretrained(
-            self.config.model_name,
-            trust_remote_code=True,
-            torch_dtype=torch.float16 if self.config.fp16 else torch.float32
-        )
-        
-        # 패딩 토크 설정
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-            if self.model.config.pad_token_id is None:
-                self.model.config.pad_token_id = self.tokenizer.eos_token_id
-        
-        # QLoRA 적용 (기존 방식)
-        if self.config.use_qlora:
-            def _setup_model_postprocess(self):
-                """모델 로딩 후 공통 후처리"""
-                # 디바이스로 이동
-                if not self.config.use_unsloth:
-                    self.model = self.model.to(self.device)
-                
-                # 모델 정보 로깅
-                total_params = sum(p.numel() for p in self.model.parameters())
-                trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
-                logger.info(f'Total parameters: {total_params:,}')
-                logger.info(f'Trainable parameters: {trainable_params:,}')
-                
-            def _load_model_with_unsloth(self):
-                """
-                Unsloth를 사용한 최적화된 모델 로드
-                
-                unsloth.FastLanguageModel을 사용하여 메모리 효율성과 속도를 개선한 모델을 로드합니다.
-        
-        unsloth.FastLanguageModel을 사용하여 메모리 효율성과 속도를 개선한 모델을 로드합니다.
-        모델별 설정 파일에서 동적으로 파라미터를 로딩합니다.
-        
-        Raises:
-            ImportError: unsloth 라이브러리가 설치되지 않은 경우
-            ValueError: 모델 로딩에 실패한 경우
-        """
-        if not UNSLOTH_AVAILABLE:
-            raise ImportError("Unsloth is not available. Please install it first.")
-            
-        logger.info("Loading model with Unsloth optimization...")
-        
-        # 모델별 설정 로드
-        try:
-            model_specific_config = self._get_model_specific_config(self.config.model_name)
-            qlora_config = model_specific_config.get('qlora', {})
-            logger.info(f"Loaded model-specific config for Unsloth: {model_specific_config.get('meta', {}).get('experiment_name', 'unknown')}")
-        except Exception as e:
-            logger.warning(f"Failed to load model-specific config, using defaults: {e}")
-            qlora_config = {}
-        
-        # Unsloth FastLanguageModel 로 모델 로드
-        try:
-            self.model, self.tokenizer = FastLanguageModel.from_pretrained(
-                model_name=self.config.model_name,
-                max_seq_length=qlora_config.get('max_seq_length', self.config.max_input_length),
-                dtype=torch.float16 if self.config.fp16 else None,
-                load_in_4bit=qlora_config.get('load_in_4bit', self.config.use_qlora),
-                trust_remote_code=True
-            )
-            logger.info(f"Successfully loaded Unsloth model: {self.config.model_name}")
-        except Exception as e:
-            logger.error(f"Failed to load Unsloth model: {e}")
-            raise ValueError(f"Unsloth model loading failed: {e}")
-        
-        # LoRA 어댑터 추가 (옵션)
-        if self.config.use_qlora:
-            logger.info("Applying LoRA adapters with Unsloth...")
-            
-            # 모델별 target_modules 설정
-            model_name_lower = self.config.model_name.lower()
-            default_target_modules = ["q_proj", "k_proj", "v_proj", "o_proj"]
-            
-            if 'llama' in model_name_lower or 'mistral' in model_name_lower:
-                default_target_modules.extend(["gate_proj", "up_proj", "down_proj"])
-            elif 'bart' in model_name_lower:
-                default_target_modules = ["q_proj", "k_proj", "v_proj", "out_proj", "fc1", "fc2"]
-            elif 't5' in model_name_lower:
-                default_target_modules = ["q", "k", "v", "o"]
-            
-            target_modules = qlora_config.get('target_modules', default_target_modules)
-            
-            try:
-                self.model = FastLanguageModel.get_peft_model(
-                    self.model,
-                    r=qlora_config.get('lora_rank', self.config.lora_r),
-                    target_modules=target_modules,
-                    lora_alpha=qlora_config.get('lora_alpha', self.config.lora_alpha),
-                    lora_dropout=qlora_config.get('lora_dropout', self.config.lora_dropout),
-                    bias="none",
-                    use_gradient_checkpointing=self.config.gradient_checkpointing,
-                    random_state=self.config.seed,
-                )
-                logger.info(f"LoRA adapters applied successfully with target_modules: {target_modules}")
-            except Exception as e:
-                logger.error(f"Failed to apply LoRA adapters: {e}")
-                raise ValueError(f"LoRA adapter application failed: {e}")
-        
-        # 패딩 토큰 설정 (필요한 경우)
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-            if hasattr(self.model, 'config') and self.model.config.pad_token_id is None:
-                self.model.config.pad_token_id = self.tokenizer.eos_token_id
-        
-        # 모델 정보 로깅
-        total_params = sum(p.numel() for p in self.model.parameters())
-        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
-        
-        logger.info(f"Unsloth Model loaded successfully:")
-        logger.info(f"  - Model: {self.config.model_name}")
-        logger.info(f"  - Total parameters: {total_params:,}")
-        logger.info(f"  - Trainable parameters: {trainable_params:,} ({trainable_params/total_params*100:.2f}%)")
-        logger.info(f"  - Max sequence length: {qlora_config.get('max_seq_length', self.config.max_input_length)}")
-        logger.info(f"  - Use LoRA: {self.config.use_qlora}")
-        if self.config.use_qlora:
-            logger.info(f"  - LoRA rank: {qlora_config.get('lora_rank', self.config.lora_r)}")
-            logger.info(f"  - LoRA alpha: {qlora_config.get('lora_alpha', self.config.lora_alpha)}")
-        
-        def _preprocess_for_model(self, text: str, model_type: str = None) -> str:
-            """
-            모델별 입력 텍스트 전처리
-            
-            각 모델 아키텍처에 맞는 입력 형식으로 변환하여 성능을 최적화합니다.
-            T5/FLAN-T5: 'summarize:' prefix 추가
-            GPT: 'TL;DR:' suffix 추가
-            BART: 변경사항 없음
-            
-            Args:
-                text: 입력 텍스트
-                model_type: 모델 타입 ('t5', 'gpt', 'bart', 'default'). None인 경우 자동 추론
-            
-            Returns:
-                전처리된 텍스트
-            """
-            if model_type is None:
-                # 모델명이나 토크나이저에서 타입 추론
-                model_name = ''
-                if hasattr(self, 'tokenizer') and self.tokenizer is not None:
-                    model_name = getattr(self.tokenizer, 'name_or_path', '').lower()
-                elif hasattr(self, 'config') and self.config.model_name:
-                    model_name = self.config.model_name.lower()
-            
-            # 모델 타입 결정
-            if any(keyword in model_name for keyword in ['t5', 'flan-t5', 'mt5']):
-                model_type = 't5'
-            elif any(keyword in model_name for keyword in ['gpt', 'kogpt']):
-                model_type = 'gpt'
-            elif 'bart' in model_name:
-                model_type = 'bart'
-            else:
-                model_type = 'default'
-                
-            logger.debug(f"Inferred model type '{model_type}' from model name '{model_name}'") 
-            
-            # 입력 텍스트 검증
-            if not text or not isinstance(text, str):
-                logger.warning(f"Invalid input text: {text}")
-                return text
-            
-            original_text = text.strip()
-            
-            # 모델 타입에 따른 전처리
-            if model_type == 't5':
-                # T5/FLAN-T5: 'summarize:' prefix 추가
-                processed_text = f"summarize: {original_text}"
-                logger.debug(f"T5 preprocessing: '{processed_text}'")
-                
-            elif model_type == 'gpt':
-                # GPT: 'TL;DR:' suffix 추가
-                processed_text = f"{original_text}\n\nTL;DR:"
-                logger.debug(f"GPT preprocessing: '{processed_text}'")
-                
-            elif model_type == 'bart':
-                # BART: 변경사항 없음
-                processed_text = original_text
-                logger.debug(f"BART preprocessing (no change): '{processed_text}'")
-                
-            else:
-                # 기본: 변경사항 없음
-                processed_text = original_text
-                logger.debug(f"Default preprocessing (no change): '{processed_text}'")
-            
-            return processed_text
-    def _apply_qlora(self):
-            """QLoRA 설정 적용"""
-            if not self.config.use_qlora:
-                return
-                
-            logger.info("Applying QLoRA configuration...")
-            
-            # LoRA 설정
-            lora_config = LoraConfig(
-                r=self.config.lora_r,
-                lora_alpha=self.config.lora_alpha,
-                lora_dropout=self.config.lora_dropout,
-                bias="none",
-                task_type=TaskType.SEQ_2_SEQ_LM if self.config.model_type == "seq2seq" else TaskType.CAUSAL_LM,
-                target_modules=["q_proj", "v_proj"]  # 모델에 따라 조정 필요
-            )
-            
-            # PEFT 모델 생성
-            self.model = get_peft_model(self.model, lora_config)
-            self.model.print_trainable_parameters()
-        
-    def load_data(self, train_path: Optional[str] = None, 
-                  valid_path: Optional[str] = None,
-                  test_path: Optional[str] = None):
-        """데이터 로드 및 전처리"""
-        # 경로 설정
-        train_path = train_path or self.path_manager.get_data_path("train.csv")
-        valid_path = valid_path or self.path_manager.get_data_path("dev.csv")
-        test_path = test_path or self.path_manager.get_data_path("test.csv")
+        # 모델 로딩
+        self._load_model()
         
         # 데이터 프로세서 초기화
         self.data_processor = DataProcessor(
             tokenizer=self.tokenizer,
-            max_input_length=self.config.max_input_length,
-            max_target_length=self.config.max_target_length,
-            model_type=self.config.model_type
+            config=self.config
         )
         
-        # 데이터 로드
-        logger.info("Loading datasets...")
-        self.train_dataset = self.data_processor.load_and_process_data(train_path, is_train=True)
-        self.valid_dataset = self.data_processor.load_and_process_data(valid_path, is_train=False)
+        # ROUGE 계산기 초기화
+        self.rouge_calculator = RougeCalculator(
+            tokenizer=self.tokenizer,
+            use_stemmer=self.config.get('evaluation', {}).get('rouge_use_stemmer', True),
+            tokenize_korean=self.config.get('evaluation', {}).get('rouge_tokenize_korean', True)
+        )
         
-        if test_path and Path(test_path).exists():
-            self.test_dataset = self.data_processor.load_and_process_data(test_path, is_train=False)
+        logger.info("All components initialized successfully")
+    
+    def prepare_data(self, train_path: Optional[str] = None, 
+                    val_path: Optional[str] = None,
+                    test_path: Optional[str] = None) -> DatasetDict:
+        """
+        데이터 준비
+        
+        Args:
+            train_path: 학습 데이터 경로
+            val_path: 검증 데이터 경로  
+            test_path: 테스트 데이터 경로
+            
+        Returns:
+            처리된 데이터셋 딕셔너리
+        """
+        data_paths = self.config.get('data', {})
+        
+        train_path = train_path or data_paths.get('train_path')
+        val_path = val_path or data_paths.get('val_path')
+        test_path = test_path or data_paths.get('test_path')
+        
+        logger.info("Loading and processing datasets...")
+        
+        datasets = {}
+        
+        if train_path:
+            train_data = self.data_processor.load_data(train_path)
+            datasets['train'] = self.data_processor.process_data(
+                train_data, 
+                is_training=True
+            )
+            logger.info(f"Train dataset size: {len(datasets['train'])}")
+        
+        if val_path:
+            val_data = self.data_processor.load_data(val_path)
+            datasets['validation'] = self.data_processor.process_data(
+                val_data,
+                is_training=False
+            )
+            logger.info(f"Validation dataset size: {len(datasets['validation'])}")
+        
+        if test_path:
+            test_data = self.data_processor.load_data(test_path)
+            datasets['test'] = self.data_processor.process_data(
+                test_data,
+                is_training=False
+            )
+            logger.info(f"Test dataset size: {len(datasets['test'])}")
+        
+        return DatasetDict(datasets)
+    
+    def train(self, dataset: DatasetDict, 
+             resume_from_checkpoint: Optional[str] = None) -> TrainingResult:
+        """
+        모델 학습
+        
+        Args:
+            dataset: 학습/검증 데이터셋
+            resume_from_checkpoint: 체크포인트 경로 (재개 시)
+            
+        Returns:
+            학습 결과
+        """
+        # 실험 시작
+        if self.experiment_tracker:
+            experiment_id = self.experiment_tracker.start_experiment(
+                name=self.experiment_name,
+                description=f"Training {self.config['model']['architecture']} model",
+                config=self.config,
+                model_type=self.config['model']['architecture'],
+                dataset_info={
+                    'train_size': len(dataset.get('train', [])),
+                    'val_size': len(dataset.get('validation', []))
+                },
+                wandb_run_id=wandb.run.id if wandb.run else None
+            )
         else:
-            self.test_dataset = None
-            
-        logger.info(f"Train samples: {len(self.train_dataset)}")
-        logger.info(f"Valid samples: {len(self.valid_dataset)}")
-        if self.test_dataset:
-            logger.info(f"Test samples: {len(self.test_dataset)}")
-    
-    def compute_metrics(self, eval_pred):
-        """평가 메트릭 계산"""
-        predictions, labels = eval_pred
+            experiment_id = None
         
-        # 토큰 ID를 텍스트로 디코딩
-        if isinstance(predictions, tuple):
-            predictions = predictions[0]
-            
-        # Numpy array 처리
-        if len(predictions.shape) == 3:
-            predictions = np.argmax(predictions, axis=-1)
-            
-        # 디코딩
-        decoded_preds = self.tokenizer.batch_decode(predictions, skip_special_tokens=True)
-        
-        # 레이블 처리 (-100은 무시)
-        labels = np.where(labels != -100, labels, self.tokenizer.pad_token_id)
-        decoded_labels = self.tokenizer.batch_decode(labels, skip_special_tokens=True)
-        
-        # 후처리
-        decoded_preds = [pred.strip() for pred in decoded_preds]
-        decoded_labels = [label.strip() for label in decoded_labels]
-        
-        # ROUGE 점수 계산
-        rouge_scores = self.metrics_calculator.compute_rouge(decoded_preds, decoded_labels)
-        
-        return {
-            "rouge_1": rouge_scores["rouge1"],
-            "rouge_2": rouge_scores["rouge2"],
-            "rouge_l": rouge_scores["rougeL"]
-        }
-    
-    def setup_trainer(self):
-        """Trainer 설정"""
         # 학습 인자 설정
-        training_args = Seq2SeqTrainingArguments(
-            output_dir=str(self.output_dir),
-            num_train_epochs=self.config.num_train_epochs,
-            per_device_train_batch_size=self.config.per_device_train_batch_size,
-            per_device_eval_batch_size=self.config.per_device_eval_batch_size,
-            gradient_accumulation_steps=self.config.gradient_accumulation_steps,
-            warmup_steps=self.config.warmup_steps,
-            weight_decay=self.config.weight_decay,
-            logging_dir=str(self.output_dir / "logs"),
-            logging_steps=50,
-            evaluation_strategy=self.config.evaluation_strategy,
-            save_strategy=self.config.save_strategy,
-            save_total_limit=self.config.save_total_limit,
-            load_best_model_at_end=self.config.load_best_model_at_end,
-            metric_for_best_model=self.config.metric_for_best_model,
-            greater_is_better=self.config.greater_is_better,
-            predict_with_generate=True,
-            generation_max_length=self.config.max_target_length,
-            generation_num_beams=self.config.num_beams,
-            fp16=self.config.fp16 and self.device.type == "cuda",
-            push_to_hub=self.config.push_to_hub,
-            gradient_checkpointing=self.config.gradient_checkpointing,
-            optim=self.config.optim,
-            learning_rate=self.config.learning_rate,
-            max_grad_norm=self.config.max_grad_norm,
-            seed=self.config.seed,
-            remove_unused_columns=True,
-            label_names=["labels"],
-            report_to=["wandb"] if WANDB_AVAILABLE and wandb.run is not None else [],
-            run_name=self.config.run_name,
-        )
+        training_args = self._get_training_arguments()
         
-        # MPS 디바이스 설정
-        if self.device.type == "mps":
-            training_args.use_mps_device = True
-            training_args.fp16 = False  # MPS는 fp16 미지원
-            
         # 데이터 콜레이터
         data_collator = DataCollatorForSeq2Seq(
-            self.tokenizer,
+            tokenizer=self.tokenizer,
             model=self.model,
             padding=True,
-            max_length=self.config.max_input_length
+            max_length=self.config['tokenizer']['encoder_max_len']
         )
         
-        # 콜백 설정
-        callbacks = [
-            EarlyStoppingCallback(early_stopping_patience=3),
-            CustomMetricsCallback(self)
-        ]
+        # 평가 메트릭 함수 - HuggingFace Trainer의 콜백으로 사용됨
+        def compute_metrics(eval_preds: Tuple[np.ndarray, np.ndarray]) -> Dict[str, float]:
+            """
+            학습 중 평가 단계에서 ROUGE 메트릭을 계산하는 중첩 함수
+            
+            Args:
+                eval_preds: (predictions, labels) 튜플
+                
+            Returns:
+                ROUGE 점수들을 포함한 딕셔너리
+            """
+            preds, labels = eval_preds
+            
+            # 토큰 ID를 텍스트로 디코딩 (특수 토큰 제거)
+            decoded_preds = self.tokenizer.batch_decode(preds, skip_special_tokens=True)
+            decoded_labels = self.tokenizer.batch_decode(labels, skip_special_tokens=True)
+            
+            # HuggingFace에서 사용하는 -100 패딩 토큰을 정상 토큰으로 변환
+            # -100은 loss 계산에서 무시되는 라벨이지만 디코딩에서는 문제가 됨
+            labels = np.where(labels != -100, labels, self.tokenizer.pad_token_id)
+            decoded_labels = self.tokenizer.batch_decode(labels, skip_special_tokens=True)
+            
+            # 대화 요약에 특화된 ROUGE 메트릭 계산 (Multi-reference 지원)
+            result = self.rouge_calculator.compute_metrics(decoded_preds, decoded_labels)
+            
+            return result
         
-        # Trainer 초기화
+        # 콜백 설정
+        callbacks = [WandbCallback(self)]
+        
+        # 조기 종료 설정
+        if self.config['training'].get('early_stopping_patience'):
+            callbacks.append(
+                EarlyStoppingCallback(
+                    early_stopping_patience=self.config['training']['early_stopping_patience'],
+                    early_stopping_threshold=0.001
+                )
+            )
+        
+        # 트레이너 생성
         self.trainer = Seq2SeqTrainer(
             model=self.model,
             args=training_args,
             data_collator=data_collator,
-            train_dataset=self.train_dataset,
-            eval_dataset=self.valid_dataset,
+            train_dataset=dataset.get('train'),
+            eval_dataset=dataset.get('validation'),
             tokenizer=self.tokenizer,
-            compute_metrics=self.compute_metrics,
-            callbacks=callbacks,
+            compute_metrics=compute_metrics,
+            callbacks=callbacks
         )
         
-        logger.info("Trainer setup completed")
-        
-    def train(self):
-        """모델 학습"""
+        # 학습 시작
         logger.info("Starting training...")
         
-        # 학습 시작 시간 기록
-        import time
-        start_time = time.time()
-        
-        # 학습 실행
-        train_result = self.trainer.train()
-        
-        # 학습 시간 계산
-        training_time = time.time() - start_time
-        logger.info(f"Training completed in {training_time/60:.2f} minutes")
-        
-        # 최종 모델 저장
-        self.trainer.save_model()
-        
-        # 학습 메트릭 저장
-        metrics = train_result.metrics
-        metrics["training_time"] = training_time
-        
-        with open(self.output_dir / "train_results.json", "w") as f:
-            json.dump(metrics, f, indent=2)
+        try:
+            train_result = self.trainer.train(
+                resume_from_checkpoint=resume_from_checkpoint
+            )
             
-        # 실험 추적
-        self.experiment_tracker.log_metrics(metrics)
-        
-        return metrics
+            # 최종 평가
+            logger.info("Running final evaluation...")
+            eval_results = self.trainer.evaluate()
+            
+            # 모델 저장
+            best_model_path = self.model_save_dir / "best_model"
+            self.trainer.save_model(str(best_model_path))
+            self.tokenizer.save_pretrained(str(best_model_path))
+            
+            # 결과 정리
+            wandb_callback = callbacks[0]
+            training_result = TrainingResult(
+                best_metrics=wandb_callback.best_metrics,
+                final_metrics=eval_results,
+                model_path=str(best_model_path),
+                config_used=self.config,
+                training_history=[], # 향후 구현
+                wandb_run_id=wandb.run.id if wandb.run else None,
+                experiment_id=experiment_id
+            )
+            
+            # 실험 종료
+            if self.experiment_tracker:
+                self.experiment_tracker.end_experiment(
+                    experiment_id=experiment_id,
+                    final_metrics=eval_results,
+                    best_metrics=wandb_callback.best_metrics,
+                    status="completed"
+                )
+            
+            # 모델 등록
+            if self.model_registry:
+                model_id = self.model_registry.register_model(
+                    name=f"{self.config['model']['architecture']}_{self.experiment_name}",
+                    architecture=self.config['model']['architecture'],
+                    checkpoint=self.config['model']['checkpoint'],
+                    config=self.config,
+                    performance=wandb_callback.best_metrics,
+                    training_info={
+                        'epochs': self.config['training']['num_train_epochs'],
+                        'batch_size': self.config['training']['per_device_train_batch_size'],
+                        'learning_rate': self.config['training']['learning_rate']
+                    },
+                    file_path=str(best_model_path),
+                    experiment_id=experiment_id
+                )
+                logger.info(f"Model registered with ID: {model_id}")
+            
+            # 결과 저장
+            self._save_results(training_result)
+            
+            return training_result
+            
+        except Exception as e:
+            logger.error(f"Training failed with error: {type(e).__name__}: {str(e)}")
+            logger.error(f"Current config: {self.config.get('model', {}).get('checkpoint', 'Unknown')}")
+            logger.error(f"Device: {self.device}")
+            import traceback
+            logger.debug(f"Full traceback: {traceback.format_exc()}")
+            logger.error(f"Training failed: {str(e)}")
+            if self.experiment_tracker and experiment_id:
+                self.experiment_tracker.end_experiment(
+                    experiment_id=experiment_id,
+                    status="failed",
+                    notes=str(e)
+                )
+            raise
     
-    def evaluate(self, dataset=None):
-        """모델 평가"""
-        if dataset is None:
-            dataset = self.valid_dataset
+    def evaluate(self, dataset: Dataset, 
+                metric_key_prefix: str = "eval") -> Dict[str, float]:
+        """
+        모델 평가
+        
+        Args:
+            dataset: 평가 데이터셋
+            metric_key_prefix: 메트릭 키 접두사
             
-        logger.info("Evaluating model...")
+        Returns:
+            평가 결과
+        """
+        if not self.trainer:
+            raise ValueError("Trainer not initialized. Call train() first.")
         
-        # 평가 실행
-        eval_result = self.trainer.evaluate(eval_dataset=dataset)
-        
-        # 결과 저장
-        with open(self.output_dir / "eval_results.json", "w") as f:
-            json.dump(eval_result, f, indent=2)
-            
-        # 주요 메트릭 출력
-        logger.info("Evaluation Results:")
-        logger.info(f"  - Loss: {eval_result.get('eval_loss', 0):.4f}")
-        logger.info(f"  - ROUGE-1: {eval_result.get('eval_rouge_1', 0)*100:.2f}%")
-        logger.info(f"  - ROUGE-2: {eval_result.get('eval_rouge_2', 0)*100:.2f}%")
-        logger.info(f"  - ROUGE-L: {eval_result.get('eval_rouge_l', 0)*100:.2f}%")
-        
-        return eval_result
-    
-    def predict(self, dataset=None, save_predictions=True):
-        """테스트 데이터 예측"""
-        if dataset is None:
-            dataset = self.test_dataset or self.valid_dataset
-            
-        logger.info("Generating predictions...")
-        
-        # 예측 실행
-        predictions = self.trainer.predict(
-            test_dataset=dataset,
-            max_length=self.config.max_target_length,
-            num_beams=self.config.num_beams
+        results = self.trainer.evaluate(
+            eval_dataset=dataset,
+            metric_key_prefix=metric_key_prefix
         )
         
-        # 디코딩
-        decoded_preds = self.tokenizer.batch_decode(
-            predictions.predictions,
-            skip_special_tokens=True
-        )
-        
-        # 저장
-        if save_predictions:
-            output_file = self.output_dir / "predictions.txt"
-            with open(output_file, "w", encoding="utf-8") as f:
-                for pred in decoded_preds:
-                    f.write(pred.strip() + "\n")
-            logger.info(f"Predictions saved to {output_file}")
-            
-        return decoded_preds
+        return results
     
-    def save_model(self, path: Optional[str] = None):
-        """모델 저장"""
-        save_path = path or str(self.output_dir / "final_model")
+    def generate_predictions(self, dataset: Dataset, 
+                           max_samples: Optional[int] = None) -> List[Dict[str, str]]:
+        """
+        예측 생성
         
-        logger.info(f"Saving model to {save_path}")
+        Args:
+            dataset: 입력 데이터셋
+            max_samples: 최대 샘플 수 (None이면 전체)
+            
+        Returns:
+            예측 결과 리스트
+        """
+        self.model.eval()
+        predictions = []
         
-        # Unsloth 모델 저장
-        if self.config.use_unsloth and UNSLOTH_AVAILABLE:
-            self.model.save_pretrained_merged(save_path, self.tokenizer)
+        # 샘플링
+        if max_samples:
+            indices = np.random.choice(len(dataset), min(max_samples, len(dataset)), replace=False)
+            dataset = dataset.select(indices)
+        
+        # 생성 설정
+        gen_config = self.config['generation']
+        
+        with torch.no_grad():
+            for example in tqdm(dataset, desc="Generating predictions"):
+                # 토큰화
+                inputs = self.tokenizer(
+                    example['input'],
+                    max_length=self.config['tokenizer']['encoder_max_len'],
+                    truncation=True,
+                    padding=True,
+                    return_tensors="pt"
+                ).to(self.device)
+                
+                # 생성
+                outputs = self.model.generate(
+                    **inputs,
+                    max_length=gen_config['max_length'],
+                    num_beams=gen_config['num_beams'],
+                    length_penalty=gen_config.get('length_penalty', 1.0),
+                    no_repeat_ngram_size=gen_config.get('no_repeat_ngram_size', 2),
+                    early_stopping=gen_config.get('early_stopping', True),
+                    do_sample=gen_config.get('do_sample', False),
+                    temperature=gen_config.get('temperature', 1.0) if gen_config.get('do_sample') else None,
+                    top_k=gen_config.get('top_k', 50) if gen_config.get('do_sample') else None,
+                    top_p=gen_config.get('top_p', 0.95) if gen_config.get('do_sample') else None
+                )
+                
+                # 디코딩
+                prediction = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+                
+                predictions.append({
+                    'input': example['input'],
+                    'prediction': prediction,
+                    'reference': example.get('target', '')
+                })
+        
+        return predictions
+    
+    def _setup_device(self) -> torch.device:
+        """디바이스 설정"""
+        from utils.device_utils import get_optimal_device, setup_device_config
+        
+        device_config = self.config['general'].get('device', 'auto')
+        
+        if device_config == 'auto':
+            # 최적 디바이스 자동 선택
+            device, device_info = get_optimal_device()
+            
+            # 디바이스별 최적화 설정 가져오기
+            model_size = self.config.get('model', {}).get('size', 'base')
+            optimization_config = setup_device_config(device_info, model_size)
+            
+            # 최적화 설정을 config에 병합
+            if 'training' not in self.config:
+                self.config['training'] = {}
+            
+            # 기존 설정과 병합 (기존 설정 우선)
+            opt_dict = optimization_config.to_dict()
+            for key, value in opt_dict.items():
+                if key not in self.config['training']:
+                    self.config['training'][key] = value
+            
+            logger.info(f"자동 감지된 디바이스: {device_info}")
+            logger.info(f"최적화 설정 적용됨: batch_size={optimization_config.batch_size}, "
+                       f"mixed_precision={optimization_config.mixed_precision}, "
+                       f"num_workers={optimization_config.num_workers}")
         else:
-            # 일반 모델 저장
-            self.trainer.save_model(save_path)
-            self.tokenizer.save_pretrained(save_path)
+            # 수동 설정
+            device = torch.device(device_config)
+            logger.info(f"수동 설정된 디바이스: {device}")
+        
+        logger.info(f"Using device: {device}")
+        return device
+    
+    def _setup_logging(self) -> None:
+        """로깅 설정"""
+        log_level = self.config.get('logging', {}).get('level', 'INFO')
+        logging.basicConfig(
+            level=getattr(logging, log_level),
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(self.output_dir / 'training.log'),
+                logging.StreamHandler(sys.stdout)
+            ]
+        )
+    
+    def _load_tokenizer(self) -> None:
+        """토크나이저 로딩"""
+        model_checkpoint = self.config['model']['checkpoint']
+        logger.info(f"Loading tokenizer: {model_checkpoint}")
+        
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            model_checkpoint,
+            use_fast=True
+        )
+        
+        # 특수 토큰 설정 (필요시)
+        if self.config['model']['architecture'] in ['kogpt2', 'gpt2']:
+            # GPT 계열은 pad_token이 없을 수 있음
+            if self.tokenizer.pad_token is None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
+    
+    def _load_model(self) -> None:
+        """모델 로딩 (unsloth 및 QLoRA 지원)"""
+        model_checkpoint = self.config['model']['checkpoint']
+        architecture = self.config['model']['architecture']
+        
+        # QLoRA 설정 확인
+        qlora_config = self.config.get('qlora', {})
+        use_unsloth = qlora_config.get('use_unsloth', False) and UNSLOTH_AVAILABLE
+        use_qlora = qlora_config.get('use_qlora', False)
+        
+        logger.info(f"Loading model: {model_checkpoint} ({architecture})")
+        logger.info(f"QLoRA enabled: {use_qlora}, unsloth enabled: {use_unsloth}")
+        
+        if use_unsloth and architecture in ['kobart', 'bart', 't5', 'mt5']:
+            # unsloth로 모델 로딩 (최대 75% 메모리 감소)
+            self._load_model_with_unsloth(model_checkpoint, qlora_config)
             
-        # 설정 저장
-        config_path = Path(save_path) / "training_config.json"
-        with open(config_path, "w") as f:
-            json.dump(self.config.__dict__, f, indent=2)
+        elif use_qlora:
+            # 일반 QLoRA 모델 로딩
+            self._load_model_with_qlora(model_checkpoint, architecture, qlora_config)
             
-        logger.info("Model saved successfully")
+        else:
+            # 기존 모델 로딩 방식
+            self._load_model_standard(model_checkpoint, architecture)
         
-    def load_model(self, path: str):
-        """저장된 모델 로드"""
-        logger.info(f"Loading model from {path}")
+        # 디바이스로 이동 (QLoRA 모델은 이미 적절한 디바이스에 있음)
+        if not (use_unsloth or use_qlora):
+            self.model = self.model.to(self.device)
         
-        # 설정 로드
-        config_path = Path(path) / "training_config.json"
-        if config_path.exists():
-            with open(config_path, "r") as f:
-                config_dict = json.load(f)
-                self.config = TrainingConfig.from_dict(config_dict)
+        # 그래디언트 체크포인팅 (메모리 최적화)
+        if self.config['training'].get('gradient_checkpointing', False):
+            if hasattr(self.model, 'gradient_checkpointing_enable'):
+                self.model.gradient_checkpointing_enable()
+            else:
+                logger.warning("모델이 gradient_checkpointing을 지원하지 않습니다.")
+                
+    def _load_model_with_unsloth(self, model_checkpoint: str, qlora_config: Dict[str, Any]) -> None:
+        """
+        unsloth를 사용한 고효율 모델 로딩 (메모리 75% 감소)
         
-        # 모델과 토크나이저 로드
-        model_class = AutoModelForSeq2SeqLM if self.config.model_type == "seq2seq" else AutoModelForCausalLM
+        Args:
+            model_checkpoint: 모델 체크포인트 경로
+            qlora_config: QLoRA 설정
+        """
+        logger.info("🚀 unsloth로 고효율 모델 로딩 중...")
         
-        self.model = model_class.from_pretrained(path)
-        self.tokenizer = AutoTokenizer.from_pretrained(path)
+        try:
+            # unsloth FastLanguageModel로 모델 로딩
+            model, tokenizer = FastLanguageModel.from_pretrained(
+                model_name=model_checkpoint,
+                max_seq_length=self.config['tokenizer'].get('encoder_max_len', 512) + 
+                              self.config['tokenizer'].get('decoder_max_len', 200),
+                dtype=torch.float16 if self.config['training'].get('fp16') else torch.float32,
+                load_in_4bit=qlora_config.get('load_in_4bit', True),
+            )
+            
+            # LoRA 설정 추가
+            model = FastLanguageModel.get_peft_model(
+                model,
+                r=qlora_config.get('lora_rank', 16),
+                target_modules=qlora_config.get('target_modules', [
+                    "q_proj", "k_proj", "v_proj", "out_proj",
+                    "fc1", "fc2"
+                ]),
+                lora_alpha=qlora_config.get('lora_alpha', 32),
+                lora_dropout=qlora_config.get('lora_dropout', 0.1),
+                bias="none",
+                use_gradient_checkpointing="unsloth",  # unsloth 최적화
+                random_state=42,
+            )
+            
+            self.model = model
+            logger.info("✅ unsloth 모델 로딩 성공! 메모리 사용량 75% 감소 예상")
+            
+        except Exception as e:
+            logger.error(f"❌ unsloth 모델 로딩 실패: {e}")
+            logger.info("폴백 모드: 일반 QLoRA로 대체")
+            self._load_model_with_qlora(model_checkpoint, 'kobart', qlora_config)
+    
+    def _load_model_with_qlora(self, model_checkpoint: str, architecture: str, qlora_config: Dict[str, Any]) -> None:
+        """
+        일반 QLoRA를 사용한 모델 로딩
         
-        # 디바이스로 이동
-        self.model = self.model.to(self.device)
+        Args:
+            model_checkpoint: 모델 체크포인트 경로
+            architecture: 모델 아키텍처
+            qlora_config: QLoRA 설정
+        """
+        logger.info("🔋 QLoRA로 메모리 효율적 모델 로딩 중...")
         
-        logger.info("Model loaded successfully")
+        try:
+            # 4-bit 양자화 설정
+            from transformers import BitsAndBytesConfig
+            
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=qlora_config.get('load_in_4bit', True),
+                bnb_4bit_compute_dtype=getattr(torch, qlora_config.get('bnb_4bit_compute_dtype', 'float16')),
+                bnb_4bit_quant_type=qlora_config.get('bnb_4bit_quant_type', 'nf4'),
+                bnb_4bit_use_double_quant=qlora_config.get('bnb_4bit_use_double_quant', True),
+            )
+            
+            # 모델 로딩
+            if architecture in ['kobart', 'bart', 't5', 'mt5']:
+                model = AutoModelForSeq2SeqLM.from_pretrained(
+                    model_checkpoint,
+                    quantization_config=bnb_config,
+                    device_map="auto",
+                    torch_dtype=torch.float16 if self.config['training'].get('fp16') else torch.float32
+                )
+            else:
+                model = AutoModelForCausalLM.from_pretrained(
+                    model_checkpoint,
+                    quantization_config=bnb_config,
+                    device_map="auto",
+                    torch_dtype=torch.float16 if self.config['training'].get('fp16') else torch.float32
+                )
+            
+            # LoRA 설정
+            if LoraConfig is not None:
+                lora_config = LoraConfig(
+                    r=qlora_config.get('lora_rank', 16),
+                    lora_alpha=qlora_config.get('lora_alpha', 32),
+                    target_modules=qlora_config.get('target_modules', [
+                        "q_proj", "k_proj", "v_proj", "out_proj",
+                        "fc1", "fc2"
+                    ]),
+                    lora_dropout=qlora_config.get('lora_dropout', 0.1),
+                    bias="none",
+                    task_type=TaskType.SEQ_2_SEQ_LM if architecture in ['kobart', 'bart', 't5', 'mt5'] else TaskType.CAUSAL_LM,
+                )
+                
+                model = get_peft_model(model, lora_config)
+                logger.info("✅ QLoRA 모델 준비 완료!")
+            
+            self.model = model
+            
+        except ImportError:
+            logger.error("❌ bitsandbytes 또는 peft 라이브러리가 설치되지 않음")
+            logger.info("폴백 모드: 표준 모델 로딩")
+            self._load_model_standard(model_checkpoint, architecture)
+        except Exception as e:
+            logger.error(f"❌ QLoRA 모델 로딩 실패: {e}")
+            logger.info("폴백 모드: 표준 모델 로딩")
+            self._load_model_standard(model_checkpoint, architecture)
+    
+    def _load_model_standard(self, model_checkpoint: str, architecture: str) -> None:
+        """
+        표준 모델 로딩 (기존 방식)
         
-    def run_sweep_experiment(self):
-        """WandB Sweep 실험 실행"""
-        # 모든 구성 요소 초기화
-        self.load_model_and_tokenizer()
-        self.load_data()
-        self.setup_trainer()
+        Args:
+            model_checkpoint: 모델 체크포인트 경로
+            architecture: 모델 아키텍처
+        """
+        logger.info("📚 표준 모델 로딩 중...")
         
-        # 학습
-        train_metrics = self.train()
+        # 모델 아키텍처에 따른 로딩
+        if architecture in ['kobart', 'bart', 't5', 'mt5']:
+            # 시퀀스-투-시퀀스 모델
+            self.model = AutoModelForSeq2SeqLM.from_pretrained(
+                model_checkpoint,
+                torch_dtype=torch.float16 if self.config['training'].get('fp16') else torch.float32
+            )
+        elif architecture in ['kogpt2', 'gpt2', 'gpt-neo']:
+            # 인과 언어 모델
+            self.model = AutoModelForCausalLM.from_pretrained(
+                model_checkpoint,
+                torch_dtype=torch.float16 if self.config['training'].get('fp16') else torch.float32
+            )
+        else:
+            raise ValueError(f"Unsupported architecture: {architecture}")
         
-        # 평가
-        eval_metrics = self.evaluate()
+        logger.info("✅ 표준 모델 로딩 완료!")
+    
+    def _get_model_specific_config(self, architecture: str, checkpoint: str) -> Dict[str, Any]:
+        """모델별 특수 설정 반환"""
+        config = {}
         
-        # 최종 메트릭 반환
-        final_metrics = {
-            **train_metrics,
-            **eval_metrics,
-            "model_name": self.config.model_name,
-            "total_params": sum(p.numel() for p in self.model.parameters()),
-            "trainable_params": sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+        # T5 계열
+        if architecture in ['t5', 'mt5', 'flan-t5']:
+            config['prefix'] = "summarize: "  # T5는 task prefix 필요
+            
+        # GPT 계열
+        elif architecture in ['gpt2', 'kogpt2', 'gpt-neo']:
+            config['max_length'] = self.config['tokenizer']['encoder_max_len'] + self.config['tokenizer']['decoder_max_len']
+            config['pad_token_id'] = self.tokenizer.pad_token_id
+            
+        return config
+    
+    def _preprocess_for_model(self, examples: Dict[str, Any]) -> Dict[str, Any]:
+        """모델별 데이터 전처리"""
+        architecture = self.config['model']['architecture']
+        
+        if architecture in ['t5', 'mt5', 'flan-t5']:
+            # T5는 prefix 추가
+            examples['input'] = ["summarize: " + inp for inp in examples['input']]
+            
+        elif architecture in ['gpt2', 'kogpt2', 'gpt-neo']:
+            # GPT는 입력과 타겟을 연결
+            examples['input'] = [
+                f"{inp} TL;DR: {tgt}" 
+                for inp, tgt in zip(examples['input'], examples['target'])
+            ]
+            
+        return examples
+    
+    def _get_training_arguments(self) -> Seq2SeqTrainingArguments:
+        """학습 인자 생성"""
+        train_config = self.config['training']
+        
+        # 기본 인자
+        args_dict = {
+            'output_dir': str(self.output_dir / 'checkpoints'),
+            'overwrite_output_dir': True,
+            'do_train': True,
+            'do_eval': True,
+            'evaluation_strategy': train_config.get('evaluation_strategy', 'steps'),
+            'eval_steps': train_config.get('eval_steps', 500),
+            'save_strategy': train_config.get('save_strategy', 'steps'),
+            'save_steps': train_config.get('save_steps', 500),
+            'save_total_limit': train_config.get('save_total_limit', 3),
+            'per_device_train_batch_size': train_config['per_device_train_batch_size'],
+            'per_device_eval_batch_size': train_config.get('per_device_eval_batch_size', 
+                                                          train_config['per_device_train_batch_size']),
+            'gradient_accumulation_steps': train_config.get('gradient_accumulation_steps', 1),
+            'learning_rate': train_config['learning_rate'],
+            'weight_decay': train_config.get('weight_decay', 0.01),
+            'adam_beta1': train_config.get('adam_beta1', 0.9),
+            'adam_beta2': train_config.get('adam_beta2', 0.999),
+            'adam_epsilon': train_config.get('adam_epsilon', 1e-8),
+            'max_grad_norm': train_config.get('max_grad_norm', 1.0),
+            'num_train_epochs': train_config['num_train_epochs'],
+            'lr_scheduler_type': train_config.get('lr_scheduler_type', 'linear'),
+            'warmup_ratio': train_config.get('warmup_ratio', 0.1),
+            'warmup_steps': train_config.get('warmup_steps', 0),
+            'logging_dir': str(self.output_dir / 'logs'),
+            'logging_steps': train_config.get('logging_steps', 50),
+            'load_best_model_at_end': True,
+            'metric_for_best_model': 'eval_rouge_combined_f1',
+            'greater_is_better': True,
+            'fp16': train_config.get('fp16', False),
+            'fp16_opt_level': train_config.get('fp16_opt_level', 'O1'),
+            'dataloader_num_workers': train_config.get('dataloader_num_workers', 4),
+            'remove_unused_columns': False,
+            'label_smoothing_factor': train_config.get('label_smoothing', 0.0),
+            'optim': train_config.get('optim', 'adamw_torch'),
+            'seed': self.config['general'].get('seed', 42),
+            'report_to': ['wandb'] if wandb.run else ['none'],
+            'run_name': self.experiment_name if wandb.run else None,
+            'push_to_hub': False,
+            'predict_with_generate': True,
+            'generation_max_length': self.config['generation']['max_length'],
+            'generation_num_beams': self.config['generation']['num_beams']
         }
         
-        return final_metrics
+        # 시퀀스-투-시퀀스 특화 인자
+        seq2seq_args = Seq2SeqTrainingArguments(**args_dict)
         
-    def cleanup(self):
-        """리소스 정리"""
-        # GPU 메모리 정리
-        if self.model is not None:
-            del self.model
-        if self.trainer is not None:
-            del self.trainer
-            
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            
-        # WandB 종료
-        if WANDB_AVAILABLE and wandb.run is not None:
-            wandb.finish()
-            
-        logger.info("Cleanup completed")
+        return seq2seq_args
+    
+    def _save_results(self, result: TrainingResult) -> None:
+        """결과 저장"""
+        # 결과 딕셔너리 생성
+        results_dict = {
+            'experiment_name': self.experiment_name,
+            'model_architecture': self.config['model']['architecture'],
+            'model_checkpoint': self.config['model']['checkpoint'],
+            'best_metrics': result.best_metrics,
+            'final_metrics': result.final_metrics,
+            'model_path': result.model_path,
+            'wandb_run_id': result.wandb_run_id,
+            'experiment_id': result.experiment_id,
+            'config': result.config_used,
+            'timestamp': str(Path(result.model_path).parent.parent.name)
+        }
+        
+        # JSON 저장
+        results_file = self.results_dir / 'training_results.json'
+        with open(results_file, 'w', encoding='utf-8') as f:
+            json.dump(results_dict, f, ensure_ascii=False, indent=2)
+        
+        # 요약 텍스트 저장
+        summary_file = self.results_dir / 'summary.txt'
+        with open(summary_file, 'w', encoding='utf-8') as f:
+            f.write(f"Training Summary for {self.experiment_name}\n")
+            f.write("=" * 50 + "\n\n")
+            f.write(f"Model: {self.config['model']['architecture']} ({self.config['model']['checkpoint']})\n")
+            f.write(f"Training Epochs: {self.config['training']['num_train_epochs']}\n")
+            f.write(f"Batch Size: {self.config['training']['per_device_train_batch_size']}\n")
+            f.write(f"Learning Rate: {self.config['training']['learning_rate']}\n\n")
+            f.write("Best Metrics:\n")
+            for metric, value in result.best_metrics.items():
+                f.write(f"  {metric}: {value:.4f}\n")
+            f.write("\nModel saved to: " + result.model_path + "\n")
+            if result.wandb_run_id:
+                f.write(f"WandB Run ID: {result.wandb_run_id}\n")
+        
+        logger.info(f"Results saved to {self.results_dir}")
 
 
-def main():
-    """독립 실행을 위한 메인 함수"""
-    # 설정 로드
-    config_path = Path(__file__).parent.parent / "config.yaml"
-    config_dict = load_config(str(config_path))
+def create_trainer(config: Union[str, Dict[str, Any]], 
+                  sweep_mode: bool = False) -> DialogueSummarizationTrainer:
+    """
+    트레이너 생성 편의 함수
     
-    # 기본 실험 설정
-    experiment_config = {
-        "model_name": "gogamza/kobart-base-v2",
-        "num_train_epochs": 3,
-        "per_device_train_batch_size": 16,
-        "learning_rate": 2e-5,
-        "experiment_name": "baseline_experiment",
-        "output_dir": "./outputs/baseline"
-    }
-    
-    # 설정 병합
-    experiment_config.update(config_dict.get("training", {}))
-    
-    # 트레이너 초기화
-    trainer = NMTTrainer(experiment_config)
-    
-    try:
-        # 실험 실행
-        trainer.load_model_and_tokenizer()
-        trainer.load_data()
-        trainer.setup_trainer()
+    Args:
+        config: 설정 파일 경로 또는 설정 딕셔너리
+        sweep_mode: WandB Sweep 모드 여부
         
-        # 학습
-        train_metrics = trainer.train()
-        logger.info(f"Training metrics: {train_metrics}")
-        
-        # 평가
-        eval_metrics = trainer.evaluate()
-        logger.info(f"Evaluation metrics: {eval_metrics}")
-        
-        # 예측 (선택적)
-        if trainer.test_dataset:
-            predictions = trainer.predict()
-            logger.info(f"Generated {len(predictions)} predictions")
-            
-    except Exception as e:
-        logger.error(f"Error during training: {str(e)}", exc_info=True)
-        raise
-    finally:
-        trainer.cleanup()
+    Returns:
+        초기화된 트레이너 인스턴스
+    """
+    # 설정 로딩
+    if isinstance(config, str):
+        config_dict = load_config(config)
+    else:
+        config_dict = config
+    
+    # 트레이너 생성
+    trainer = DialogueSummarizationTrainer(
+        config=config_dict,
+        sweep_mode=sweep_mode
+    )
+    
+    # 컴포넌트 초기화
+    trainer.initialize_components()
+    
+    return trainer
 
 
 if __name__ == "__main__":
-    main()
+    # 테스트/디버깅용 메인 함수
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Train dialogue summarization model")
+    parser.add_argument("--config", type=str, required=True, help="Config file path")
+    parser.add_argument("--train-data", type=str, help="Train data path")
+    parser.add_argument("--val-data", type=str, help="Validation data path")
+    parser.add_argument("--test-data", type=str, help="Test data path")
+    parser.add_argument("--sweep", action="store_true", help="Run in sweep mode")
+    
+    args = parser.parse_args()
+    
+    # WandB 초기화 (비 Sweep 모드)
+    if not args.sweep:
+        wandb.init(
+            project="nlp-dialogue-summarization",
+            name="manual_training",
+            config={"manual_run": True}
+        )
+    
+    # 트레이너 생성 및 학습
+    trainer = create_trainer(args.config, sweep_mode=args.sweep)
+    
+    # 데이터 준비
+    datasets = trainer.prepare_data(
+        train_path=args.train_data,
+        val_path=args.val_data,
+        test_path=args.test_data
+    )
+    
+    # 학습 실행
+    result = trainer.train(datasets)
+    
+    print(f"Training completed! Best ROUGE combined F1: {result.best_metrics.get('rouge_combined_f1', 0):.4f}")
