@@ -332,9 +332,9 @@ class DialogueSummarizationTrainer:
         if self.experiment_tracker:
             experiment_id = self.experiment_tracker.start_experiment(
                 name=self.experiment_name,
-                description=f"Training {self.config['model']['architecture']} model",
+                description=f"Training {self._get_model_architecture()} model",
                 config=self.config,
-                model_type=self.config['model']['architecture'],
+                model_type=self._get_model_architecture(),
                 dataset_info={
                     'train_size': len(dataset.get('train', [])),
                     'val_size': len(dataset.get('validation', []))
@@ -447,9 +447,9 @@ class DialogueSummarizationTrainer:
             # 모델 등록
             if self.model_registry:
                 model_id = self.model_registry.register_model(
-                    name=f"{self.config['model']['architecture']}_{self.experiment_name}",
-                    architecture=self.config['model']['architecture'],
-                    checkpoint=self.config['model']['checkpoint'],
+                    name=f"{self._get_model_architecture()}_{self.experiment_name}",
+                    architecture=self._get_model_architecture(),
+                    checkpoint=self._get_model_checkpoint(),
                     config=self.config,
                     performance=wandb_callback.best_metrics,
                     training_info={
@@ -613,7 +613,14 @@ class DialogueSummarizationTrainer:
     
     def _load_tokenizer(self) -> None:
         """토크나이저 로딩"""
-        model_checkpoint = self.config['model']['checkpoint']
+        # model 섹션이 없으면 general에서 model_name 사용
+        if 'model' in self.config:
+            model_checkpoint = self.config['model']['checkpoint']
+        else:
+            model_checkpoint = self.config.get('general', {}).get('model_name')
+            if not model_checkpoint:
+                raise ValueError("Model checkpoint not found in config. Please specify 'model.checkpoint' or 'general.model_name'")
+        
         logger.info(f"Loading tokenizer: {model_checkpoint}")
         
         self.tokenizer = AutoTokenizer.from_pretrained(
@@ -622,15 +629,54 @@ class DialogueSummarizationTrainer:
         )
         
         # 특수 토큰 설정 (필요시)
-        if self.config['model']['architecture'] in ['kogpt2', 'gpt2']:
+        if 'model' in self.config and self.config['model']['architecture'] in ['kogpt2', 'gpt2']:
             # GPT 계열은 pad_token이 없을 수 있음
             if self.tokenizer.pad_token is None:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
+    def _get_model_architecture(self) -> str:
+        """모델 아키텍처 가져오기"""
+        if 'model' in self.config:
+            return self.config['model']['architecture']
+        else:
+            # model_name에서 추론
+            model_checkpoint = self.config.get('general', {}).get('model_name', '')
+            if 'kobart' in model_checkpoint.lower():
+                return 'BART'
+            elif 't5' in model_checkpoint.lower():
+                return 'T5'
+            elif 'mt5' in model_checkpoint.lower():
+                return 'mT5'
+            else:
+                return 'seq2seq'
     
+    def _get_model_checkpoint(self) -> str:
+        """모델 체크포인트 가져오기"""
+        if 'model' in self.config:
+            return self.config['model']['checkpoint']
+        else:
+            model_checkpoint = self.config.get('general', {}).get('model_name')
+            if not model_checkpoint:
+                raise ValueError("Model checkpoint not found in config")
+            return model_checkpoint
     def _load_model(self) -> None:
         """모델 로딩 (unsloth 및 QLoRA 지원)"""
-        model_checkpoint = self.config['model']['checkpoint']
-        architecture = self.config['model']['architecture']
+        # model 섹션이 없으면 general에서 model_name 사용
+        if 'model' in self.config:
+            model_checkpoint = self.config['model']['checkpoint']
+            architecture = self._get_model_architecture()
+        else:
+            model_checkpoint = self.config.get('general', {}).get('model_name')
+            if not model_checkpoint:
+                raise ValueError("Model checkpoint not found in config")
+            # architecture를 모델 이름에서 추론
+            if 'kobart' in model_checkpoint.lower():
+                architecture = 'BART'
+            elif 't5' in model_checkpoint.lower():
+                architecture = 'T5'
+            elif 'mt5' in model_checkpoint.lower():
+                architecture = 'mT5'
+            else:
+                architecture = 'seq2seq'  # 기본값
         
         # QLoRA 설정 확인
         qlora_config = self.config.get('qlora', {})
@@ -891,8 +937,8 @@ class DialogueSummarizationTrainer:
         # 결과 딕셔너리 생성
         results_dict = {
             'experiment_name': self.experiment_name,
-            'model_architecture': self.config['model']['architecture'],
-            'model_checkpoint': self.config['model']['checkpoint'],
+            'model_architecture': self._get_model_architecture(),
+            'model_checkpoint': self._get_model_checkpoint(),
             'best_metrics': result.best_metrics,
             'final_metrics': result.final_metrics,
             'model_path': result.model_path,
@@ -912,7 +958,7 @@ class DialogueSummarizationTrainer:
         with open(summary_file, 'w', encoding='utf-8') as f:
             f.write(f"Training Summary for {self.experiment_name}\n")
             f.write("=" * 50 + "\n\n")
-            f.write(f"Model: {self.config['model']['architecture']} ({self.config['model']['checkpoint']})\n")
+            f.write(f"Model: {self._get_model_architecture()} ({self._get_model_checkpoint()})\n")
             f.write(f"Training Epochs: {self.config['training']['num_train_epochs']}\n")
             f.write(f"Batch Size: {self.config['training']['per_device_train_batch_size']}\n")
             f.write(f"Learning Rate: {self.config['training']['learning_rate']}\n\n")
