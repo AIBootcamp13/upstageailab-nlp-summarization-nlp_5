@@ -58,7 +58,7 @@ data/
 *.json
 *.jsonl
 *.tsv
-*.txt
+# *.txt  # 주석처리: requirements.txt 등 중요한 텍스트 파일 보호
 *.parquet
 
 # Logs
