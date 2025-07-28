@@ -32,7 +32,7 @@ python-dotenv==1.0.0
 jsonlines==4.0.0
 
 # API & Web
-openai==1.6.1  # For Solar API
+# openai==1.6.1  # For Solar API (제거됨)
 aiohttp==3.9.1  # For async requests
 requests==2.31.0
 
