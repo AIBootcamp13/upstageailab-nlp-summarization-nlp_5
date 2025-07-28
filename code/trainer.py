@@ -41,6 +41,16 @@ from code.utils.data_utils import DataProcessor
 from code.utils.metrics import RougeCalculator
 from code.utils.experiment_utils import ExperimentTracker, ModelRegistry
 from code.utils.path_utils import PathManager, path_manager
+from code.utils.xlsum_utils import (
+    xlsum_whitespace_handler,
+    get_xlsum_generation_config,
+    get_xlsum_tokenizer_config,
+    preprocess_for_xlsum,
+    get_xlsum_model_info,
+    is_xlsum_compatible_model,
+    get_xlsum_preprocessing_prompt,
+    XLSUM_MODEL_NAME
+)
 
 # QLoRA 및 unsloth 관련 import (선택적)
 try:
@@ -291,132 +301,125 @@ class NMTTrainer:
             메모리 효율성을 위해 4-bit 전정밀도 양자화를 사용합니다.
             
             Raises:
-                ImportError: PEFT 라이브러리가 설치되지 않은 경우
-                ValueError: 지원하지 않는 모델 타입인 경우
+                ImportError: QLoRA 관련 라이브러리가 설치되지 않은 경우
+                ValueError: 모델 로딩에 실패한 경우
             """
+            if not UNSLOTH_AVAILABLE:
+                logger.warning("QLoRA support requires unsloth library, falling back to standard loading")
+                self._load_standard_model()
+                return
+                
+            from transformers import BitsAndBytesConfig
+            import torch
+            
+            logger.info("Loading model with QLoRA...")
+            
+            # BitsAndBytesConfig 설정
+            qlora_config = self.config.__dict__.get('qlora', {})
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_use_double_quant=qlora_config.get('bnb_4bit_use_double_quant', True),
+                bnb_4bit_quant_type=qlora_config.get('bnb_4bit_quant_type', "nf4"),
+                bnb_4bit_compute_dtype=getattr(torch, qlora_config.get('bnb_4bit_compute_dtype', 'float16'))
+            )
+            
+            # 모델 타입 결정
+            model_name_lower = self.config.model_name.lower()
+            if any(x in model_name_lower for x in ['t5', 'bart', 'pegasus']):
+                model_class = AutoModelForSeq2SeqLM
+                self.config.model_type = "seq2seq"
+                task_type = TaskType.SEQ_2_SEQ_LM
+            else:
+                model_class = AutoModelForCausalLM
+                self.config.model_type = "causal"
+                task_type = TaskType.CAUSAL_LM
+            
+            # 모델 로드
             try:
-                from peft import LoraConfig, get_peft_model, TaskType
-                import bitsandbytes as bnb
-            except ImportError as e:
-                raise ImportError(f"QLoRA requires PEFT and bitsandbytes libraries: {e}")
-        
-        # 모델별 설정 로드
-        try:
-            model_specific_config = self._get_model_specific_config(self.config.model_name)
-            qlora_config = model_specific_config.get('qlora', {})
-        except Exception as e:
-            logger.warning(f"Failed to load model-specific config, using defaults: {e}")
-            qlora_config = {}
-        
-        # 모델 타입 결정
-        model_name_lower = self.config.model_name.lower()
-        if any(x in model_name_lower for x in ['t5', 'bart', 'pegasus']):
-            model_class = AutoModelForSeq2SeqLM
-            self.config.model_type = "seq2seq"
-            task_type = TaskType.SEQ_2_SEQ_LM
-        else:
-            model_class = AutoModelForCausalLM
-            self.config.model_type = "causal_lm"
-            task_type = TaskType.CAUSAL_LM
-        
-        # 4-bit 양자화 설정
-        from transformers import BitsAndBytesConfig
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=qlora_config.get('load_in_4bit', True),
-            bnb_4bit_quant_type=qlora_config.get('bnb_4bit_quant_type', 'nf4'),
-            bnb_4bit_compute_dtype=getattr(torch, qlora_config.get('bnb_4bit_compute_dtype', 'float16')),
-            bnb_4bit_use_double_quant=qlora_config.get('bnb_4bit_use_double_quant', True)
-        )
-        
-        # 기본 모델 로드
-        logger.info(f"Loading {self.config.model_type} model: {self.config.model_name}")
-        self.model = model_class.from_pretrained(
-            self.config.model_name,
-            quantization_config=bnb_config,
-            device_map="auto",
-            trust_remote_code=True,
-            torch_dtype=torch.float16 if self.config.fp16 else torch.float32
-        )
-        
-        # 토크나이저 로드
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            self.config.model_name,
-            trust_remote_code=True
-        )
-        
-        # 패딩 토큰 설정
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-            if self.model.config.pad_token_id is None:
-                self.model.config.pad_token_id = self.tokenizer.eos_token_id
-        
-        # LoRA 설정 구성
-        target_modules = qlora_config.get('target_modules', [
-            "q_proj", "k_proj", "v_proj", "o_proj"
-        ])
-        
-        # 모델별 target_modules 조정
-        if 'bart' in model_name_lower:
-            target_modules = ["q_proj", "k_proj", "v_proj", "out_proj", "fc1", "fc2"]
-        elif 't5' in model_name_lower:
-            target_modules = ["q", "k", "v", "o", "wi_0", "wi_1", "wo"]
-        elif 'gpt' in model_name_lower:
-            target_modules = ["c_attn", "c_proj", "c_fc"]
-        
-        lora_config = LoraConfig(
-            r=qlora_config.get('lora_rank', self.config.lora_r),
-            lora_alpha=qlora_config.get('lora_alpha', self.config.lora_alpha),
-            lora_dropout=qlora_config.get('lora_dropout', self.config.lora_dropout),
-            bias="none",
-            task_type=task_type,
-            target_modules=target_modules
-        )
-        
-        # PEFT 모델 생성
-        logger.info("Applying LoRA adapters...")
-        self.model = get_peft_model(self.model, lora_config)
-        
-        # 학습 가능한 파라미터 정보 출력
-        self.model.print_trainable_parameters()
-        
-        # 모델 정보 로깅
-        total_params = sum(p.numel() for p in self.model.parameters())
-        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
-        logger.info(f"QLoRA Model loaded successfully:")
-        logger.info(f"  - Total parameters: {total_params:,}")
-        logger.info(f"  - Trainable parameters: {trainable_params:,} ({trainable_params/total_params*100:.2f}%)")
-        logger.info(f"  - Target modules: {target_modules}")
-        
+                self.model = model_class.from_pretrained(
+                    self.config.model_name,
+                    quantization_config=bnb_config,
+                    device_map="auto",
+                    trust_remote_code=True
+                )
+                logger.info(f"Model {self.config.model_name} loaded with QLoRA configuration")
+            except Exception as e:
+                logger.error(f"Failed to load model with QLoRA: {e}")
+                raise ValueError(f"Model loading failed: {e}")
+            
+            # 토크나이저 로드
+            try:
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    self.config.model_name,
+                    trust_remote_code=True
+                )
+            
+                # 토크나이저 설정
+                if self.tokenizer.pad_token is None:
+                    self.tokenizer.pad_token = self.tokenizer.eos_token
+                    self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
+                    
+                logger.info(f"Tokenizer loaded for {self.config.model_name}")
+            except Exception as e:
+                logger.error(f"Failed to load tokenizer: {e}")
+                raise ValueError(f"Tokenizer loading failed: {e}")
+            
+            # LoRA 설정
+            target_modules = qlora_config.get('target_modules', ['q_proj', 'k_proj', 'v_proj', 'o_proj'])
+            lora_config = LoraConfig(
+                task_type=task_type,
+                inference_mode=False,
+                r=qlora_config.get('lora_rank', self.config.lora_r),
+                lora_alpha=qlora_config.get('lora_alpha', self.config.lora_alpha),
+                lora_dropout=qlora_config.get('lora_dropout', self.config.lora_dropout),
+                target_modules=target_modules,
+                bias="none"
+            )
+            
+            # PEFT 모델 적용
+            from peft import get_peft_model
+            self.model = get_peft_model(self.model, lora_config)
+            
+            # 학습 가능한 파라미터 정보 출력
+            self.model.print_trainable_parameters()
+            
+            # 모델 정보 로깅
+            total_params = sum(p.numel() for p in self.model.parameters())
+            trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+            logger.info(f"QLoRA Model loaded successfully:")
+            logger.info(f"  - Total parameters: {total_params:,}")
+            logger.info(f"  - Trainable parameters: {trainable_params:,} ({trainable_params/total_params*100:.2f}%)")
+            logger.info(f"  - Target modules: {target_modules}")
         def load_model_and_tokenizer(self):
-        """모델과 토크나이저 로드 - 개선된 버전"""
-        # 모델별 설정 로드
-        try:
-            model_specific_config = self._get_model_specific_config(self.config.model_name)
-            # 모델별 설정으로 기본 설정 업데이트
-            for key, value in model_specific_config.get('training', {}).items():
-                if hasattr(self.config, key):
-                    setattr(self.config, key, value)
-            logger.info(f'Model-specific config loaded for {self.config.model_name}')
-        except Exception as e:
-            logger.warning(f'모델별 설정 로드 실패, 기본 설정 사용: {e}')
-        
-        # 로딩 방법 결정
-        if self.config.use_unsloth and UNSLOTH_AVAILABLE:
-            logger.info('Loading model with Unsloth...')
-            self._load_model_with_unsloth()
-        elif self.config.use_qlora:
-            logger.info('Loading model with QLoRA...')
-            self._load_model_with_qlora()
-        else:
-            logger.info('Loading model with standard method...')
-            self._load_standard_model()
-        
-        # 공통 후처리
-        self._setup_model_postprocess()
+            """모델과 토크나이저 로드 - 개선된 버전"""
+            # 모델별 설정 로드
+            try:
+                model_specific_config = self._get_model_specific_config(self.config.model_name)
+                # 모델별 설정으로 기본 설정 업데이트
+                for key, value in model_specific_config.get('training', {}).items():
+                    if hasattr(self.config, key):
+                        setattr(self.config, key, value)
+                logger.info(f'Model-specific config loaded for {self.config.model_name}')
+            except Exception as e:
+                logger.warning(f'모델별 설정 로드 실패, 기본 설정 사용: {e}')
+            
+            # 로딩 방법 결정
+            if self.config.use_unsloth and UNSLOTH_AVAILABLE:
+                logger.info('Loading model with Unsloth...')
+                self._load_model_with_unsloth()
+            elif self.config.use_qlora:
+                logger.info('Loading model with QLoRA...')
+                self._load_model_with_qlora()
+            else:
+                logger.info('Loading standard model...')
+                self._load_standard_model()
+            
+            # 공통 후처리
+            self._setup_model_postprocess()
         
         def _load_standard_model(self):
-        """일반 모델 로딩 메소드"""
-        model_registry = ModelRegistry()
+            """표준 모델 로딩"""
+            model_registry = ModelRegistry()
         
         # 모델 정보 획득
         model_info = model_registry.get_model_info(self.config.model_name)
@@ -446,7 +449,7 @@ class NMTTrainer:
             torch_dtype=torch.float16 if self.config.fp16 else torch.float32
         )
         
-        # 패딩 토큰 설정
+        # 패딩 토크 설정
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
             if self.model.config.pad_token_id is None:
@@ -454,22 +457,23 @@ class NMTTrainer:
         
         # QLoRA 적용 (기존 방식)
         if self.config.use_qlora:
-            self._apply_qlora()
-        
-        def _setup_model_postprocess(self):
-        """모델 로딩 후 공통 후처리"""
-        # 디바이스로 이동
-        if not self.config.use_unsloth:
-            self.model = self.model.to(self.device)
-        
-        # 모델 정보 로깅
-        total_params = sum(p.numel() for p in self.model.parameters())
-        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
-        logger.info(f'Total parameters: {total_params:,}')
-        logger.info(f'Trainable parameters: {trainable_params:,}')
-    def _load_model_with_unsloth(self):
-        """
-        Unsloth를 사용한 최적화된 모델 로드
+            def _setup_model_postprocess(self):
+                """모델 로딩 후 공통 후처리"""
+                # 디바이스로 이동
+                if not self.config.use_unsloth:
+                    self.model = self.model.to(self.device)
+                
+                # 모델 정보 로깅
+                total_params = sum(p.numel() for p in self.model.parameters())
+                trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+                logger.info(f'Total parameters: {total_params:,}')
+                logger.info(f'Trainable parameters: {trainable_params:,}')
+                
+            def _load_model_with_unsloth(self):
+                """
+                Unsloth를 사용한 최적화된 모델 로드
+                
+                unsloth.FastLanguageModel을 사용하여 메모리 효율성과 속도를 개선한 모델을 로드합니다.
         
         unsloth.FastLanguageModel을 사용하여 메모리 효율성과 속도를 개선한 모델을 로드합니다.
         모델별 설정 파일에서 동적으로 파라미터를 로딩합니다.
@@ -558,8 +562,8 @@ class NMTTrainer:
         if self.config.use_qlora:
             logger.info(f"  - LoRA rank: {qlora_config.get('lora_rank', self.config.lora_r)}")
             logger.info(f"  - LoRA alpha: {qlora_config.get('lora_alpha', self.config.lora_alpha)}")
-            
-            def _preprocess_for_model(self, text: str, model_type: str = None) -> str:
+        
+        def _preprocess_for_model(self, text: str, model_type: str = None) -> str:
             """
             모델별 입력 텍스트 전처리
             
@@ -569,19 +573,19 @@ class NMTTrainer:
             BART: 변경사항 없음
             
             Args:
-            text: 입력 텍스트
-            model_type: 모델 타입 ('t5', 'gpt', 'bart', 'default'). None인 경우 자동 추론
+                text: 입력 텍스트
+                model_type: 모델 타입 ('t5', 'gpt', 'bart', 'default'). None인 경우 자동 추론
             
             Returns:
-            전처리된 텍스트
+                전처리된 텍스트
             """
             if model_type is None:
-            # 모델명이나 토크나이저에서 타입 추론
-            model_name = ''
-            if hasattr(self, 'tokenizer') and self.tokenizer is not None:
-                model_name = getattr(self.tokenizer, 'name_or_path', '').lower()
-            elif hasattr(self, 'config') and self.config.model_name:
-                model_name = self.config.model_name.lower()
+                # 모델명이나 토크나이저에서 타입 추론
+                model_name = ''
+                if hasattr(self, 'tokenizer') and self.tokenizer is not None:
+                    model_name = getattr(self.tokenizer, 'name_or_path', '').lower()
+                elif hasattr(self, 'config') and self.config.model_name:
+                    model_name = self.config.model_name.lower()
             
             # 모델 타입 결정
             if any(keyword in model_name for keyword in ['t5', 'flan-t5', 'mt5']):
@@ -593,66 +597,57 @@ class NMTTrainer:
             else:
                 model_type = 'default'
                 
-            logger.debug(f"Inferred model type '{model_type}' from model name '{model_name}'")
+            logger.debug(f"Inferred model type '{model_type}' from model name '{model_name}'") 
             
             # 입력 텍스트 검증
             if not text or not isinstance(text, str):
-            logger.warning(f"Invalid input text: {text}")
-            return str(text) if text else ""
+                logger.warning(f"Invalid input text: {text}")
+                return text
             
-            # 모델별 전처리
             original_text = text.strip()
             
+            # 모델 타입에 따른 전처리
             if model_type == 't5':
-            # T5 계열: summarize prefix 추가
-            if not original_text.startswith('summarize:'):
-                processed_text = f'summarize: {original_text}'
-                logger.debug(f"Added T5 prefix: '{original_text}' -> '{processed_text}'")
-            else:
-                processed_text = original_text
-                logger.debug(f"T5 prefix already present: '{processed_text}'")
+                # T5/FLAN-T5: 'summarize:' prefix 추가
+                processed_text = f"summarize: {original_text}"
+                logger.debug(f"T5 preprocessing: '{processed_text}'")
                 
             elif model_type == 'gpt':
-            # GPT 계열: TL;DR suffix 추가
-            if not original_text.endswith(' TL;DR:') and not original_text.endswith('TL;DR:'):
-                processed_text = f'{original_text} TL;DR:'
-                logger.debug(f"Added GPT suffix: '{original_text}' -> '{processed_text}'")
-            else:
-                processed_text = original_text
-                logger.debug(f"GPT suffix already present: '{processed_text}'")
+                # GPT: 'TL;DR:' suffix 추가
+                processed_text = f"{original_text}\n\nTL;DR:"
+                logger.debug(f"GPT preprocessing: '{processed_text}'")
                 
             elif model_type == 'bart':
-            # BART: 변경사항 없음
-            processed_text = original_text
-            logger.debug(f"BART preprocessing (no change): '{processed_text}'")
-            
+                # BART: 변경사항 없음
+                processed_text = original_text
+                logger.debug(f"BART preprocessing (no change): '{processed_text}'")
+                
             else:
                 # 기본: 변경사항 없음
                 processed_text = original_text
                 logger.debug(f"Default preprocessing (no change): '{processed_text}'")
             
             return processed_text
-            
-            def _apply_qlora(self):
+    def _apply_qlora(self):
             """QLoRA 설정 적용"""
-        if not self.config.use_qlora:
-            return
+            if not self.config.use_qlora:
+                return
+                
+            logger.info("Applying QLoRA configuration...")
             
-        logger.info("Applying QLoRA configuration...")
-        
-        # LoRA 설정
-        lora_config = LoraConfig(
-            r=self.config.lora_r,
-            lora_alpha=self.config.lora_alpha,
-            lora_dropout=self.config.lora_dropout,
-            bias="none",
-            task_type=TaskType.SEQ_2_SEQ_LM if self.config.model_type == "seq2seq" else TaskType.CAUSAL_LM,
-            target_modules=["q_proj", "v_proj"]  # 모델에 따라 조정 필요
-        )
-        
-        # PEFT 모델 생성
-        self.model = get_peft_model(self.model, lora_config)
-        self.model.print_trainable_parameters()
+            # LoRA 설정
+            lora_config = LoraConfig(
+                r=self.config.lora_r,
+                lora_alpha=self.config.lora_alpha,
+                lora_dropout=self.config.lora_dropout,
+                bias="none",
+                task_type=TaskType.SEQ_2_SEQ_LM if self.config.model_type == "seq2seq" else TaskType.CAUSAL_LM,
+                target_modules=["q_proj", "v_proj"]  # 모델에 따라 조정 필요
+            )
+            
+            # PEFT 모델 생성
+            self.model = get_peft_model(self.model, lora_config)
+            self.model.print_trainable_parameters()
         
     def load_data(self, train_path: Optional[str] = None, 
                   valid_path: Optional[str] = None,
