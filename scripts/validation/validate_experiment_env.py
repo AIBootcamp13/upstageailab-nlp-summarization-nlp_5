@@ -609,7 +609,7 @@ class ExperimentValidator:
             sys.path.insert(0, str(self.project_root))
         
         # 기존 내장 code 모듈을 sys.modules에서 제거
-        import sys
+        # import sys - 중복 import 제거
         builtin_modules_to_clear = []
         for module_name in sys.modules:
             if module_name == 'code' or module_name.startswith('code.'):
