@@ -4,8 +4,19 @@ NLP 대화 요약 프로젝트 - 유틸리티 패키지
 """
 
 from .data_utils import DataProcessor, TextPreprocessor
-from .metrics import MultiReferenceROUGE, RougeCalculator
 from .experiment_utils import ExperimentTracker, ModelRegistry
+
+# Rouge 메트릭은 선택적으로 import (설치되지 않은 경우 대비)
+try:
+    from .metrics import MultiReferenceROUGE, RougeCalculator
+    ROUGE_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️  Rouge 메트릭 모듈을 불러올 수 없습니다: {e}")
+    print("👉 'pip install rouge==1.0.1'로 설치해주세요.")
+    MultiReferenceROUGE = None
+    RougeCalculator = None
+    ROUGE_AVAILABLE = False
+
 import yaml
 from pathlib import Path
 from typing import Dict, Any, Union
@@ -33,5 +44,6 @@ __all__ = [
     'MultiReferenceROUGE',
     'RougeCalculator',
     'ExperimentTracker',
-    'ModelRegistry'
+    'ModelRegistry',
+    'ROUGE_AVAILABLE'
 ]
