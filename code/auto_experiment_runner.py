@@ -98,14 +98,14 @@ class AutoExperimentRunner:
         # YAML 파일 검색
         yaml_files = []
         for pattern in ['*.yaml', '*.yml']:
-            self.logger.info(f"  - {file.relative_to(path_manager.get_project_root())}")
+            self.logger.info(f"  - {file.relative_to(path_manager.project_root)}")
         
         # 파일명으로 정렬 (실행 순서 보장)
         yaml_files.sort(key=lambda x: x.name)
         
         self.logger.info(f"발견된 실험 설정: {len(yaml_files)}개")
         for file in yaml_files:
-            self.logger.info(f"  - {file.relative_to(path_manager.get_project_root())}")
+            self.logger.info(f"  - {file.relative_to(path_manager.project_root)}")
         
         return yaml_files
     
@@ -120,13 +120,13 @@ class AutoExperimentRunner:
             디바이스 최적화가 적용된 설정
         """
         # 상대 경로로 변환
-        relative_path = config_path.relative_to(path_manager.get_project_root())
+        relative_path = config_path.relative_to(path_manager.project_root)
         
         # 기본 설정 로딩
         base_config = load_config(self.base_config_path)
         
         # 실험별 설정 로딩
-        relative_path = config_path.relative_to(path_manager.get_project_root())
+        relative_path = config_path.relative_to(path_manager.project_root)
         
         # 설정 병합 (실험 설정이 우선)
         merged_config = self._merge_configs(base_config, exp_config)
@@ -240,7 +240,7 @@ class AutoExperimentRunner:
             cmd = [
                 sys.executable,
                 str(path_manager.resolve_path("code/trainer.py")),
-                "--config", str(temp_config_path.relative_to(path_manager.get_project_root())),
+                "--config", str(temp_config_path.relative_to(path_manager.project_root)),
                 "--experiment-name", f"auto_exp_{exp_id[:8]}",
                 "--device", self.device
             ]
@@ -252,7 +252,7 @@ class AutoExperimentRunner:
                 cmd,
                 capture_output=True,
                 text=True,
-                cwd=path_manager.get_project_root(),
+                cwd=path_manager.project_root,
                 timeout=7200  # 2시간 타임아웃
             )
             
@@ -365,7 +365,7 @@ class AutoExperimentRunner:
         
         print(f"\n🎉 모든 실험 완료!")
         print(f"⏱️ 총 소요 시간: {total_time:.2f}시간")
-        print(f"📄 결과 요약: {summary_file.relative_to(path_manager.get_project_root())}")
+        print(f"📄 결과 요약: {summary_file.relative_to(path_manager.project_root)}")
         
         return summary
     
@@ -458,7 +458,7 @@ class AutoExperimentRunner:
             with open(file_path, 'w', encoding='utf-8') as f:
                 yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
             
-            print(f"✅ 샘플 설정 생성: {file_path.relative_to(path_manager.get_project_root())}")
+            print(f"✅ 샘플 설정 생성: {file_path.relative_to(path_manager.project_root)}")
         
         print(f"\n📁 총 {len(sample_configs)}개 샘플 설정 파일 생성 완료")
         print(f"🚀 실행 방법: python code/auto_experiment_runner.py --run-all")
