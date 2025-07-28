@@ -3,6 +3,11 @@
 
 set -e  # 오류 시 중단
 
+# 환경 변수 설정
+export WANDB_MODE=offline
+export TOKENIZERS_PARALLELISM=false
+export PYTHONWARNINGS="ignore"
+
 echo "🚀 5개 주요 모델 정상 실험 순차 실행"
 echo "======================================="
 echo "📋 실험 목록:"
