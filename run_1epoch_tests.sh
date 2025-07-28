@@ -3,17 +3,20 @@
 
 set -e
 
+# 스크립트가 실행되는 디렉토리로 이동
+cd "$(dirname "$0")"
+
 echo "⚡ RTX 3090 24GB - 5개 실험 1 Epoch 빠른 테스트"
 echo "=============================================="
 echo ""
 
 # 테스트 실험 목록 (1 epoch)
 TEST_EXPERIMENTS=(
-    "test_01_mt5_xlsum_1epoch.yaml:mT5_XL-Sum_1epoch_테스트:4-6분"
-    "test_02_eenzeenee_1epoch.yaml:eenzeenee_T5_1epoch_테스트:2-3분"  
-    "test_03_kobart_1epoch.yaml:KoBART_1epoch_테스트:1-2분"
-    "test_04_high_lr_1epoch.yaml:고성능_학습률_1epoch_테스트:1분"
-    "test_05_batch_opt_1epoch.yaml:배치_최적화_1epoch_테스트:1분"
+    "config/experiments/test_01_mt5_xlsum_1epoch.yaml:mT5_XL-Sum_1epoch_테스트:4-6분"
+    "config/experiments/test_02_eenzeenee_1epoch.yaml:eenzeenee_T5_1epoch_테스트:2-3분"  
+    "config/experiments/test_03_kobart_1epoch.yaml:KoBART_1epoch_테스트:1-2분"
+    "config/experiments/test_04_high_lr_1epoch.yaml:고성능_학습률_1epoch_테스트:1분"
+    "config/experiments/test_05_batch_opt_1epoch.yaml:배치_최적화_1epoch_테스트:1분"
 )
 
 # 시작 시간 기록

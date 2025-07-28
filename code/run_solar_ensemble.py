@@ -15,7 +15,9 @@ import pandas as pd
 import torch
 
 # 프로젝트 경로 추가
-sys.path.append(str(Path(__file__).parent.parent))
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(Path(__file__).parent))
 
 from ensemble.solar_ensemble import WeightedEnsemble, EnsembleConfig
 from utils.experiment_utils import ExperimentTracker

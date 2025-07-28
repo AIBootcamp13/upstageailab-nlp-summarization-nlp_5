@@ -17,13 +17,15 @@ from datetime import datetime
 import subprocess
 import logging
 
-# code 디렉토리를 Python 경로에 추가
-sys.path.insert(0, str(Path(__file__).parent))
+# 프로젝트 루트 디렉토리를 Python 경로에 추가
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 
-from code.utils.path_utils import PathManager, path_manager
-from code.utils.device_utils import get_optimal_device, setup_device_config
-from code.utils.experiment_utils import ExperimentTracker, ModelRegistry
-from code.utils import load_config
+# code 디렉토리의 utils 임포트
+from utils.path_utils import PathManager, path_manager
+from utils.device_utils import get_optimal_device, setup_device_config
+from utils.experiment_utils import ExperimentTracker, ModelRegistry
+from utils import load_config
 
 class AutoExperimentRunner:
     """자동 실험 실행 관리자 (상대 경로 기준)"""
@@ -495,7 +497,12 @@ def main():
             runner.run_all_experiments(args.config_dir)
         
         elif args.experiment:
-            config_path = path_manager.resolve_path(f"{args.config_dir}/{args.experiment}")
+            # 경로가 이미 전체 경로인 경우 처리
+            if '/' in args.experiment:
+                config_path = path_manager.resolve_path(args.experiment)
+            else:
+                config_path = path_manager.resolve_path(f"{args.config_dir}/{args.experiment}")
+            
             if not config_path.exists():
                 print(f"❌ 설정 파일을 찾을 수 없습니다: {config_path}")
                 return 1
