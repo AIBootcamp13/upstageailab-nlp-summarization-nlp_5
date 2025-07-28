@@ -56,7 +56,17 @@ except ImportError:
     UNSLOTH_AVAILABLE = False
 
 from datasets import Dataset, DatasetDict
-import evaluate
+
+# evaluate 모듈 선택적 import
+try:
+    import evaluate
+    EVALUATE_AVAILABLE = True
+except ImportError:
+    print("⚠️ evaluate 라이브러리를 찾을 수 없습니다. ROUGE 메트릭 계산이 제한될 수 있습니다.")
+    print("👉 'pip install evaluate' 명령으로 설치하세요.")
+    evaluate = None
+    EVALUATE_AVAILABLE = False
+
 import wandb
 # 로컬 유틸리티 임포트
 from utils import load_config
