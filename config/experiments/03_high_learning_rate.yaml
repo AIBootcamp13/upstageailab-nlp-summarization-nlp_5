@@ -8,7 +8,7 @@ general:
   name: high_lr_experiment
 
 model:
-  architecture: BART
+  architecture: bart
   checkpoint: digit82/kobart-summarization
 
 tokenizer:

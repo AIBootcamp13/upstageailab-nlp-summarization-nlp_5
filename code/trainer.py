@@ -641,11 +641,11 @@ class DialogueSummarizationTrainer:
             # model_name에서 추론
             model_checkpoint = self.config.get('general', {}).get('model_name', '')
             if 'kobart' in model_checkpoint.lower():
-                return 'BART'
+                return 'bart'
             elif 't5' in model_checkpoint.lower():
-                return 'T5'
+                return 't5'
             elif 'mt5' in model_checkpoint.lower():
-                return 'mT5'
+                return 'mt5'
             else:
                 return 'seq2seq'
     

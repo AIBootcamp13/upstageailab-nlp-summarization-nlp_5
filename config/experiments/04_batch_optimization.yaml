@@ -8,7 +8,7 @@ general:
   name: batch_optimization
 
 model:
-  architecture: BART
+  architecture: bart
   checkpoint: digit82/kobart-summarization
 
 tokenizer:

@@ -9,7 +9,7 @@ general:
   name: eenzeenee_korean_summarization
 
 model:
-  architecture: T5
+  architecture: t5
   checkpoint: eenzeenee/t5-base-korean-summarization
 
 input_prefix: "summarize: "

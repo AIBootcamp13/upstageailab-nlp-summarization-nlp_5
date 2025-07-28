@@ -9,7 +9,7 @@ general:
   name: mt5_xlsum_optimized
 
 model:
-  architecture: mT5
+  architecture: mt5
   checkpoint: csebuetnlp/mT5_multilingual_XLSum
 
 input_prefix: ""  # mT5는 prefix 없이 사용

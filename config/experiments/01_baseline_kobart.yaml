@@ -8,7 +8,7 @@ general:
   name: baseline_kobart
 
 model:
-  architecture: BART
+  architecture: bart
   checkpoint: digit82/kobart-summarization
 
 tokenizer:
