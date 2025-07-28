@@ -19,6 +19,24 @@
 | 2차 통합 (목표) | 0.5821 | 0.3456 | 0.5234 | 0.5504 | 🎯 목표 |
 | Solar 앙상블 (목표) | 0.5989 | 0.3612 | 0.5401 | 0.5667 | 🎯 목표 |
 
+## 🤖 지원 모델
+
+프로젝트에서 지원하는 모델 목록:
+
+| 모델명 | 설명 | 특징 | 사용법 |
+|-----------|------|------|--------|
+| **eenzeenee/xsum-t5-1.7b** | 한국어 요약 T5 모델 | - 1.7B 파라미터<br>- 한국어 최적화<br>- 자동 prefix 처리 | `./run_eenzeenee_experiment.sh` |
+| digit82/kobart-summarization | KoBART 요약 모델 | - BART 아키텍처<br>- 한국어 지원 | 전용 스크립트 |
+| google/mt5-* | Multilingual T5 | - 다국어 지원<br>- T5 아키텍처 | `--config-section mt5_base` |
+| google/flan-t5-* | FLAN-T5 | - 인스트럭션 튤닝<br>- 영어 최적화 | `--config-section flan_t5_base` |
+
+### eenzeenee 모델 특징
+
+- **자동 Prefix 처리**: 'summarize: ' prefix가 모든 입력에 자동으로 추가
+- **한국어 최적화**: 한국어 데이터셋으로 사전 학습
+- **T5 아키텍처**: sequence-to-sequence 모델로 요약 작업에 최적화
+- **기본 설정**: 배치 크기 8, 입력 길이 512, 출력 길이 200
+
 ## 🚀 빠른 시작
 
 ### 1. 환경 설정
@@ -35,7 +53,20 @@ pip install -r requirements.txt
 bash scripts/install_konlpy.sh
 ```
 
-### 2. 최종 모델로 추론
+### 2. eenzeenee 모델 실험 실행
+
+```bash
+# 단일 eenzeenee 모델 실험
+./run_eenzeenee_experiment.sh
+
+# 실제 학습 실행 (설정 후)
+EENZEENEE_RUN_ACTUAL=true ./run_eenzeenee_experiment.sh
+
+# 다중 모델 비교 실험 (eenzeenee 포함)
+./run_multi_model_experiments.sh
+```
+
+### 3. 최종 모델로 추론
 
 ```bash
 # 간단한 추론 (Fine-tuned 모델만)
@@ -46,7 +77,7 @@ export UPSTAGE_API_KEY="your-api-key"
 python final_submission/run_final_inference.py --use_ensemble
 ```
 
-### 3. 제출 파일 확인
+### 4. 제출 파일 확인
 
 ```bash
 # 형식 검증
