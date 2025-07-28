@@ -80,13 +80,14 @@ Thumbs.db
 *~
 .cache/
 
-# Experiment results
-/experiments/
-/experiment_results/
-/sweep_results/
-/parallel_sweep_results/
-/all_sweep_results/
-/snapshots/
+# Experiment results (실제 실험 결과 저장 디렉토리 - Git에 포함하지 않음)
+# 주의: config/experiments/는 실험 설정 파일이므로 Git에 포함되어야 함!
+# /experiments/          # 현재 프로젝트에 이 디렉토리가 없음
+# /experiment_results/   # 현재 프로젝트에 이 디렉토리가 없음
+# /sweep_results/        # 현재 프로젝트에 이 디렉토리가 없음
+# /parallel_sweep_results/  # 현재 프로젝트에 이 디렉토리가 없음
+# /all_sweep_results/    # 현재 프로젝트에 이 디렉토리가 없음
+# /snapshots/            # 현재 프로젝트에 이 디렉토리가 없음
 
 # Config overrides (local settings)
 config_local.yaml
