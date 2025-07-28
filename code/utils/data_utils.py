@@ -349,6 +349,53 @@ class DataProcessor:
         
         return df
     
+    def _preprocess_for_model(self, text: str, model_type: str = None) -> str:
+        """
+        송규헌님 요청사항: 모델별 전처리
+        
+        각 모델 아키텍처에 맞는 입력 형식으로 변환하여 성능을 최적화합니다.
+        trainer.py의 동일 함수와 일관된 처리를 수행합니다.
+        
+        Args:
+            text: 입력 텍스트
+            model_type: 모델 타입 ('t5', 'gpt', 'bart', 'default'). None인 경우 자동 추론
+            
+        Returns:
+            전처리된 텍스트
+        """
+        if model_type is None:
+            # 토크나이저를 통해 모델 타입 추론
+            model_name = getattr(self.tokenizer, 'name_or_path', '').lower()
+            if any(keyword in model_name for keyword in ['t5', 'flan-t5', 'mt5']):
+                model_type = 't5'
+            elif any(keyword in model_name for keyword in ['gpt', 'kogpt']):
+                model_type = 'gpt'
+            elif 'bart' in model_name:
+                model_type = 'bart'
+            else:
+                model_type = 'default'
+        
+        # 입력 텍스트 검증
+        if not text or not isinstance(text, str):
+            return str(text) if text else ""
+        
+        # 모델별 전처리
+        text = text.strip()
+        
+        if model_type == 't5':
+            # T5 모델들에 대한 prefix 처리
+            if not text.startswith('summarize:'):
+                text = f'summarize: {text}'
+        
+        elif model_type == 'gpt':
+            # GPT 모델들에 대한 TL;DR 처리
+            if not text.endswith(' TL;DR:') and not text.endswith('TL;DR:'):
+                text = f'{text} TL;DR:'
+        
+        # BART 및 기타 모델은 변경사항 없음
+        
+        return text
+    
     def _tokenize_function(self, examples: Dict[str, List]) -> Dict[str, List]:
         """
         배치 토크나이징 함수

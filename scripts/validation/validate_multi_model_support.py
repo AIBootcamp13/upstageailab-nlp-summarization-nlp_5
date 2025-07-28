@@ -251,6 +251,15 @@ class MultiModelValidator:
             print_status("unsloth 라이브러리 미설치", "WARNING")
             self.warnings.append("unsloth 미설치 (선택사항)")
             unsloth_available = False
+        except NotImplementedError as e:
+            print_status("unsloth 라이브러리 설치됨 (GPU 비호환 환경)", "WARNING")
+            print_status(f"  → {str(e)}", "INFO")
+            self.warnings.append("unsloth GPU 비호환 환경 (Apple Silicon)")
+            unsloth_available = False
+        except Exception as e:
+            print_status(f"unsloth 확인 실패: {e}", "WARNING")
+            self.warnings.append(f"unsloth 확인 오류: {str(e)}")
+            unsloth_available = False
         
         # PyTorch 버전 확인
         try:
