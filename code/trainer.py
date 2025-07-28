@@ -922,8 +922,8 @@ class DialogueSummarizationTrainer:
             'run_name': self.experiment_name if wandb.run else None,
             'push_to_hub': False,
             'predict_with_generate': True,
-            'generation_max_length': self.config['generation']['max_length'],
-            'generation_num_beams': self.config['generation']['num_beams']
+            'generation_max_length': train_config.get('generation_max_length', self.config['tokenizer']['decoder_max_len']),
+            'generation_num_beams': train_config.get('generation_num_beams', 4)
         }
         
         # 시퀀스-투-시퀀스 특화 인자
