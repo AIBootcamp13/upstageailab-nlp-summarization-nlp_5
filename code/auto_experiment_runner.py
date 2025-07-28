@@ -46,7 +46,13 @@ class AutoExperimentRunner:
         self.output_dir = path_manager.ensure_dir(output_dir)
         
         # 디바이스 자동 감지
-        self.device = get_optimal_device()
+        device_tuple = get_optimal_device()
+        if isinstance(device_tuple, tuple):
+            self.device = device_tuple[0]  # torch.device 객체
+            self.device_info = device_tuple[1] if len(device_tuple) > 1 else None
+        else:
+            self.device = device_tuple
+            self.device_info = None
         
         # 실험 추적 초기화
         self.tracker = ExperimentTracker(f"{output_dir}/experiments")
@@ -57,6 +63,8 @@ class AutoExperimentRunner:
         
         print(f"🚀 자동 실험 실행기 초기화")
         print(f"   디바이스: {self.device}")
+        if self.device_info and hasattr(self.device_info, 'device_name'):
+            print(f"   GPU 정보: {self.device_info.device_name} ({self.device_info.memory_gb:.1f}GB)")
         print(f"   출력 디렉토리: {output_dir}")
     
     def _setup_logger(self) -> logging.Logger:
@@ -76,455 +84,339 @@ class AutoExperimentRunner:
         
         return logger
     
-    def discover_experiment_configs(self, config_dir: str = "config/experiments") -> List[Path]:
+    def run_experiments(self, 
+                       experiment_configs: List[str],
+                       dry_run: bool = False,
+                       continue_on_error: bool = True) -> Dict[str, Any]:
         """
-        실험 설정 파일들을 자동 발견
+        여러 실험을 순차적으로 실행
         
         Args:
-            config_dir: 실험 설정 디렉토리 (상대 경로)
+            experiment_configs: 실험 설정 파일 경로 리스트 (상대 경로)
+            dry_run: 실제 실행 없이 설정만 확인
+            continue_on_error: 오류 발생 시 다음 실험 계속 진행
             
         Returns:
-            발견된 YAML 설정 파일 목록
+            실험 결과 딕셔너리
         """
-        if Path(config_dir).is_absolute():
-            raise ValueError(f"설정 디렉토리는 상대 경로여야 합니다: {config_dir}")
+        results = {}
         
-        config_path = path_manager.resolve_path(config_dir)
+        for i, config_path in enumerate(experiment_configs):
+            try:
+                print(f"\n{'='*60}")
+                print(f"실험 {i+1}/{len(experiment_configs)}: {config_path}")
+                print(f"{'='*60}")
+                
+                # 상대 경로 확인
+                if Path(config_path).is_absolute():
+                    raise ValueError(f"설정 경로는 상대 경로여야 합니다: {config_path}")
+                
+                # 설정 로드
+                full_config = self._load_and_merge_config(config_path)
+                
+                # 디바이스 설정 적용
+                self._apply_device_config(full_config)
+                
+                if dry_run:
+                    print("\n[DRY RUN] 설정 내용:")
+                    print(json.dumps(full_config, indent=2, ensure_ascii=False))
+                    results[config_path] = {"status": "dry_run", "config": full_config}
+                    continue
+                
+                # 실험 실행
+                result = self._run_single_experiment(full_config, config_path)
+                results[config_path] = result
+                
+                # 실험 추적
+                self.tracker.log_experiment(
+                    experiment_name=Path(config_path).stem,
+                    config=full_config,
+                    results=result
+                )
+                
+                # 실험 간 대기 (GPU 메모리 정리 등)
+                if i < len(experiment_configs) - 1:
+                    print("\n다음 실험 준비 중...")
+                    time.sleep(5)
+                    
+            except Exception as e:
+                self.logger.error(f"실험 실행 중 오류 발생: {config_path}", exc_info=True)
+                results[config_path] = {"status": "error", "error": str(e)}
+                
+                if not continue_on_error:
+                    raise
         
-        if not config_path.exists():
-            self.logger.warning(f"설정 디렉토리가 없습니다: {config_dir}")
-            return []
+        # 전체 결과 요약
+        self._print_summary(results)
         
-        # YAML 파일 검색
-        yaml_files = []
-        for pattern in ['*.yaml', '*.yml']:
-            self.logger.info(f"  - {file.relative_to(path_manager.project_root)}")
-        
-        # 파일명으로 정렬 (실행 순서 보장)
-        yaml_files.sort(key=lambda x: x.name)
-        
-        self.logger.info(f"발견된 실험 설정: {len(yaml_files)}개")
-        for file in yaml_files:
-            self.logger.info(f"  - {file.relative_to(path_manager.project_root)}")
-        
-        return yaml_files
+        return results
     
-    def load_experiment_config(self, config_path: Path) -> Dict[str, Any]:
-        """
-        실험 설정 로딩 및 디바이스 최적화 적용
-        
-        Args:
-            config_path: 설정 파일 절대 경로
-            
-        Returns:
-            디바이스 최적화가 적용된 설정
-        """
-        # 상대 경로로 변환
-        relative_path = config_path.relative_to(path_manager.project_root)
-        
-        # 기본 설정 로딩
+    def _load_and_merge_config(self, config_path: str) -> Dict[str, Any]:
+        """기본 설정과 실험 설정을 병합"""
+        # 기본 설정 로드
         base_config = load_config(self.base_config_path)
         
-        # 실험별 설정 로딩
-        exp_config = load_config(config_path)
+        # 실험 설정 로드
+        exp_config_path = path_manager.resolve_path(config_path)
+        exp_config = load_config(exp_config_path)
         
         # 설정 병합 (실험 설정이 우선)
-        merged_config = self._merge_configs(base_config, exp_config)
+        merged = self._deep_merge(base_config, exp_config)
         
-        # 디바이스 최적화 적용
-        optimized_config = setup_device_config(merged_config)
-        
-        self.logger.info(f"설정 로딩 완료: {relative_path}")
-        self.logger.info(f"디바이스 최적화 적용: {self.device}")
-        
-        return optimized_config
+        return merged
     
-    def run_single_experiment(self, 
-                            config_path: Path, 
-                            experiment_name: Optional[str] = None) -> Dict[str, Any]:
-        """
-        단일 실험 실행
+    def _deep_merge(self, base: Dict, override: Dict) -> Dict:
+        """딕셔너리 깊은 병합"""
+        result = base.copy()
         
-        Args:
-            config_path: 설정 파일 경로
-            experiment_name: 실험 이름 (None이면 파일명 사용)
-            
-        Returns:
-            실험 결과 요약
-        """
-        if experiment_name is None:
-            experiment_name = config_path.stem
+        for key, value in override.items():
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                result[key] = self._deep_merge(result[key], value)
+            else:
+                result[key] = value
         
-        self.logger.info(f"실험 시작: {experiment_name}")
-        
-        try:
-            # 설정 로딩
-            config = self.load_experiment_config(config_path)
-            
-            # 실험 추적 시작
-            model_type = config.get('general', {}).get('model_type', 'seq2seq')
-            exp_id = self.tracker.start_experiment(
-                name=experiment_name,
-                description=f"자동 실험: {config_path.name}",
-                config=config,
-                model_type=model_type,
-                dataset_info={
-                    'train_size': config.get('dataset_info', {}).get('train_size', 'unknown'),
-                    'val_size': config.get('dataset_info', {}).get('val_size', 'unknown'),
-                    'test_size': config.get('dataset_info', {}).get('test_size', 'unknown')
-                },
-                wandb_run_id=config.get('wandb', {}).get('run_id')
-            )
-            
-            # 실제 학습 실행
-            result = self._execute_training(config, exp_id)
-            
-            # 실험 종료
-            final_metrics = {
-                'best_rouge_combined_f1': result.get('best_rouge_combined_f1', 0),
-                'training_time_minutes': result.get('training_time_minutes', 0),
-                'total_epochs': result.get('total_epochs', 0)
-            }
-            
-            experiment_summary = self.tracker.end_experiment(
-                exp_id, 
-                final_metrics, 
-                "completed"
-            )
-            
-            # 모델 등록 (성능이 좋은 경우)
-            if result.get('best_rouge_combined_f1', 0) > 0.3:  # 임계값
-                model_id = self.registry.register_model(
-                    name=f"{experiment_name}_model",
-                    architecture=config.get('model', {}).get('name', 'unknown'),
-                    config=config,
-                    performance=final_metrics,
-                    model_path=result.get('model_path', ''),
-                    experiment_id=exp_id
-                )
-                result['model_id'] = model_id
-            
-            self.logger.info(f"실험 완료: {experiment_name} (ROUGE: {final_metrics['best_rouge_combined_f1']:.4f})")
-            
-            return result
-            
-        except Exception as e:
-            self.logger.error(f"실험 실패: {experiment_name} - {e}")
-            
-            # 실패한 실험도 추적
-            try:
-                self.tracker.end_experiment(exp_id, {}, "failed")
-            except:
-                pass
-            
-            return {
-                'experiment_name': experiment_name,
-                'status': 'failed',
-                'error': str(e)
-            }
+        return result
     
-    def _execute_training(self, config: Dict[str, Any], exp_id: str) -> Dict[str, Any]:
-        """
-        실제 학습 실행 (trainer.py 호출)
-        
-        Args:
-            config: 실험 설정
-            exp_id: 실험 ID
+    def _apply_device_config(self, config: Dict[str, Any]) -> None:
+        """디바이스별 최적화 설정 적용"""
+        if not self.device_info:
+            return
             
-        Returns:
-            학습 결과
-        """
-        # 임시 설정 파일 생성
-        temp_config_path = self.output_dir / f"temp_config_{exp_id}.yaml"
+        # 모델 크기 추정
+        model_name = config.get('general', {}).get('model_name', '')
+        if 'large' in model_name.lower() or 'xl' in model_name.lower():
+            model_size = 'large'
+        elif 'small' in model_name.lower() or 'tiny' in model_name.lower():
+            model_size = 'small'
+        else:
+            model_size = 'base'
         
-        import yaml
-        with open(temp_config_path, 'w', encoding='utf-8') as f:
-            yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
+        # 최적화 설정 생성
+        opt_config = setup_device_config(self.device_info, model_size)
+        
+        # training 섹션에 적용
+        if 'training' not in config:
+            config['training'] = {}
+        
+        # 기존 설정을 유지하면서 디바이스 최적화 설정 추가
+        training_config = config['training']
+        opt_dict = opt_config.to_dict()
+        
+        for key, value in opt_dict.items():
+            if key not in training_config:
+                training_config[key] = value
+        
+        # 디바이스 정보 추가
+        config['device'] = str(self.device)
+        config['device_info'] = {
+            'type': self.device_info.device_type,
+            'name': self.device_info.device_name,
+            'memory_gb': self.device_info.memory_gb
+        } if hasattr(self.device_info, 'device_type') else None
+    
+    def _run_single_experiment(self, config: Dict[str, Any], config_path: str) -> Dict[str, Any]:
+        """단일 실험 실행"""
+        start_time = time.time()
         
         try:
             # trainer.py 실행
             cmd = [
                 sys.executable,
                 str(path_manager.resolve_path("code/trainer.py")),
-                "--config", str(temp_config_path.relative_to(path_manager.project_root)),
-                "--experiment-name", f"auto_exp_{exp_id[:8]}",
-                "--device", self.device
+                "--config", json.dumps(config),
+                "--experiment-name", Path(config_path).stem
             ]
             
-            start_time = time.time()
+            print(f"\n실행 명령: {' '.join(cmd[:3])}...")
             
-            # subprocess로 실행
-            result = subprocess.run(
+            # 프로세스 실행
+            process = subprocess.Popen(
                 cmd,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                cwd=path_manager.project_root,
-                timeout=7200  # 2시간 타임아웃
+                cwd=str(path_manager.project_root)
             )
             
-            end_time = time.time()
-            training_time = (end_time - start_time) / 60  # 분 단위
+            # 실시간 출력 (옵션)
+            for line in process.stdout:
+                print(line, end='')
             
-            if result.returncode == 0:
-                # 성공 시 결과 파싱
-                return self._parse_training_result(result.stdout, training_time)
+            # 프로세스 종료 대기
+            process.wait()
+            
+            # 결과 수집
+            if process.returncode == 0:
+                # 성공 - 결과 파일 읽기
+                result = self._collect_results(config, Path(config_path).stem)
+                result['status'] = 'success'
+                result['duration'] = time.time() - start_time
             else:
-                raise RuntimeError(f"Training failed: {result.stderr}")
-        
-        finally:
-            # 임시 파일 정리
-            if temp_config_path.exists():
-                temp_config_path.unlink()
-    
-    def _parse_training_result(self, stdout: str, training_time: float) -> Dict[str, Any]:
-        """학습 결과 파싱"""
-        # 간단한 결과 파싱 (실제로는 더 정교하게 구현)
-        result = {
-            'training_time_minutes': training_time,
-            'status': 'completed'
-        }
-        
-        # ROUGE 점수 추출 (로그에서)
-        lines = stdout.split('\n')
-        for line in lines:
-            if 'rouge_combined_f1' in line.lower():
-                try:
-                    # 예: "ROUGE Combined F1: 0.4567"
-                    score = float(line.split(':')[-1].strip())
-                    result['best_rouge_combined_f1'] = score
-                except:
-                    pass
+                # 실패
+                stderr = process.stderr.read()
+                result = {
+                    'status': 'failed',
+                    'return_code': process.returncode,
+                    'error': stderr,
+                    'duration': time.time() - start_time
+                }
+                
+        except Exception as e:
+            result = {
+                'status': 'error',
+                'error': str(e),
+                'duration': time.time() - start_time
+            }
         
         return result
     
-    def _merge_configs(self, base_config: Dict[str, Any], exp_config: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        두 설정을 병합 (실험 설정이 우선)
-        
-        Args:
-            base_config: 기본 설정
-            exp_config: 실험별 설정
-            
-        Returns:
-            병합된 설정
-        """
-        import copy
-        merged = copy.deepcopy(base_config)
-        
-        def deep_merge(target: Dict, source: Dict):
-            for key, value in source.items():
-                if key in target and isinstance(target[key], dict) and isinstance(value, dict):
-                    deep_merge(target[key], value)
-                else:
-                    target[key] = value
-        
-        deep_merge(merged, exp_config)
-        return merged
-    
-    def run_all_experiments(self, 
-                          config_dir: str = "config/experiments",
-                          max_parallel: int = 1) -> Dict[str, Any]:
-        """
-        모든 실험 순차 실행
-        
-        Args:
-            config_dir: 실험 설정 디렉토리 (상대 경로)
-            max_parallel: 최대 병렬 실행 수 (현재는 1만 지원)
-            
-        Returns:
-            전체 실험 결과 요약
-        """
-        print(f"🔍 실험 설정 검색 중: {config_dir}")
-        config_files = self.discover_experiment_configs(config_dir)
-        
-        if not config_files:
-            print(f"❌ 실험 설정 파일이 없습니다: {config_dir}")
-            return {'status': 'no_configs', 'results': []}
-        
-        print(f"📋 총 {len(config_files)}개 실험을 순차 실행합니다")
-        
-        overall_start_time = time.time()
-        all_results = []
-        
-        for i, config_file in enumerate(config_files, 1):
-            print(f"\n🚀 실험 {i}/{len(config_files)}: {config_file.name}")
-            
-            experiment_name = f"{i:02d}_{config_file.stem}"
-            result = self.run_single_experiment(config_file, experiment_name)
-            all_results.append(result)
-            
-            # 실험 간 휴식 (리소스 정리)
-            if i < len(config_files):
-                print("⏱️ 다음 실험 준비 중... (30초 대기)")
-                time.sleep(30)
-        
-        overall_end_time = time.time()
-        total_time = (overall_end_time - overall_start_time) / 3600  # 시간 단위
-        
-        # 전체 결과 요약
-        summary = self._generate_experiment_summary(all_results, total_time)
-        
-        # 결과 저장
-        summary_file = self.output_dir / "experiment_summary.json"
-        with open(summary_file, 'w', encoding='utf-8') as f:
-            json.dump(summary, f, ensure_ascii=False, indent=2)
-        
-        print(f"\n🎉 모든 실험 완료!")
-        print(f"⏱️ 총 소요 시간: {total_time:.2f}시간")
-        print(f"📄 결과 요약: {summary_file.relative_to(path_manager.project_root)}")
-        
-        return summary
-    
-    def _generate_experiment_summary(self, 
-                                   results: List[Dict[str, Any]], 
-                                   total_time: float) -> Dict[str, Any]:
-        """전체 실험 결과 요약 생성"""
-        successful_results = [r for r in results if r.get('status') != 'failed']
-        failed_results = [r for r in results if r.get('status') == 'failed']
-        
-        summary = {
-            'execution_info': {
-                'total_experiments': len(results),
-                'successful_experiments': len(successful_results),
-                'failed_experiments': len(failed_results),
-                'total_time_hours': total_time,
-                'device_used': self.device,
-                'execution_date': datetime.now().isoformat()
-            },
-            'performance_summary': {},
-            'best_experiment': None,
-            'all_results': results
+    def _collect_results(self, config: Dict[str, Any], experiment_name: str) -> Dict[str, Any]:
+        """실험 결과 수집"""
+        results = {
+            'experiment_name': experiment_name,
+            'model_name': config.get('general', {}).get('model_name', 'unknown')
         }
         
-        # 성능 요약
-        if successful_results:
-            rouge_scores = [r.get('best_rouge_combined_f1', 0) for r in successful_results]
-            
-            summary['performance_summary'] = {
-                'best_rouge_score': max(rouge_scores),
-                'average_rouge_score': sum(rouge_scores) / len(rouge_scores),
-                'worst_rouge_score': min(rouge_scores)
-            }
-            
-            # 최고 성능 실험 찾기
-            best_idx = rouge_scores.index(max(rouge_scores))
-            summary['best_experiment'] = successful_results[best_idx]
+        # 결과 파일 경로
+        output_dir = Path(config.get('training', {}).get('output_dir', 'outputs'))
         
-        return summary
+        # 메트릭 파일 읽기
+        metrics_file = output_dir / 'eval_results.json'
+        if metrics_file.exists():
+            with open(metrics_file, 'r') as f:
+                metrics = json.load(f)
+                results['metrics'] = metrics
+        
+        # 베스트 모델 정보
+        checkpoint_dirs = list(output_dir.glob('checkpoint-*'))
+        if checkpoint_dirs:
+            results['best_checkpoint'] = str(max(checkpoint_dirs, key=lambda p: p.stat().st_mtime))
+        
+        return results
     
-    def create_sample_configs(self, output_dir: str = "config/experiments"):
-        """샘플 실험 설정 파일들 생성"""
-        if Path(output_dir).is_absolute():
-            raise ValueError(f"출력 디렉토리는 상대 경로여야 합니다: {output_dir}")
+    def _print_summary(self, results: Dict[str, Dict[str, Any]]) -> None:
+        """실험 결과 요약 출력"""
+        print("\n" + "="*60)
+        print("실험 결과 요약")
+        print("="*60)
         
-        config_dir = path_manager.ensure_dir(output_dir)
+        success_count = sum(1 for r in results.values() if r.get('status') == 'success')
+        total_count = len(results)
         
-        sample_configs = {
-            "01_baseline.yaml": {
-                "experiment_name": "baseline",
-                "model": {"name": "gogamza/kobart-base-v2"},
-                "training": {
-                    "learning_rate": 0.0001,
-                    "per_device_train_batch_size": 8,
-                    "num_train_epochs": 5
-                }
-            },
-            "02_high_lr.yaml": {
-                "experiment_name": "high_learning_rate",
-                "model": {"name": "gogamza/kobart-base-v2"},
-                "training": {
-                    "learning_rate": 0.0005,
-                    "per_device_train_batch_size": 8,
-                    "num_train_epochs": 5
-                }
-            },
-            "03_large_batch.yaml": {
-                "experiment_name": "large_batch_size",
-                "model": {"name": "gogamza/kobart-base-v2"},
-                "training": {
-                    "learning_rate": 0.0001,
-                    "per_device_train_batch_size": 16,
-                    "num_train_epochs": 5
-                }
-            },
-            "04_longer_training.yaml": {
-                "experiment_name": "longer_training",
-                "model": {"name": "gogamza/kobart-base-v2"},
-                "training": {
-                    "learning_rate": 0.0001,
-                    "per_device_train_batch_size": 8,
-                    "num_train_epochs": 10
-                }
-            }
-        }
+        print(f"\n총 실험: {total_count}")
+        print(f"성공: {success_count}")
+        print(f"실패: {total_count - success_count}")
         
-        import yaml
-        for filename, config in sample_configs.items():
-            file_path = config_dir / filename
-            with open(file_path, 'w', encoding='utf-8') as f:
-                yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
-            
-            print(f"✅ 샘플 설정 생성: {file_path.relative_to(path_manager.project_root)}")
+        # 성공한 실험의 메트릭 비교
+        print("\n메트릭 비교:")
+        print(f"{'실험명':<30} {'ROUGE-1':<10} {'ROUGE-2':<10} {'ROUGE-L':<10}")
+        print("-" * 60)
         
-        print(f"\n📁 총 {len(sample_configs)}개 샘플 설정 파일 생성 완료")
-        print(f"🚀 실행 방법: python code/auto_experiment_runner.py --run-all")
+        for config_path, result in results.items():
+            exp_name = Path(config_path).stem[:30]
+            if result.get('status') == 'success' and 'metrics' in result:
+                metrics = result['metrics']
+                rouge1 = metrics.get('eval_rouge1', 0)
+                rouge2 = metrics.get('eval_rouge2', 0)
+                rougeL = metrics.get('eval_rougeL', 0)
+                print(f"{exp_name:<30} {rouge1:<10.4f} {rouge2:<10.4f} {rougeL:<10.4f}")
+            else:
+                status = result.get('status', 'unknown')
+                print(f"{exp_name:<30} {status}")
+        
+        # 최고 성능 모델
+        best_model = None
+        best_score = 0
+        
+        for config_path, result in results.items():
+            if result.get('status') == 'success' and 'metrics' in result:
+                metrics = result['metrics']
+                score = (metrics.get('eval_rouge1', 0) + 
+                        metrics.get('eval_rouge2', 0) + 
+                        metrics.get('eval_rougeL', 0)) / 3
+                if score > best_score:
+                    best_score = score
+                    best_model = Path(config_path).stem
+        
+        if best_model:
+            print(f"\n최고 성능 모델: {best_model} (평균 ROUGE: {best_score:.4f})")
+    
+    def run_single_config(self, config_path: str, dry_run: bool = False) -> Dict[str, Any]:
+        """단일 설정 파일로 실험 실행"""
+        return self.run_experiments([config_path], dry_run=dry_run)
 
 
 def main():
-    """CLI 인터페이스"""
+    """CLI 진입점"""
     import argparse
     
     parser = argparse.ArgumentParser(description="자동 실험 실행 시스템")
-    parser.add_argument('--base-config', default="config/base_config.yaml",
-                       help='기본 설정 파일 경로 (상대 경로)')
-    parser.add_argument('--config-dir', default="config/experiments",
-                       help='실험 설정 디렉토리 (상대 경로)')
-    parser.add_argument('--output-dir', default="outputs/auto_experiments",
-                       help='결과 저장 디렉토리 (상대 경로)')
-    parser.add_argument('--run-all', action='store_true',
-                       help='모든 실험 순차 실행')
-    parser.add_argument('--create-samples', action='store_true',
-                       help='샘플 설정 파일들 생성')
-    parser.add_argument('--experiment', type=str,
-                       help='특정 실험 하나만 실행 (파일명)')
+    parser.add_argument(
+        '--config', '-c',
+        type=str,
+        nargs='+',
+        help='실험 설정 파일 경로 (상대 경로, 여러 개 가능)'
+    )
+    parser.add_argument(
+        '--base-config',
+        type=str,
+        default='config/base_config.yaml',
+        help='기본 설정 파일 경로 (기본값: config/base_config.yaml)'
+    )
+    parser.add_argument(
+        '--output-dir',
+        type=str,
+        default='outputs/auto_experiments',
+        help='실험 결과 저장 디렉토리 (기본값: outputs/auto_experiments)'
+    )
+    parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help='실제 실행 없이 설정만 확인'
+    )
+    parser.add_argument(
+        '--stop-on-error',
+        action='store_true',
+        help='오류 발생 시 중단 (기본값: 계속 진행)'
+    )
     
     args = parser.parse_args()
     
-    try:
-        runner = AutoExperimentRunner(
-            base_config_path=args.base_config,
-            output_dir=args.output_dir
-        )
-        
-        if args.create_samples:
-            runner.create_sample_configs(args.config_dir)
-        
-        elif args.run_all:
-            runner.run_all_experiments(args.config_dir)
-        
-        elif args.experiment:
-            # 경로가 이미 전체 경로인 경우 처리
-            if '/' in args.experiment:
-                config_path = path_manager.resolve_path(args.experiment)
-            else:
-                config_path = path_manager.resolve_path(f"{args.config_dir}/{args.experiment}")
-            
-            if not config_path.exists():
-                print(f"❌ 설정 파일을 찾을 수 없습니다: {config_path}")
-                return 1
-            
-            result = runner.run_single_experiment(config_path)
-            print(f"실험 결과: {result}")
-        
-        else:
-            print("❌ 실행할 작업을 지정하세요 (--run-all, --create-samples, --experiment)")
-            return 1
-        
-        return 0
-        
-    except Exception as e:
-        print(f"❌ 실행 실패: {e}")
-        return 1
+    if not args.config:
+        # 기본 실험 세트
+        default_configs = [
+            "config/experiments/01_baseline.yaml",
+            "config/experiments/02_simple_augmentation.yaml",
+            "config/experiments/03_high_learning_rate.yaml"
+        ]
+        print(f"설정 파일이 지정되지 않았습니다. 기본 실험을 실행합니다:")
+        for config in default_configs:
+            print(f"  - {config}")
+        args.config = default_configs
+    
+    # 실행기 초기화
+    runner = AutoExperimentRunner(
+        base_config_path=args.base_config,
+        output_dir=args.output_dir
+    )
+    
+    # 실험 실행
+    results = runner.run_experiments(
+        experiment_configs=args.config,
+        dry_run=args.dry_run,
+        continue_on_error=not args.stop_on_error
+    )
+    
+    # 결과 저장
+    if not args.dry_run:
+        result_file = Path(args.output_dir) / f"experiment_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        with open(result_file, 'w') as f:
+            json.dump(results, f, indent=2, ensure_ascii=False)
+        print(f"\n실험 결과 저장: {result_file}")
+    
+    # 성공 여부 반환
+    success_count = sum(1 for r in results.values() if r.get('status') == 'success')
+    return 0 if success_count == len(results) else 1
 
 
 if __name__ == "__main__":
