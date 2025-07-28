@@ -887,7 +887,7 @@ class DialogueSummarizationTrainer:
             'overwrite_output_dir': True,
             'do_train': True,
             'do_eval': True,
-            'evaluation_strategy': train_config.get('evaluation_strategy', 'steps'),
+            'eval_strategy': train_config.get('evaluation_strategy', 'steps'),
             'eval_steps': train_config.get('eval_steps', 500),
             'save_strategy': train_config.get('save_strategy', 'steps'),
             'save_steps': train_config.get('save_steps', 500),
