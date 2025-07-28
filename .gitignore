@@ -81,12 +81,12 @@ Thumbs.db
 .cache/
 
 # Experiment results
-experiments/
-experiment_results/
-sweep_results/
-parallel_sweep_results/
-all_sweep_results/
-snapshots/
+/experiments/
+/experiment_results/
+/sweep_results/
+/parallel_sweep_results/
+/all_sweep_results/
+/snapshots/
 
 # Config overrides (local settings)
 config_local.yaml
