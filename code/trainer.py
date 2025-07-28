@@ -259,9 +259,8 @@ class DialogueSummarizationTrainer:
         
         # ROUGE 계산기 초기화
         self.rouge_calculator = RougeCalculator(
-            tokenizer=self.tokenizer,
-            use_stemmer=self.config.get('evaluation', {}).get('rouge_use_stemmer', True),
-            tokenize_korean=self.config.get('evaluation', {}).get('rouge_tokenize_korean', True)
+            use_korean_tokenizer=self.config.get('evaluation', {}).get('rouge_tokenize_korean', True),
+            use_stemmer=self.config.get('evaluation', {}).get('rouge_use_stemmer', True)
         )
         
         logger.info("All components initialized successfully")
