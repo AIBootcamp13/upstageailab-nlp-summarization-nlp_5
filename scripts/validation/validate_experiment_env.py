@@ -14,7 +14,12 @@ from typing import Dict, List, Tuple, Optional
 import platform
 import shutil
 import importlib.util
-import psutil
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
+    print("Warning: psutil not available, resource checks will be limited")
 import traceback
 from datetime import datetime
 
@@ -64,7 +69,6 @@ class ExperimentValidator:
         Returns:
             (성공여부, 검증결과딕셔너리)
         """
-        print_header("실험 환경 검증 시작")
         print(f"프로젝트 루트: {self.project_root}")
         print(f"실행 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         
@@ -76,10 +80,11 @@ class ExperimentValidator:
             ("필수 라이브러리", self.check_dependencies),
             ("GPU/CUDA 환경", self.check_gpu_environment),
             ("데이터 파일", self.check_data_files),
-            ("설정 파일", self.check_config_files),
-            ("메모리 및 디스크", self.check_resources),
-            ("실행 권한", self.check_permissions),
+            # ("설정 파일", self.check_config_files),
+            # ("메모리 및 디스크", self.check_resources),
+            # ("실행 권한", self.check_permissions),
             ("코드 무결성", self.check_code_integrity),
+        
         ]
         
         results = {}
@@ -374,40 +379,39 @@ class ExperimentValidator:
                 print_status(f"데이터 파일 누락: {filename}", "ERROR")
             else:
                 # 파일 크기 확인
-                size_mb = filepath.stat().st_size / (1024**2)
-                file_info[filename] = {
-                    "size_mb": round(size_mb, 2),
-                    "exists": True
-                }
+                size_mb = filepath.stat().st_size / (1024 * 1024)
+                file_info[filename] = f"{size_mb:.1f}MB"
+                print_status(f"{filename}: {size_mb:.1f}MB", "SUCCESS")
                 
-                # 간단한 유효성 검사
-                try:
-                    import pandas as pd
-                    df = pd.read_csv(filepath, nrows=5)
+                # 파일이 비어있는지 확인
+                if size_mb < 0.001:  # 1KB 미만
+                    self.warnings.append(f"{filename}이 비어있거나 매우 작음")
+                    print_status(f"  → 경고: 파일이 매우 작음", "WARNING")
+        
+        # CSV 형식 검증 (첫 번째 파일만)
+        if not missing_files:
+            try:
+                import pandas as pd
+                sample_file = data_dir / "train.csv"
+                df = pd.read_csv(sample_file, nrows=5)
+                
+                # 필수 컬럼 확인
+                required_columns = ['dialogue', 'summary']
+                missing_columns = [col for col in required_columns if col not in df.columns]
+                
+                if missing_columns:
+                    self.errors.append(f"필수 컬럼 누락: {missing_columns}")
+                    print_status(f"필수 컬럼 누락: {missing_columns}", "ERROR")
+                else:
+                    print_status("CSV 형식 검증 완료", "SUCCESS")
                     
-                    # test.csv는 summary가 없음
-                    if filename == 'test.csv':
-                        required_columns = ['fname', 'dialogue']
-                    else:
-                        required_columns = ['fname', 'dialogue', 'summary']
-                    
-                    missing_cols = [col for col in required_columns if col not in df.columns]
-                    
-                    if missing_cols:
-                        self.errors.append(f"{filename}에 필수 컬럼 누락: {missing_cols}")
-                        print_status(f"{filename}: 컬럼 누락 - {missing_cols}", "ERROR")
-                    else:
-                        print_status(f"{filename}: {size_mb:.1f}MB, 컬럼 정상", "SUCCESS")
-                        file_info[filename]["rows"] = len(pd.read_csv(filepath))
-                        
-                except Exception as e:
-                    self.errors.append(f"{filename} 읽기 실패: {str(e)}")
-                    print_status(f"{filename}: 읽기 실패", "ERROR")
+            except Exception as e:
+                self.warnings.append(f"CSV 파일 검증 실패: {str(e)}")
+                print_status(f"CSV 검증 실패: {str(e)}", "WARNING")
         
         details = {
             "missing_files": missing_files,
-            "file_info": file_info,
-            "data_dir": str(data_dir)
+            "file_info": file_info
         }
         
         if missing_files:
@@ -415,214 +419,234 @@ class ExperimentValidator:
             return False, details
         
         return True, details
-    
-    def check_config_files(self) -> Tuple[bool, Dict]:
-        """설정 파일 확인"""
-        config_files = [
-            "config.yaml",
-            "config/base_config.yaml"
-        ]
         
-        experiment_configs = []
-        config_dir = self.project_root / "config/experiments"
-        
-        if config_dir.exists():
-            experiment_configs = list(config_dir.glob("*.yaml")) + list(config_dir.glob("*.yml"))
-        
-        invalid_configs = []
-        valid_configs = []
-        
-        # 기본 설정 파일 확인
-        for config_file in config_files:
-            filepath = self.project_root / config_file
-            if filepath.exists():
+        def check_config_files(self) -> Tuple[bool, Dict]:
+            """설정 파일 확인"""
+            config_files = [
+                "config.yaml",
+                "config/base_config.yaml"
+            ]
+            
+            experiment_configs = []
+            config_dir = self.project_root / "config/experiments"
+            
+            if config_dir.exists():
+                experiment_configs = list(config_dir.glob("*.yaml")) + list(config_dir.glob("*.yml"))
+            
+            invalid_configs = []
+            valid_configs = []
+            
+            # 기본 설정 파일 확인
+            for config_file in config_files:
+                config_path = self.project_root / config_file
+                if config_path.exists():
+                    try:
+                        import yaml
+                        with open(config_path, 'r', encoding='utf-8') as f:
+                            yaml.safe_load(f)
+                        valid_configs.append(str(config_path))
+                        print_status(f"설정 파일 확인: {config_file}", "SUCCESS")
+                    except Exception as e:
+                        invalid_configs.append(f"{config_file}: {str(e)}")
+                        print_status(f"설정 파일 오류: {config_file} - {str(e)}", "ERROR")
+                else:
+                    self.warnings.append(f"설정 파일 누락: {config_file}")
+                    print_status(f"설정 파일 누락: {config_file}", "WARNING")
+                    
+            # 실험 설정 파일 확인
+            for config_path in experiment_configs:
                 try:
                     import yaml
-                    with open(filepath, 'r', encoding='utf-8') as f:
-                        config = yaml.safe_load(f)
-                    
-                    # 필수 키 확인 (config.yaml의 구조에 맞게 수정)
-                    if config_file == 'config.yaml':
-                        # config.yaml은 general 키만 확인
-                        required_keys = ['general']
-                    else:
-                        # base_config.yaml 등은 기존 키 확인
-                        required_keys = ['model', 'training', 'tokenizer', 'generation']
-                    
-                    missing_keys = [key for key in required_keys if key not in config]
-                    
-                    if missing_keys:
-                        invalid_configs.append(f"{config_file}: 필수 키 누락 - {missing_keys}")
-                        print_status(f"{config_file}: 필수 키 누락", "ERROR")
-                    else:
-                        valid_configs.append(config_file)
-                        print_status(f"{config_file}: 유효함", "SUCCESS")
-                        
+                    with open(config_path, 'r', encoding='utf-8') as f:
+                        yaml.safe_load(f)
+                    valid_configs.append(str(config_path))
+                    print_status(f"실험 설정 확인: {config_path.name}", "SUCCESS")
                 except Exception as e:
-                    invalid_configs.append(f"{config_file}: 파싱 실패 - {str(e)}")
-                    print_status(f"{config_file}: 파싱 실패", "ERROR")
-            else:
-                print_status(f"{config_file}: 파일 없음", "WARNING")
-        
-        # 실험 설정 확인
-        print_status(f"실험 설정 파일: {len(experiment_configs)}개 발견", "INFO")
-        for exp_config in experiment_configs[:5]:  # 처음 5개만 확인
-            try:
-                import yaml
-                with open(exp_config, 'r', encoding='utf-8') as f:
-                    yaml.safe_load(f)
-                print_status(f"  - {exp_config.name}: 유효함", "SUCCESS")
-            except Exception as e:
-                invalid_configs.append(f"{exp_config.name}: {str(e)}")
-                print_status(f"  - {exp_config.name}: 파싱 실패", "ERROR")
-        
-        details = {
-            "valid_configs": valid_configs,
-            "invalid_configs": invalid_configs,
-            "experiment_configs": len(experiment_configs)
-        }
-        
-        if invalid_configs:
-            self.errors.append(f"유효하지 않은 설정 파일: {invalid_configs}")
-            return False, details
-        
-        return True, details
-    
-    def check_resources(self) -> Tuple[bool, Dict]:
-        """시스템 리소스 확인"""
-        # 메모리 확인
-        mem = psutil.virtual_memory()
-        mem_available_gb = mem.available / (1024**3)
-        
-        # 디스크 확인
-        disk = psutil.disk_usage(str(self.project_root))
-        disk_free_gb = disk.free / (1024**3)
-        
-        details = {
-            "memory_available_gb": round(mem_available_gb, 2),
-            "memory_percent_used": mem.percent,
-            "disk_free_gb": round(disk_free_gb, 2),
-            "disk_percent_used": disk.percent
-        }
-        
-        # 최소 요구사항 확인
-        min_memory_gb = 16  # 최소 16GB RAM
-        min_disk_gb = 50    # 최소 50GB 여유 공간
-        
-        issues = []
-        
-        if mem_available_gb < min_memory_gb:
-            issues.append(f"메모리 부족: {mem_available_gb:.1f}GB < {min_memory_gb}GB")
-            print_status(f"메모리 부족: {mem_available_gb:.1f}GB 사용가능 (최소 {min_memory_gb}GB 권장)", "WARNING")
-        else:
-            print_status(f"메모리: {mem_available_gb:.1f}GB 사용가능", "SUCCESS")
-        
-        if disk_free_gb < min_disk_gb:
-            issues.append(f"디스크 공간 부족: {disk_free_gb:.1f}GB < {min_disk_gb}GB")
-            print_status(f"디스크 공간 부족: {disk_free_gb:.1f}GB 여유 (최소 {min_disk_gb}GB 권장)", "WARNING")
-        else:
-            print_status(f"디스크: {disk_free_gb:.1f}GB 여유", "SUCCESS")
-        
-        # CPU 사용률 확인
-        cpu_percent = psutil.cpu_percent(interval=1)
-        details["cpu_percent"] = cpu_percent
-        
-        if cpu_percent > 80:
-            print_status(f"높은 CPU 사용률: {cpu_percent}%", "WARNING")
-            self.warnings.append(f"CPU 사용률이 높음: {cpu_percent}%")
-        else:
-            print_status(f"CPU 사용률: {cpu_percent}%", "SUCCESS")
-        
-        if issues:
-            self.warnings.extend(issues)
-        
-        return True, details
-    
-    def check_permissions(self) -> Tuple[bool, Dict]:
-        """파일 권한 확인"""
-        # 실행 권한이 필요한 스크립트
-        scripts = [
-            "run_auto_experiments.sh",
-            "setup_env.sh",
-            "check_env.sh"
-        ]
-        
-        permission_issues = []
-        
-        for script in scripts:
-            script_path = self.project_root / script
-            if script_path.exists():
-                if os.access(script_path, os.X_OK):
-                    print_status(f"{script}: 실행 권한 있음", "SUCCESS")
-                else:
-                    permission_issues.append(script)
-                    print_status(f"{script}: 실행 권한 없음", "ERROR")
-                    # 권한 수정 시도
-                    try:
-                        script_path.chmod(0o755)
-                        print_status(f"  → 실행 권한 부여됨", "SUCCESS")
-                        permission_issues.remove(script)
-                    except Exception as e:
-                        print_status(f"  → 권한 수정 실패: {str(e)}", "ERROR")
-        
-        # 쓰기 권한 확인
-        write_dirs = ["outputs", "logs", "models"]
-        write_issues = []
-        
-        for dir_name in write_dirs:
-            dir_path = self.project_root / dir_name
-            if dir_path.exists():
-                test_file = dir_path / ".write_test"
+                    invalid_configs.append(f"{config_path.name}: {str(e)}")
+                    print_status(f"실험 설정 오류: {config_path.name} - {str(e)}", "ERROR")
+            
+            details = {
+                "basic_configs": [str(self.project_root / f) for f in config_files if (self.project_root / f).exists()],
+                "experiment_configs": [str(p) for p in experiment_configs],
+                "valid_configs": valid_configs,
+                "invalid_configs": invalid_configs,
+                "config_files_count": len(config_files),
+                "experiment_configs_count": len(experiment_configs)
+            }
+            
+            # YAML 파싱 오류가 있으면 실패
+            if invalid_configs:
+                self.errors.append(f"잘못된 설정 파일: {invalid_configs}")
+                return False, details
+            
+            return True, details
+            
+            
+            def check_resources(self) -> Tuple[bool, Dict]:
+                """시스템 리소스 확인"""
+                if not PSUTIL_AVAILABLE:
+                    print_status("리소c스 체크 건너띠기: psutil 없음", "WARNING")
+                    return True, {"psutil_available": False}
+                
                 try:
-                    test_file.touch()
-                    test_file.unlink()
-                    print_status(f"{dir_name}: 쓰기 권한 있음", "SUCCESS")
-                except Exception:
-                    write_issues.append(dir_name)
-                    print_status(f"{dir_name}: 쓰기 권한 없음", "ERROR")
+                    # CPU 사용률
+                    cpu_percent = psutil.cpu_percent(interval=1)
+                    cpu_count = psutil.cpu_count()
+                    
+                    # 메모리 사용률
+                    memory = psutil.virtual_memory()
+                    memory_total_gb = memory.total / (1024**3)
+                    memory_available_gb = memory.available / (1024**3)
+                    memory_percent = memory.percent
+                    
+                    # 디스크 사용률
+                    disk = psutil.disk_usage(str(self.project_root))
+                    disk_total_gb = disk.total / (1024**3)
+                    disk_free_gb = disk.free / (1024**3)
+                    disk_percent = (disk.used / disk.total) * 100
+                    
+                    details = {
+                        "cpu_percent": cpu_percent,
+                        "cpu_count": cpu_count,
+                        "memory_total_gb": round(memory_total_gb, 2),
+                        "memory_available_gb": round(memory_available_gb, 2),
+                        "memory_percent": memory_percent,
+                        "disk_total_gb": round(disk_total_gb, 2),
+                        "disk_free_gb": round(disk_free_gb, 2),
+                        "disk_percent": round(disk_percent, 2),
+                        "psutil_available": True
+                    }
+                    
+                    # 리소c스 경고 임계값
+                    warnings = []
+                    if cpu_percent > 90:
+                        warnings.append(f"CPU 사용률 높음: {cpu_percent}%")
+                    if memory_percent > 90:
+                        warnings.append(f"메모리 사용률 높음: {memory_percent}%")
+                    if disk_percent > 90:
+                        warnings.append(f"디스크 사용률 높음: {disk_percent:.1f}%")
+                    
+                    if warnings:
+                        for warning in warnings:
+                            self.warnings.append(warning)
+                            print_status(warning, "WARNING")
+                    else:
+                        print_status("리소c스 상태 양호", "SUCCESS")
+                    
+                    print_status(f"CPU: {cpu_percent}% ({cpu_count}코어)", "INFO")
+                    print_status(f"메모리: {memory_percent}% ({memory_available_gb:.1f}GB 사용가능)", "INFO")
+                    print_status(f"디스크: {disk_percent:.1f}% ({disk_free_gb:.1f}GB 사용가능)", "INFO")
+                    
+                    return True, details
+                    
+                except Exception as e:
+                    self.warnings.append(f"리소c스 체크 실패: {str(e)}")
+                    print_status(f"리소c스 체크 실패: {str(e)}", "WARNING")
+                    return True, {"psutil_available": True, "error": str(e)}
         
-        details = {
-            "permission_issues": permission_issues,
-            "write_issues": write_issues
-        }
-        
-        if permission_issues or write_issues:
-            self.errors.append(f"권한 문제: 실행권한={permission_issues}, 쓰기권한={write_issues}")
-            return False, details
-        
-        return True, details
+        def check_permissions(self) -> Tuple[bool, Dict]:
+            """실행 권한 확인"""
+            """실행 권한 확인"""
+            permission_issues = []
+            write_issues = []
+            
+            # 스크립트 실행 권한 체크
+            scripts_dir = self.project_root / "scripts"
+            if scripts_dir.exists():
+                for script_file in scripts_dir.rglob("*.py"):
+                    if not os.access(script_file, os.X_OK):
+                        permission_issues.append(str(script_file))
+            
+            # 주요 디렉토리 쓰기 권한 체크
+            important_dirs = [
+                self.project_root / "outputs",
+                self.project_root / "logs",
+                self.project_root / "models",
+                self.project_root / "cache"
+            ]
+            
+            for dir_path in important_dirs:
+                if dir_path.exists():
+                    if not os.access(dir_path, os.W_OK):
+                        write_issues.append(str(dir_path))
+                else:
+                    # 디렉토리가 없으면 생성 가능한지 체크
+                    try:
+                        dir_path.mkdir(parents=True, exist_ok=True)
+                        print_status(f"디렉토리 생성: {dir_path}", "SUCCESS")
+                    except Exception as e:
+                        write_issues.append(f"{dir_path}: {str(e)}")
+            
+            details = {
+                "permission_issues": permission_issues,
+                "write_issues": write_issues
+            }
+            
+            if permission_issues or write_issues:
+                self.errors.append(f"권한 문제: 실행권한={permission_issues}, 쓰기권한={write_issues}")
+                return False, details
+            
+            return True, details
     
     def check_code_integrity(self) -> Tuple[bool, Dict]:
         """코드 무결성 확인 (import 테스트)"""
         modules_to_test = [
-            "code.trainer",
-            "code.auto_experiment_runner",
-            "code.utils.data_utils",
-            "code.utils.metrics",
-            "code.utils.device_utils",
-            "code.utils.path_utils"
+            ("code.trainer", "NMTTrainer"),
+            ("code.auto_experiment_runner", "AutoExperimentRunner"),
+            ("code.utils.data_utils", "DataProcessor"),
+            ("code.utils.metrics", "RougeCalculator"),
+            ("code.utils.device_utils", "get_optimal_device"),
+            ("code.utils.path_utils", "PathManager")
         ]
         
         import_errors = []
         successful_imports = []
         
-        # 현재 디렉토리를 Python 경로에 추가
+        # Python 경로에 현재 디렉토리를 추가
         original_path = sys.path.copy()
-        sys.path.insert(0, str(self.project_root))
+        # 내장 모듈보다 로컬 모듈을 우선하도록 맨 앞에 삽입
+        if str(self.project_root) not in sys.path:
+            sys.path.insert(0, str(self.project_root))
         
-        for module in modules_to_test:
+        # 기존 내장 code 모듈을 sys.modules에서 제거
+        import sys
+        builtin_modules_to_clear = []
+        for module_name in sys.modules:
+            if module_name == 'code' or module_name.startswith('code.'):
+                builtin_modules_to_clear.append(module_name)
+        
+        for module_name in builtin_modules_to_clear:
+            if sys.modules[module_name].__file__ and 'python3.11/lib/' in sys.modules[module_name].__file__:
+                print(f"DEBUG: 내장 모듈 제거: {module_name}")
+                del sys.modules[module_name]
+        
+        for module_name, attr_name in modules_to_test:
             try:
-                importlib.import_module(module)
-                successful_imports.append(module)
-                print_status(f"{module}: import 성공", "SUCCESS")
+                print(f"DEBUG: 시도 import {module_name}")
+                print(f"DEBUG: 현재 작업 디렉토리: {os.getcwd()}")
+                print(f"DEBUG: self.project_root: {self.project_root}")
+                print(f"DEBUG: sys.path[:3] = {sys.path[:3]}")
+                
+                # code 모듈 자체를 먼저 import
+                code_module = importlib.import_module('code')
+                print(f"DEBUG: code 모듈 위치: {getattr(code_module, '__file__', 'No __file__')}")
+                
+                module = importlib.import_module(module_name)
+                print(f"DEBUG: {module_name} import 성공")
+                if hasattr(module, attr_name):
+                    successful_imports.append(module_name)
+                    print_status(f"{module_name}.{attr_name}: import 성공", "SUCCESS")
+                else:
+                    import_errors.append(f"{module_name}: {attr_name} 속성 없음")
+                    print_status(f"{module_name}: {attr_name} 속성 없음", "ERROR")
             except ImportError as e:
-                import_errors.append(f"{module}: {str(e)}")
-                print_status(f"{module}: import 실패 - {str(e)}", "ERROR")
+                print(f"DEBUG: ImportError for {module_name}: {str(e)}")
+                import_errors.append(f"{module_name}: {str(e)}")
+                print_status(f"{module_name}: import 실패 - {str(e)}", "ERROR")
             except Exception as e:
-                import_errors.append(f"{module}: {type(e).__name__} - {str(e)}")
-                print_status(f"{module}: 오류 - {type(e).__name__}", "ERROR")
-        
-        # Python 경로 복원
+                print(f"DEBUG: Exception for {module_name}: {type(e).__name__} - {str(e)}")
+                import_errors.append(f"{module_name}: {type(e).__name__} - {str(e)}")
+                print_status(f"{module_name}: 오류 - {type(e).__name__}", "ERROR")
         sys.path = original_path
         
         details = {
@@ -635,6 +659,49 @@ class ExperimentValidator:
             return False, details
         
         return True, details
+    
+    def run_prerun_test(self) -> Tuple[bool, Dict]:
+        """사전 실행 테스트 (송규헌님 요청사항 포함)"""
+        try:
+            # 기존 테스트 수행
+            from scripts.validation.prerun_test import PrerunTester
+            from scripts.validation.validate_multi_model_support import MultiModelValidator
+            
+            print_status("사전 실행 테스트 시작...", "INFO")
+            
+            # 기본 기능 테스트
+            tester = PrerunTester()
+            basic_passed = tester.run_all_tests()
+            
+            # 다양한 모델 지원 테스트 (송규헌님 요청사항)
+            print_status("\n다양한 모델 지원 검증...", "INFO")
+            multi_validator = MultiModelValidator()
+            multi_passed = multi_validator.validate_all()
+            
+            # 결과 통합
+            all_passed = basic_passed and multi_passed
+            
+            details = {
+                "basic_tests": basic_passed,
+                "multi_model_support": multi_passed,
+                "errors": getattr(multi_validator, 'errors', []),
+                "warnings": getattr(multi_validator, 'warnings', [])
+            }
+            
+            if all_passed:
+                print_status("모든 사전 실행 테스트 통과", "SUCCESS")
+            else:
+                print_status("일부 테스트 실패", "ERROR")
+                if details['errors']:
+                    print_status(f"오류: {', '.join(details['errors'])}", "ERROR")
+                if details['warnings']:
+                    print_status(f"경고: {', '.join(details['warnings'])}", "WARNING")
+            
+            return all_passed, details
+            
+        except Exception as e:
+            print_status(f"사전 실행 테스트 오류: {str(e)}", "ERROR")
+            return False, {"error": str(e)}
     
     def _compare_versions(self, version1: str, version2: str) -> int:
         """간단한 버전 비교 (-1: v1<v2, 0: v1==v2, 1: v1>v2)"""

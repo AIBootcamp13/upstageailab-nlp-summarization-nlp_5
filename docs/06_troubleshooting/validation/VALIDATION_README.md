@@ -2,7 +2,7 @@
 
 ## 개요
 
-이 문서는 Ubuntu 서버(aistages)에서 NLP 대화 요약 실험을 실행하기 전에 환경을 검증하고 잠재적인 문제를 사전에 감지하는 방법을 설명합니다.
+이 문서는 Ubuntu 서버(aistages)와 macOS에서 NLP 대화 요약 실험을 실행하기 전에 환경을 검증하고 잠재적인 문제를 사전에 감지하는 방법을 설명합니다.
 
 ## 스크립트 구성
 
@@ -23,13 +23,13 @@
 **사용법:**
 ```bash
 # 기본 실행
-python validate_experiment_env.py
+python scripts/validation/validate_experiment_env.py
 
 # 검증 보고서 저장
-python validate_experiment_env.py --save-report
+python scripts/validation/validate_experiment_env.py --save-report
 
 # 특정 프로젝트 경로 지정
-python validate_experiment_env.py --project-root /path/to/project
+python scripts/validation/validate_experiment_env.py --project-root /path/to/project
 ```
 
 ### 2. `prerun_test.py` - 사전 실행 테스트
@@ -48,17 +48,17 @@ python validate_experiment_env.py --project-root /path/to/project
 **사용법:**
 ```bash
 # 전체 테스트
-python prerun_test.py
+python scripts/validation/prerun_test.py
 
 # 빠른 테스트 (필수 항목만)
-python prerun_test.py --quick
+python scripts/validation/prerun_test.py --quick
 
 # 테스트 결과 저장
-python prerun_test.py --save-report
+python scripts/validation/prerun_test.py --save-report
 ```
 
-### 3. `validate_before_run.sh` - 통합 검증 스크립트
-Bash 기반의 통합 검증 스크립트로, 서버 환경에 최적화되어 있습니다.
+### 3. `validate_before_run.sh` - Linux/Ubuntu 전용 통합 검증 스크립트
+Bash 기반의 통합 검증 스크립트로, Ubuntu 서버 환경에 최적화되어 있습니다.
 
 **특징:**
 - 색상 코드로 결과 시각화
@@ -69,31 +69,86 @@ Bash 기반의 통합 검증 스크립트로, 서버 환경에 최적화되어 �
 **사용법:**
 ```bash
 # 실행 권한 부여 (최초 1회)
-chmod +x validate_before_run.sh
+chmod +x scripts/validation/validate_before_run.sh
 
 # 검증 실행
-./validate_before_run.sh
+./scripts/validation/validate_before_run.sh
 ```
 
-## 권장 실행 순서
+### 4. `validate_before_run_crossplatform.sh` - 크로스 플랫폼 버전 (macOS/Ubuntu)
+macOS와 Ubuntu 모두에서 동작하는 크로스 플랫폼 검증 스크립트입니다.
 
-1. **서버 접속 후 첫 실행:**
-   ```bash
-   # 통합 검증 스크립트로 전반적인 환경 확인
-   ./validate_before_run.sh
-   ```
+**특징:**
+- OS 자동 감지 (macOS/Linux)
+- 플랫폼별 최적화된 검사
+- macOS: MPS (Metal Performance Shaders) 지원 확인
+- Ubuntu: NVIDIA GPU 및 CUDA 지원 확인
+- 플랫폼별 메모리/디스크 확인 방식
+- **송규헌님 요청사항 검증 포함**
 
-2. **문제 발생 시 상세 진단:**
-   ```bash
-   # Python 기반 상세 검증
-   python validate_experiment_env.py --save-report
-   ```
+**사용법:**
+```bash
+# 크로스 플랫폼 버전 실행 권한 부여
+chmod +x scripts/validation/validate_before_run_crossplatform.sh
 
-3. **실험 직전 최종 확인:**
+# macOS에서 실행
+./scripts/validation/validate_before_run_crossplatform.sh
+
+# 또는 Python 스크립트만 사용 (완전 호환)
+python scripts/validation/validate_experiment_env.py
+python scripts/validation/prerun_test.py --quick
+```
+
+### 5. `validate_multi_model_support.py` - 다양한 모델 지원 검증 (송규헌님 요청사항)
+송규헌님의 요청사항에 따라 구현된 다양한 모델 지원 및 unsloth 적용을 검증합니다.
+
+**주요 검증 항목:**
+- trainer.py의 코드 구조 (AutoModelForSeq2SeqLM/AutoModelForCausalLM)
+- 모델별 설정 파일 존재 및 유효성
+- 모델별 전처리 함수 구현
+- unsloth 라이브러리 지원 확인
+- 실행 스크립트 검증
+
+**사용법:**
+```bash
+# 다양한 모델 지원 검증
+python scripts/validation/validate_multi_model_support.py
+
+# 크로스 플랫폼 스크립트에 포함되어 자동 실행
+./scripts/validation/validate_before_run_crossplatform.sh
+```
    ```bash
    # 빠른 기능 테스트
-   python prerun_test.py --quick
+   python scripts/validation/prerun_test.py --quick
    ```
+
+### macOS에서:
+1. **환경 검증:**
+   ```bash
+   # 크로스 플랫폼 스크립트 사용
+   ./scripts/validation/validate_before_run_crossplatform.sh
+   ```
+
+2. **Python 환경 검증 (플랫폼 무관):**
+   ```bash
+   # Python 스크립트는 모든 플랫폼에서 동일하게 동작
+   python scripts/validation/validate_experiment_env.py
+   python scripts/validation/prerun_test.py --quick
+   ```
+
+## 플랫폼별 주의사항
+
+### macOS 특이사항:
+- GPU: NVIDIA GPU 대신 Apple Silicon의 MPS 사용
+- 메모리 체크: `vm_stat` 명령어 사용
+- CPU 사용률: `ps aux` 기반 계산
+- 학습 속도가 Linux GPU보다 느릴 수 있음
+
+### Ubuntu 특이사항:
+- GPU: NVIDIA GPU 및 CUDA 지원
+- 메모리 체크: `free` 명령어 사용
+- CPU 사용률: `top` 명령어 사용
+- 대용량 모델 학습에 적합
 
 ## 일반적인 문제 해결
 
@@ -132,6 +187,7 @@ training:
 ### 5. 파일 권한 문제
 ```bash
 # 스크립트 실행 권한
+chmod +x scripts/validation/*.sh
 chmod +x *.sh
 
 # 디렉토리 쓰기 권한
@@ -167,7 +223,11 @@ git pull origin main
 
 □ 3. 환경 검증 실행
 ```bash
-./validate_before_run.sh
+# Ubuntu에서
+./scripts/validation/validate_before_run.sh
+
+# macOS에서
+./scripts/validation/validate_before_run_crossplatform.sh
 ```
 
 □ 4. 데이터 파일 확인
@@ -175,9 +235,13 @@ git pull origin main
 ls -la data/*.csv
 ```
 
-□ 5. GPU 상태 확인
+□ 5. GPU/MPS 상태 확인
 ```bash
+# Ubuntu
 nvidia-smi
+
+# macOS
+python -c "import torch; print(torch.backends.mps.is_available())"
 ```
 
 □ 6. 실험 설정 확인
@@ -199,7 +263,7 @@ df -h .
 
 ### 실시간 모니터링
 ```bash
-# GPU 사용률 모니터링
+# GPU 사용률 모니터링 (Ubuntu)
 watch -n 1 nvidia-smi
 
 # 시스템 리소스 모니터링

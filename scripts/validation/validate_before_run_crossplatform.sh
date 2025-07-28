@@ -515,6 +515,28 @@ run_prerun_test() {
     fi
 }
 
+# 11. 다양한 모델 지원 검증 (송규헌님 요청사항)
+check_multi_model_support() {
+    print_header "다양한 모델 지원 검증 (송규헌님 요청사항)"
+    
+    if [[ -f "scripts/validation/validate_multi_model_support.py" ]]; then
+        print_info "다양한 모델 지원 검증 중..."
+        if python3 scripts/validation/validate_multi_model_support.py 2>&1 | tee -a "$LOG_FILE"; then
+            print_success "다양한 모델 지원 검증 통과"
+        else
+            print_error "다양한 모델 지원 검증 실패"
+            ((ERRORS++))
+        fi
+    else
+        print_warning "validate_multi_model_support.py 파일이 없음"
+        print_info "다음 항목들을 수동으로 확인하세요:"
+        print_info "  - trainer.py의 AutoModelForSeq2SeqLM/AutoModelForCausalLM 지원"
+        print_info "  - config/model_configs/ 디렉토리의 모델별 설정 파일"
+        print_info "  - unsloth 라이브러리 지원 (선택사항)"
+        ((WARNINGS++))
+    fi
+}
+
 # 최종 요약
 print_summary() {
     print_header "검증 결과 요약"
@@ -572,6 +594,7 @@ main() {
     check_permissions
     quick_code_test
     run_prerun_test
+    check_multi_model_support
     
     # 최종 요약
     print_summary
