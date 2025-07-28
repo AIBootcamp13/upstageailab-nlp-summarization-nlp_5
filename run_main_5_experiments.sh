@@ -57,10 +57,10 @@ for i in "${!EXPERIMENTS[@]}"; do
     
     # 실험 실행
     EXPERIMENT_START=$(date +%s)
-    echo "🚀 실험 시작: $(date)"
+    if python code/auto_experiment_runner.py --config "${YAML_FILE}" 2>&1 | tee "$LOG_FILE"; then
     
     # 실험 실행 (로그 파일에 저장하면서 화면에도 출력)
-    if python code/auto_experiment_runner.py --experiment "${YAML_FILE}" 2>&1 | tee "$LOG_FILE"; then
+    if python code/auto_experiment_runner.py --config "${YAML_FILE}" 2>&1 | tee "$LOG_FILE"; then
         EXPERIMENT_END=$(date +%s)
         EXPERIMENT_TIME=$((EXPERIMENT_END - EXPERIMENT_START))
         EXPERIMENT_HOURS=$((EXPERIMENT_TIME / 3600))
