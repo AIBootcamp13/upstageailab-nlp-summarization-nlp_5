@@ -20,10 +20,10 @@ import logging
 # code 디렉토리를 Python 경로에 추가
 sys.path.insert(0, str(Path(__file__).parent))
 
-from utils.path_utils import PathManager
-from utils.device_utils import get_optimal_device, setup_device_config
-from utils.experiment_utils import ExperimentTracker, ModelRegistry
-from utils import load_config
+from code.utils.path_utils import PathManager, path_manager
+from code.utils.device_utils import get_optimal_device, setup_device_config
+from code.utils.experiment_utils import ExperimentTracker, ModelRegistry
+from code.utils import load_config
 
 class AutoExperimentRunner:
     """자동 실험 실행 관리자 (상대 경로 기준)"""
@@ -40,8 +40,8 @@ class AutoExperimentRunner:
         if Path(base_config_path).is_absolute() or Path(output_dir).is_absolute():
             raise ValueError("모든 경로는 상대 경로여야 합니다")
         
-        self.base_config_path = PathManager.resolve_path(base_config_path)
-        self.output_dir = PathManager.ensure_dir(output_dir)
+        self.base_config_path = path_manager.resolve_path(base_config_path)
+        self.output_dir = path_manager.ensure_dir(output_dir)
         
         # 디바이스 자동 감지
         self.device = get_optimal_device()
@@ -58,12 +58,12 @@ class AutoExperimentRunner:
         print(f"   출력 디렉토리: {output_dir}")
     
     def _setup_logger(self) -> logging.Logger:
-        """로거 설정"""
+        log_file = path_manager.ensure_dir("logs") / "auto_experiments.log"
         logger = logging.getLogger(__name__)
         logger.setLevel(logging.INFO)
         
         # 로그 파일 핸들러
-        log_file = PathManager.ensure_dir("logs") / "auto_experiments.log"
+        log_file = path_manager.ensure_dir("logs") / "auto_experiments.log"
         file_handler = logging.FileHandler(log_file)
         
         formatter = logging.Formatter(
@@ -87,7 +87,7 @@ class AutoExperimentRunner:
         if Path(config_dir).is_absolute():
             raise ValueError(f"설정 디렉토리는 상대 경로여야 합니다: {config_dir}")
         
-        config_path = PathManager.resolve_path(config_dir)
+        config_path = path_manager.resolve_path(config_dir)
         
         if not config_path.exists():
             self.logger.warning(f"설정 디렉토리가 없습니다: {config_dir}")
@@ -96,14 +96,14 @@ class AutoExperimentRunner:
         # YAML 파일 검색
         yaml_files = []
         for pattern in ['*.yaml', '*.yml']:
-            yaml_files.extend(config_path.glob(pattern))
+            self.logger.info(f"  - {file.relative_to(path_manager.get_project_root())}")
         
         # 파일명으로 정렬 (실행 순서 보장)
         yaml_files.sort(key=lambda x: x.name)
         
         self.logger.info(f"발견된 실험 설정: {len(yaml_files)}개")
         for file in yaml_files:
-            self.logger.info(f"  - {file.relative_to(PathManager.get_project_root())}")
+            self.logger.info(f"  - {file.relative_to(path_manager.get_project_root())}")
         
         return yaml_files
     
@@ -118,13 +118,13 @@ class AutoExperimentRunner:
             디바이스 최적화가 적용된 설정
         """
         # 상대 경로로 변환
-        relative_path = config_path.relative_to(PathManager.get_project_root())
+        relative_path = config_path.relative_to(path_manager.get_project_root())
         
         # 기본 설정 로딩
         base_config = load_config(self.base_config_path)
         
         # 실험별 설정 로딩
-        exp_config = load_config(experiment_config_path)
+        relative_path = config_path.relative_to(path_manager.get_project_root())
         
         # 설정 병합 (실험 설정이 우선)
         merged_config = self._merge_configs(base_config, exp_config)
@@ -165,7 +165,7 @@ class AutoExperimentRunner:
                 description=f"자동 실험: {config_path.name}",
                 config=config,
                 device=self.device,
-                config_file=str(config_path.relative_to(PathManager.get_project_root()))
+                config_file=str(config_path.relative_to(path_manager.get_project_root()))
             )
             
             # 실제 학습 실행
@@ -237,8 +237,8 @@ class AutoExperimentRunner:
             # trainer.py 실행
             cmd = [
                 sys.executable,
-                str(PathManager.resolve_path("code/trainer.py")),
-                "--config", str(temp_config_path.relative_to(PathManager.get_project_root())),
+                str(path_manager.resolve_path("code/trainer.py")),
+                "--config", str(temp_config_path.relative_to(path_manager.get_project_root())),
                 "--experiment-name", f"auto_exp_{exp_id[:8]}",
                 "--device", self.device
             ]
@@ -250,7 +250,7 @@ class AutoExperimentRunner:
                 cmd,
                 capture_output=True,
                 text=True,
-                cwd=PathManager.get_project_root(),
+                cwd=path_manager.get_project_root(),
                 timeout=7200  # 2시간 타임아웃
             )
             
@@ -363,7 +363,7 @@ class AutoExperimentRunner:
         
         print(f"\n🎉 모든 실험 완료!")
         print(f"⏱️ 총 소요 시간: {total_time:.2f}시간")
-        print(f"📄 결과 요약: {summary_file.relative_to(PathManager.get_project_root())}")
+        print(f"📄 결과 요약: {summary_file.relative_to(path_manager.get_project_root())}")
         
         return summary
     
@@ -409,7 +409,7 @@ class AutoExperimentRunner:
         if Path(output_dir).is_absolute():
             raise ValueError(f"출력 디렉토리는 상대 경로여야 합니다: {output_dir}")
         
-        config_dir = PathManager.ensure_dir(output_dir)
+        config_dir = path_manager.ensure_dir(output_dir)
         
         sample_configs = {
             "01_baseline.yaml": {
@@ -456,7 +456,7 @@ class AutoExperimentRunner:
             with open(file_path, 'w', encoding='utf-8') as f:
                 yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
             
-            print(f"✅ 샘플 설정 생성: {file_path.relative_to(PathManager.get_project_root())}")
+            print(f"✅ 샘플 설정 생성: {file_path.relative_to(path_manager.get_project_root())}")
         
         print(f"\n📁 총 {len(sample_configs)}개 샘플 설정 파일 생성 완료")
         print(f"🚀 실행 방법: python code/auto_experiment_runner.py --run-all")
@@ -495,7 +495,7 @@ def main():
             runner.run_all_experiments(args.config_dir)
         
         elif args.experiment:
-            config_path = PathManager.resolve_path(f"{args.config_dir}/{args.experiment}")
+            config_path = path_manager.resolve_path(f"{args.config_dir}/{args.experiment}")
             if not config_path.exists():
                 print(f"❌ 설정 파일을 찾을 수 없습니다: {config_path}")
                 return 1

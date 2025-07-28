@@ -6,16 +6,21 @@ NLP 대화 요약 프로젝트를 위한 데이터 전처리, 후처리, 변환 
 """
 
 import re
+import json
 import pandas as pd
 import numpy as np
-from typing import List, Dict, Any, Optional, Union, Tuple
+from typing import List, Dict, Any, Optional, Union, Tuple, Callable
 from pathlib import Path
 import logging
 from dataclasses import dataclass
 from transformers import PreTrainedTokenizer
 import torch
 from torch.utils.data import Dataset
+from datasets import Dataset as HFDataset
 from .path_utils import PathManager, path_manager
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -185,44 +190,76 @@ class DataProcessor:
     """
     데이터 프로세서
     
-    CSV 파일 로딩, 데이터 필터링, 분할, 통계 분석 등을 담당합니다.
+    CSV/JSON 파일 로딩, 데이터 필터링, 토크나이징, HuggingFace Dataset 변환 등을 담당합니다.
     """
     
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, 
+                 tokenizer: PreTrainedTokenizer, 
+                 config: Optional[Dict[str, Any]] = None,
+                 preprocessor: Optional[Callable] = None):
         """
         DataProcessor 초기화
         
         Args:
+            tokenizer: 사전 학습된 토크나이저
             config: 데이터 처리 설정
+            preprocessor: 모델별 전처리 함수 (optional)
         """
+        self.tokenizer = tokenizer
         self.config = config or {}
         self.logger = logging.getLogger(__name__)
-        self.preprocessor = TextPreprocessor(config)
+        self.text_preprocessor = TextPreprocessor(config)
+        self.model_preprocessor = preprocessor  # 모델별 전처리 함수
+        
+        # 토크나이저 설정
+        self.encoder_max_len = self.config.get('tokenizer', {}).get('encoder_max_len', 512)
+        self.decoder_max_len = self.config.get('tokenizer', {}).get('decoder_max_len', 128)
         
         # 데이터 필터 설정
-        self.min_dialogue_length = self.config.get('min_source_length', 10)
-        self.max_dialogue_length = self.config.get('max_source_length', 1024)
-        self.min_summary_length = self.config.get('min_target_length', 5)
-        self.max_summary_length = self.config.get('max_target_length', 256)
-    def load_dataset(self, file_path: Union[str, Path]) -> pd.DataFrame:
+        self.min_dialogue_length = self.config.get('data', {}).get('min_source_length', 10)
+        self.max_dialogue_length = self.config.get('data', {}).get('max_source_length', 1024)
+        self.min_summary_length = self.config.get('data', {}).get('min_target_length', 5)
+        self.max_summary_length = self.config.get('data', {}).get('max_target_length', 256)
+        
+        # 특수 토큰 추가
+        self._add_special_tokens()
+    
+    def _add_special_tokens(self):
+        """특수 토큰을 토크나이저에 추가"""
+        special_tokens = self.text_preprocessor.special_tokens
+        
+        # 기존에 없는 토큰만 추가
+        new_tokens = [token for token in special_tokens 
+                     if token not in self.tokenizer.get_vocab()]
+        
+        if new_tokens:
+            self.tokenizer.add_tokens(new_tokens)
+            logger.info(f"Added {len(new_tokens)} special tokens to tokenizer")
+    
+    def load_data(self, file_path: Union[str, Path]) -> pd.DataFrame:
         """
-        데이터셋 로딩
+        데이터 파일 로딩 (CSV 또는 JSON 지원)
         
         Args:
-            file_path: CSV 파일 경로 (상대 경로 또는 절대 경로)
+            file_path: 데이터 파일 경로
             
         Returns:
             로딩된 데이터프레임
         """
-        # 경로 관리자를 통해 경로 해결
-        file_path = path_manager.resolve_path(file_path)
+        file_path = Path(file_path)
         
         if not file_path.exists():
-            raise FileNotFoundError(f"Dataset file not found: {file_path}")
+            raise FileNotFoundError(f"Data file not found: {file_path}")
         
         try:
-            df = pd.read_csv(file_path)
-            self.logger.info(f"Loaded dataset: {len(df)} samples from {file_path}")
+            if file_path.suffix == '.csv':
+                df = pd.read_csv(file_path)
+            elif file_path.suffix == '.json':
+                df = pd.read_json(file_path)
+            else:
+                raise ValueError(f"Unsupported file format: {file_path.suffix}")
+            
+            logger.info(f"Loaded {len(df)} samples from {file_path}")
             
             # 필수 컬럼 확인
             required_columns = ['fname', 'dialogue', 'summary']
@@ -234,52 +271,51 @@ class DataProcessor:
             return df
             
         except Exception as e:
-            self.logger.error(f"Failed to load dataset: {e}")
+            logger.error(f"Failed to load data: {e}")
             raise
     
-    def preprocess_dataset(self, df: pd.DataFrame, 
-                          clean_text: bool = True,
-                          filter_data: bool = True) -> pd.DataFrame:
+    def process_data(self, df: pd.DataFrame, is_training: bool = True) -> HFDataset:
         """
-        데이터셋 전처리
+        데이터프레임을 HuggingFace Dataset으로 변환
         
         Args:
             df: 원본 데이터프레임
-            clean_text: 텍스트 정제 여부
-            filter_data: 데이터 필터링 여부
+            is_training: 학습 데이터 여부
             
         Returns:
-            전처리된 데이터프레임
+            HuggingFace Dataset 객체
         """
-        df = df.copy()
-        
-        # 결측값 제거
-        initial_count = len(df)
-        df = df.dropna(subset=['dialogue', 'summary'])
-        after_na_count = len(df)
-        
-        if initial_count > after_na_count:
-            self.logger.info(f"Removed {initial_count - after_na_count} samples with missing values")
-        
         # 텍스트 정제
-        if clean_text:
-            self.logger.info("Cleaning text data...")
-            df['dialogue'] = df['dialogue'].apply(self.preprocessor.clean_dialogue)
-            df['summary'] = df['summary'].apply(self.preprocessor.clean_summary)
+        df = df.copy()
+        df['dialogue'] = df['dialogue'].apply(self.text_preprocessor.clean_dialogue)
+        df['summary'] = df['summary'].apply(self.text_preprocessor.clean_summary)
         
-        # 길이 계산
-        df['dialogue_length'] = df['dialogue'].str.len()
-        df['summary_length'] = df['summary'].str.len()
-        df['turn_count'] = df['dialogue'].apply(self.preprocessor.count_turns)
-        
-        # 데이터 필터링
-        if filter_data:
+        # 길이 필터링 (학습 데이터만)
+        if is_training:
             df = self._filter_by_length(df)
         
-        # 통계 정보 로깅
-        self._log_dataset_stats(df)
+        # 데이터 딕셔너리 생성
+        data_dict = {
+            'input': df['dialogue'].tolist(),
+            'target': df['summary'].tolist(),
+            'fname': df['fname'].tolist()
+        }
         
-        return df
+        # 모델별 전처리 적용
+        if self.model_preprocessor:
+            data_dict = self.model_preprocessor(data_dict)
+        
+        # HuggingFace Dataset 생성
+        dataset = HFDataset.from_dict(data_dict)
+        
+        # 토크나이징
+        dataset = dataset.map(
+            self._tokenize_function,
+            batched=True,
+            remove_columns=['input', 'target']
+        )
+        
+        return dataset
     
     def _filter_by_length(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -294,70 +330,62 @@ class DataProcessor:
         initial_count = len(df)
         
         # 대화 길이 필터링
+        df['dialogue_length'] = df['dialogue'].str.len()
         df = df[
             (df['dialogue_length'] >= self.min_dialogue_length) &
             (df['dialogue_length'] <= self.max_dialogue_length)
         ]
         
         # 요약문 길이 필터링
+        df['summary_length'] = df['summary'].str.len()
         df = df[
             (df['summary_length'] >= self.min_summary_length) &
             (df['summary_length'] <= self.max_summary_length)
         ]
         
-        # 빈 텍스트 제거
-        df = df[df['dialogue'].str.strip().astype(bool)]
-        df = df[df['summary'].str.strip().astype(bool)]
-        
         final_count = len(df)
-        filtered_count = initial_count - final_count
-        
-        if filtered_count > 0:
-            self.logger.info(f"Filtered out {filtered_count} samples based on length constraints")
-            self.logger.info(f"Remaining samples: {final_count}")
+        if initial_count > final_count:
+            logger.info(f"Filtered {initial_count - final_count} samples by length")
         
         return df
     
-    def _log_dataset_stats(self, df: pd.DataFrame):
+    def _tokenize_function(self, examples: Dict[str, List]) -> Dict[str, List]:
         """
-        데이터셋 통계 로깅
+        배치 토크나이징 함수
         
         Args:
-            df: 데이터프레임
+            examples: 배치 데이터 딕셔너리
+            
+        Returns:
+            토크나이징된 데이터 딕셔너리
         """
-        stats = {
-            'total_samples': len(df),
-            'dialogue_length': {
-                'mean': df['dialogue_length'].mean(),
-                'std': df['dialogue_length'].std(),
-                'min': df['dialogue_length'].min(),
-                'max': df['dialogue_length'].max()
-            },
-            'summary_length': {
-                'mean': df['summary_length'].mean(),
-                'std': df['summary_length'].std(),
-                'min': df['summary_length'].min(),
-                'max': df['summary_length'].max()
-            },
-            'turn_count': {
-                'mean': df['turn_count'].mean(),
-                'std': df['turn_count'].std(),
-                'min': df['turn_count'].min(),
-                'max': df['turn_count'].max()
-            }
-        }
+        # 입력 토크나이징
+        model_inputs = self.tokenizer(
+            examples['input'],
+            max_length=self.encoder_max_len,
+            padding='max_length',
+            truncation=True
+        )
         
-        self.logger.info("Dataset Statistics:")
-        self.logger.info(f"  Total samples: {stats['total_samples']}")
-        self.logger.info(f"  Dialogue length - Mean: {stats['dialogue_length']['mean']:.1f}, "
-                        f"Std: {stats['dialogue_length']['std']:.1f}, "
-                        f"Range: [{stats['dialogue_length']['min']}, {stats['dialogue_length']['max']}]")
-        self.logger.info(f"  Summary length - Mean: {stats['summary_length']['mean']:.1f}, "
-                        f"Std: {stats['summary_length']['std']:.1f}, "
-                        f"Range: [{stats['summary_length']['min']}, {stats['summary_length']['max']}]")
-        self.logger.info(f"  Turn count - Mean: {stats['turn_count']['mean']:.1f}, "
-                        f"Std: {stats['turn_count']['std']:.1f}, "
-                        f"Range: [{stats['turn_count']['min']}, {stats['turn_count']['max']}]")
+        # 타겟 토크나이징
+        with self.tokenizer.as_target_tokenizer():
+            labels = self.tokenizer(
+                examples['target'],
+                max_length=self.decoder_max_len,
+                padding='max_length',
+                truncation=True
+            )
+        
+        # 패딩 토큰을 -100으로 변경 (loss 계산에서 무시)
+        labels['input_ids'] = [
+            [(label if label != self.tokenizer.pad_token_id else -100) for label in label_ids]
+            for label_ids in labels['input_ids']
+        ]
+        
+        model_inputs['labels'] = labels['input_ids']
+        model_inputs['fname'] = examples['fname']
+        
+        return model_inputs
     
     def create_data_samples(self, df: pd.DataFrame) -> List[DataSample]:
         """
@@ -382,43 +410,6 @@ class DataProcessor:
             samples.append(sample)
         
         return samples
-    
-    def split_dataset(self, df: pd.DataFrame, 
-                     train_ratio: float = 0.8,
-                     val_ratio: float = 0.1,
-                     test_ratio: float = 0.1,
-                     random_state: int = 42) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-        """
-        데이터셋 분할
-        
-        Args:
-            df: 데이터프레임
-            train_ratio: 훈련 데이터 비율
-            val_ratio: 검증 데이터 비율
-            test_ratio: 테스트 데이터 비율
-            random_state: 랜덤 시드
-            
-        Returns:
-            (train_df, val_df, test_df) 튜플
-        """
-        if abs(train_ratio + val_ratio + test_ratio - 1.0) > 1e-6:
-            raise ValueError("Split ratios must sum to 1.0")
-        
-        # 데이터 셔플
-        df = df.sample(frac=1, random_state=random_state).reset_index(drop=True)
-        
-        n_total = len(df)
-        n_train = int(n_total * train_ratio)
-        n_val = int(n_total * val_ratio)
-        
-        train_df = df[:n_train]
-        val_df = df[n_train:n_train + n_val]
-        test_df = df[n_train + n_val:]
-        
-        self.logger.info(f"Dataset split - Train: {len(train_df)}, "
-                        f"Val: {len(val_df)}, Test: {len(test_df)}")
-        
-        return train_df, val_df, test_df
 
 
 class DialogueSummarizationDataset(Dataset):
