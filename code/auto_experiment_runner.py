@@ -228,18 +228,20 @@ class AutoExperimentRunner:
             
             print(f"\n실행 명령: {' '.join(cmd[:3])}...")
             
-            # 프로세스 실행
+            # 프로세스 실행 - stderr도 stdout으로 통합하여 모든 출력 표시
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.STDOUT,  # stderr를 stdout으로 통합
                 text=True,
                 cwd=str(path_manager.project_root)
             )
             
-            # 실시간 출력 (옵션)
+            # 모든 출력을 수집하면서 실시간 표시
+            output_lines = []
             for line in process.stdout:
                 print(line, end='')
+                output_lines.append(line)
             
             # 프로세스 종료 대기
             process.wait()
@@ -251,12 +253,11 @@ class AutoExperimentRunner:
                 result['status'] = 'success'
                 result['duration'] = time.time() - start_time
             else:
-                # 실패
-                stderr = process.stderr.read()
+                # 실패 - 출력 내용을 에러로 저장
                 result = {
                     'status': 'failed',
                     'return_code': process.returncode,
-                    'error': stderr,
+                    'error': ''.join(output_lines[-100:]),  # 마지막 100줄만 저장
                     'duration': time.time() - start_time
                 }
                 
