@@ -162,12 +162,18 @@ class AutoExperimentRunner:
             config = self.load_experiment_config(config_path)
             
             # 실험 추적 시작
+            model_type = config.get('general', {}).get('model_type', 'seq2seq')
             exp_id = self.tracker.start_experiment(
                 name=experiment_name,
                 description=f"자동 실험: {config_path.name}",
                 config=config,
-                device=self.device,
-                config_file=str(config_path.relative_to(path_manager.project_root))
+                model_type=model_type,
+                dataset_info={
+                    'train_size': config.get('dataset_info', {}).get('train_size', 'unknown'),
+                    'val_size': config.get('dataset_info', {}).get('val_size', 'unknown'),
+                    'test_size': config.get('dataset_info', {}).get('test_size', 'unknown')
+                },
+                wandb_run_id=config.get('wandb', {}).get('run_id')
             )
             
             # 실제 학습 실행
