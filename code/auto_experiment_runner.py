@@ -219,12 +219,11 @@ class AutoExperimentRunner:
         start_time = time.time()
         
         try:
-            # trainer.py 실행
+            # trainer.py 실행 - 원본 config 파일 경로 전달
             cmd = [
                 sys.executable,
                 str(path_manager.resolve_path("code/trainer.py")),
-                "--config", json.dumps(config),
-                "--experiment-name", Path(config_path).stem
+                "--config", config_path  # 원본 config 파일 경로 사용
             ]
             
             print(f"\n실행 명령: {' '.join(cmd[:3])}...")
