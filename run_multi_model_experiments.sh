@@ -18,6 +18,7 @@ MODELS=(
     "t5_base"
     "mt5_base"
     "flan_t5_base"
+    "eenzeenee"  # 한국어 T5 요약 모델
     # "kogpt2"  # GPT 계열은 추가 수정 필요
     # "kobart_unsloth"  # unsloth 설치 필요
 )
@@ -28,7 +29,15 @@ for MODEL in "${MODELS[@]}"; do
     echo "Running experiment for: $MODEL"
     echo "=========================================="
     
-    CONFIG_PATH="config/model_configs/${MODEL}.yaml"
+    # eenzeenee 모델은 config.yaml의 섹션을 사용
+    if [ "$MODEL" = "eenzeenee" ]; then
+        CONFIG_PATH="config.yaml"
+        CONFIG_SECTION="--config-section eenzeenee"
+    else
+        CONFIG_PATH="config/model_configs/${MODEL}.yaml"
+        CONFIG_SECTION=""
+    fi
+    
     LOG_FILE="$LOG_DIR/${MODEL}_${START_TIME}.log"
     
     # 설정 파일 존재 확인
@@ -40,10 +49,14 @@ for MODEL in "${MODELS[@]}"; do
     
     # 실험 실행
     echo "Running with config: $CONFIG_PATH"
+    if [ "$MODEL" = "eenzeenee" ]; then
+        echo "Using config section: eenzeenee"
+    fi
     echo "Log file: $LOG_FILE"
     
     python code/trainer.py \
         --config "$CONFIG_PATH" \
+        $CONFIG_SECTION \
         --train-data data/train.csv \
         --val-data data/dev.csv \
         --test-data data/test.csv \
