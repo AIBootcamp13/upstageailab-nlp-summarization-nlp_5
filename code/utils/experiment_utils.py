@@ -332,8 +332,8 @@ class ModelRegistry:
             data = json.load(f)
         
         return ModelInfo(**data)
-        
-        def get_model_info(self, model_name: str) -> Optional[Dict[str, Any]]:
+    
+    def get_model_info(self, model_name: str) -> Optional[Dict[str, Any]]:
         """
         모델명에 따른 모델 정보 반환
         
@@ -349,51 +349,71 @@ class ModelRegistry:
         # T5 기반 모델들
         if any(keyword in model_name_lower for keyword in ['t5', 'flan-t5', 'mt5']):
             return {
-                'type': 'seq2seq',
                 'architecture': 't5',
-                'model_class': 'AutoModelForSeq2SeqLM',
-                'tokenizer_class': 'AutoTokenizer',
-                'supports_generate': True
+                'model_type': 'seq2seq',
+                'recommended_params': {
+                    'learning_rate': 3e-5,
+                    'batch_size': 4,
+                    'gradient_accumulation_steps': 2,
+                    'num_epochs': 3
+                },
+                'memory_requirements': 'medium' if 'base' in model_name_lower else 'high'
             }
         
-        # BART 기반 모델들
-        elif 'bart' in model_name_lower:
+        # BART/KoBART 기반 모델들  
+        elif any(keyword in model_name_lower for keyword in ['bart', 'kobart']):
             return {
-                'type': 'seq2seq',
                 'architecture': 'bart',
-                'model_class': 'AutoModelForSeq2SeqLM',
-                'tokenizer_class': 'AutoTokenizer',
-                'supports_generate': True
+                'model_type': 'seq2seq',
+                'recommended_params': {
+                    'learning_rate': 2e-5,
+                    'batch_size': 8,
+                    'gradient_accumulation_steps': 1,
+                    'num_epochs': 5
+                },
+                'memory_requirements': 'low' if 'ko' in model_name_lower else 'medium'
             }
         
         # GPT 기반 모델들
         elif any(keyword in model_name_lower for keyword in ['gpt', 'kogpt']):
             return {
-                'type': 'causal_lm',
                 'architecture': 'gpt',
-                'model_class': 'AutoModelForCausalLM',
-                'tokenizer_class': 'AutoTokenizer',
-                'supports_generate': True
+                'model_type': 'causal_lm',
+                'recommended_params': {
+                    'learning_rate': 1e-5,
+                    'batch_size': 2,
+                    'gradient_accumulation_steps': 4,
+                    'num_epochs': 3
+                },
+                'memory_requirements': 'very_high'
             }
         
-        # Llama 기반 모델들
-        elif 'llama' in model_name_lower:
+        # Polyglot 기반 모델들
+        elif 'polyglot' in model_name_lower:
             return {
-                'type': 'causal_lm',
-                'architecture': 'llama',
-                'model_class': 'AutoModelForCausalLM',
-                'tokenizer_class': 'AutoTokenizer',
-                'supports_generate': True
+                'architecture': 'gpt-neox',
+                'model_type': 'causal_lm',
+                'recommended_params': {
+                    'learning_rate': 2e-5,
+                    'batch_size': 4,
+                    'gradient_accumulation_steps': 2,
+                    'num_epochs': 3
+                },
+                'memory_requirements': 'high'
             }
         
         # eenzeenee 모델 직접 지원
         elif 'eenzeenee' in model_name_lower:
             return {
-                'type': 'seq2seq',
                 'architecture': 't5',
-                'model_class': 'AutoModelForSeq2SeqLM',
-                'tokenizer_class': 'AutoTokenizer',
-                'supports_generate': True,
+                'model_type': 'seq2seq',
+                'recommended_params': {
+                    'learning_rate': 3e-5,
+                    'batch_size': 8,
+                    'gradient_accumulation_steps': 1,
+                    'num_epochs': 5
+                },
+                'memory_requirements': 'medium',
                 'requires_prefix': True,
                 'input_prefix': 'summarize: '
             }
@@ -401,17 +421,21 @@ class ModelRegistry:
         # 기본 지원 모델들 (KoBART 등)
         elif any(keyword in model_name_lower for keyword in ['kobart', 'digit82']):
             return {
-                'type': 'seq2seq',
                 'architecture': 'bart',
-                'model_class': 'AutoModelForSeq2SeqLM',
-                'tokenizer_class': 'AutoTokenizer',
-                'supports_generate': True
+                'model_type': 'seq2seq',
+                'recommended_params': {
+                    'learning_rate': 2e-5,
+                    'batch_size': 8,
+                    'gradient_accumulation_steps': 1,
+                    'num_epochs': 5
+                },
+                'memory_requirements': 'low'
             }
         
         # 알 수 없는 모델의 경우 None 반환
         self.logger.warning(f"Unknown model: {model_name}. Returning None.")
         return None
-        
+
 
 # 편의 함수들
 def create_experiment_tracker(experiments_dir: str = "./experiments") -> ExperimentTracker:
