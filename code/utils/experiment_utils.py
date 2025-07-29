@@ -226,9 +226,10 @@ class ExperimentTracker:
                     'rouge1_f1': metrics.get('eval_rouge1_f1', 0) or metrics.get('rouge1_f1', 0),
                     'rouge2_f1': metrics.get('eval_rouge2_f1', 0) or metrics.get('rouge2_f1', 0),
                     'rougeL_f1': metrics.get('eval_rougeL_f1', 0) or metrics.get('rougeL_f1', 0)
-                }
                 self._save_experiment_info(self.current_experiment)
                 self.logger.info(f"🏆 New best combined F1: {rouge_combined:.4f}")
+                
+                def get_experiment_list(self, status: Optional[str] = None) -> List[ExperimentInfo]:
                 def get_experiment_list(self, status: Optional[str] = None) -> List[ExperimentInfo]:
         """실험 리스트 조회"""
         experiments = []
