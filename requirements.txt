@@ -3,7 +3,7 @@ wandb==0.21.0  # Weights & Biases for experiment tracking
 
 # Core ML Libraries - WORKING VERSIONS
 torch==2.7.1  # PyTorch with CUDA 12.6 support
-torchvision==0.22.1+cu126  # Compatible with PyTorch 2.7.1
+torchvision==0.22.1  # Compatible with PyTorch 2.7.1 (UV 호환)
 torchaudio==2.5.1  # Audio processing
 transformers==4.54.0
 datasets==3.6.0  # Updated working version
