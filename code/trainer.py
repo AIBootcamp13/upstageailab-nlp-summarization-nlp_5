@@ -333,10 +333,11 @@ class DialogueSummarizationTrainer:
             logger.warning(f"Validation data not found at {val_path}")
         
         if test_path and Path(test_path).exists():
-            test_data = self.data_processor.load_data(test_path)
+            test_data = self.data_processor.load_data(test_path, is_test=True)
             datasets['test'] = self.data_processor.process_data(
                 test_data,
-                is_training=False
+                is_training=False,
+                is_test=True
             )
             logger.info(f"Test dataset size: {len(datasets['test'])}")
         

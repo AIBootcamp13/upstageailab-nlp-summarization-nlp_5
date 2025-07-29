@@ -236,12 +236,13 @@ class DataProcessor:
             self.tokenizer.add_tokens(new_tokens)
             logger.info(f"Added {len(new_tokens)} special tokens to tokenizer")
     
-    def load_data(self, file_path: Union[str, Path]) -> pd.DataFrame:
+    def load_data(self, file_path: Union[str, Path], is_test: bool = False) -> pd.DataFrame:
         """
         데이터 파일 로딩 (CSV 또는 JSON 지원)
         
         Args:
             file_path: 데이터 파일 경로
+            is_test: 테스트 데이터 여부 (True면 summary 컬럼 체크 안함)
             
         Returns:
             로딩된 데이터프레임
@@ -262,7 +263,10 @@ class DataProcessor:
             logger.info(f"Loaded {len(df)} samples from {file_path}")
             
             # 필수 컬럼 확인
-            required_columns = ['fname', 'dialogue', 'summary']
+            if is_test:
+                required_columns = ['fname', 'dialogue']
+            else:
+                required_columns = ['fname', 'dialogue', 'summary']
             missing_columns = [col for col in required_columns if col not in df.columns]
             
             if missing_columns:
@@ -274,13 +278,14 @@ class DataProcessor:
             logger.error(f"Failed to load data: {e}")
             raise
     
-    def process_data(self, df: pd.DataFrame, is_training: bool = True) -> HFDataset:
+    def process_data(self, df: pd.DataFrame, is_training: bool = True, is_test: bool = False) -> HFDataset:
         """
         데이터프레임을 HuggingFace Dataset으로 변환
         
         Args:
             df: 원본 데이터프레임
             is_training: 학습 데이터 여부
+            is_test: 테스트 데이터 여부 (summary 없음)
             
         Returns:
             HuggingFace Dataset 객체
@@ -288,7 +293,10 @@ class DataProcessor:
         # 텍스트 정제
         df = df.copy()
         df['dialogue'] = df['dialogue'].apply(self.text_preprocessor.clean_dialogue)
-        df['summary'] = df['summary'].apply(self.text_preprocessor.clean_summary)
+        
+        # test 데이터가 아닌 경우에만 summary 처리
+        if not is_test:
+            df['summary'] = df['summary'].apply(self.text_preprocessor.clean_summary)
         
         # 길이 필터링 (학습 데이터만)
         if is_training:
@@ -297,9 +305,14 @@ class DataProcessor:
         # 데이터 딕셔너리 생성
         data_dict = {
             'input': df['dialogue'].tolist(),
-            'target': df['summary'].tolist(),
             'fname': df['fname'].tolist()
         }
+        # test 데이터가 아닌 경우에만 target 추가
+        if not is_test:
+            data_dict['target'] = df['summary'].tolist()
+        else:
+            # test 데이터의 경우 빈 target 생성
+            data_dict['target'] = [''] * len(df)
         
         # 모델별 전처리 적용
         if self.model_preprocessor:
