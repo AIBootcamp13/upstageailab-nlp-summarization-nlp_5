@@ -56,6 +56,8 @@ class AutoExperimentRunner:
         
         # 실험 추적 초기화
         self.tracker = ExperimentTracker(f"{output_dir}/experiments")
+        print(f"\n🆗 ExperimentTracker 초기화 완료")
+        print(f"   log_experiment 메서드 존재: {hasattr(self.tracker, 'log_experiment')}")
         self.registry = ModelRegistry(f"{output_dir}/models")
         
         # 로깅 설정
@@ -129,12 +131,16 @@ class AutoExperimentRunner:
                 result = self._run_single_experiment(full_config, config_path, one_epoch)
                 results[config_path] = result
                 
-                # 실험 추적
-                self.tracker.log_experiment(
-                    experiment_name=Path(config_path).stem,
-                    config=full_config,
-                    results=result
-                )
+                # 실험 추적 - try-except 블록 추가
+                try:
+                    self.tracker.log_experiment(
+                        experiment_name=Path(config_path).stem,
+                        config=full_config,
+                        results=result
+                    )
+                except Exception as e:
+                    self.logger.warning(f"실험 로그 기록 실패: {e}")
+                    # 로그 실패가 전체 실행을 중단하지 않도록 함
                 
                 # 실험 간 대기 (GPU 메모리 정리 등)
                 if i < len(experiment_configs) - 1:
@@ -213,67 +219,73 @@ class AutoExperimentRunner:
             'name': self.device_info.device_name,
             'memory_gb': self.device_info.memory_gb
         } if hasattr(self.device_info, 'device_type') else None
+    
+    def _run_single_experiment(self, config: Dict[str, Any], config_path: str, one_epoch: bool = False) -> Dict[str, Any]:
+        """단일 실험 실행"""
+        print(f"\n🔧 _run_single_experiment 시작: {config_path}")
+        start_time = time.time()
         
-        def _run_single_experiment(self, config: Dict[str, Any], config_path: str, one_epoch: bool = False) -> Dict[str, Any]:
-            """단일 실험 실행"""
-            start_time = time.time()
+        try:
+            # 항상 환경 변수 복사
+            import os
+            env = os.environ.copy()
             
-            try:
-                # 1에포크 모드를 위한 환경 변수 설정
-                env = None
-                if one_epoch:
-                    import os
-                    env = os.environ.copy()
-                    env['FORCE_ONE_EPOCH'] = '1'
-                    print(f"\n🚀 1에포크 모드로 실행: {Path(config_path).stem}")
-                
-                # trainer.py 실행
-                cmd = [
-                    sys.executable,
-                    str(path_manager.resolve_path("code/trainer.py")),
-                    "--config", config_path
-                ]
-                
-                print(f"\n실행 명령: {' '.join(cmd[:3])}...")
-                
-                # 프로세스 실행
-                process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    env=env
-                )
-                
-                # 모든 출력을 수집하면서 실시간 표시
-                output_lines = []
-                for line in process.stdout:
-                    print(line, end='')
-                    output_lines.append(line)
-                
-                # 프로세스 종료 대기
-                process.wait()
-                
-                # 결과 수집
-                if process.returncode == 0:
-                    result = self._collect_results(config, Path(config_path).stem)
-                    result['status'] = 'success'
-                    result['duration'] = time.time() - start_time
-                else:
-                    result = {
-                        'status': 'error',
-                        'error': f'Training failed with exit code {process.returncode}',
-                        'duration': time.time() - start_time
-                    }
+            # 1에포크 모드를 위한 환경 변수 설정
+            if one_epoch:
+                env['FORCE_ONE_EPOCH'] = '1'
+                print(f"\n🚀 1에포크 모드로 실행: {Path(config_path).stem}")
             
-            except Exception as e:
+            # trainer.py 실행
+            cmd = [
+                sys.executable,
+                str(path_manager.resolve_path("code/trainer.py")),
+                "--config", config_path
+            ]
+            
+            print(f"\n실행 명령: {' '.join(cmd)}")
+            print(f"현재 디렉토리: {os.getcwd()}")
+            print(f"Python 경로: {sys.executable}")
+            
+            # 프로세스 실행
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                env=env
+            )
+            
+            # 모든 출력을 수집하면서 실시간 표시
+            output_lines = []
+            for line in process.stdout:
+                print(line, end='')
+                output_lines.append(line)
+            
+            # 프로세스 종료 대기
+            process.wait()
+            
+            # 결과 수집
+            if process.returncode == 0:
+                result = self._collect_results(config, Path(config_path).stem)
+                result['status'] = 'success'
+                result['duration'] = time.time() - start_time
+            else:
+                # 에러 시 출력 내용도 포함
+                error_output = '\n'.join(output_lines[-50:])  # 마지막 50줄만
                 result = {
                     'status': 'error',
-                    'error': str(e),
+                    'error': f'Training failed with exit code {process.returncode}\n\nLast output:\n{error_output}',
                     'duration': time.time() - start_time
                 }
-            
-            return result
+        
+        except Exception as e:
+            result = {
+                'status': 'error',
+                'error': str(e),
+                'duration': time.time() - start_time
+            }
+        
+        return result
     
     def _collect_results(self, config: Dict[str, Any], experiment_name: str) -> Dict[str, Any]:
         """실험 결과 수집"""
