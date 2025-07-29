@@ -279,33 +279,45 @@ class DialogueSummarizationTrainer:
         Returns:
             처리된 데이터셋 딕셔너리
         """
-        data_paths = self.config.get('data', {})
+        # 기본 데이터 경로 설정
+        data_path = self.config.get('general', {}).get('data_path', '../data/')
+        base_path = Path(data_path)
         
-        train_path = train_path or data_paths.get('train_path')
-        val_path = val_path or data_paths.get('val_path')
-        test_path = test_path or data_paths.get('test_path')
+        # 경로가 없으면 기본 경로 사용
+        if train_path is None:
+            train_path = str(base_path / 'train.json')
+        if val_path is None:
+            val_path = str(base_path / 'dev.json')
+        if test_path is None and (base_path / 'test.json').exists():
+            test_path = str(base_path / 'test.json')
         
         logger.info("Loading and processing datasets...")
+        logger.info(f"Train path: {train_path}")
+        logger.info(f"Val path: {val_path}")
         
         datasets = {}
         
-        if train_path:
+        if train_path and Path(train_path).exists():
             train_data = self.data_processor.load_data(train_path)
             datasets['train'] = self.data_processor.process_data(
                 train_data, 
                 is_training=True
             )
             logger.info(f"Train dataset size: {len(datasets['train'])}")
+        else:
+            logger.warning(f"Train data not found at {train_path}")
         
-        if val_path:
+        if val_path and Path(val_path).exists():
             val_data = self.data_processor.load_data(val_path)
             datasets['validation'] = self.data_processor.process_data(
                 val_data,
                 is_training=False
             )
             logger.info(f"Validation dataset size: {len(datasets['validation'])}")
+        else:
+            logger.warning(f"Validation data not found at {val_path}")
         
-        if test_path:
+        if test_path and Path(test_path).exists():
             test_data = self.data_processor.load_data(test_path)
             datasets['test'] = self.data_processor.process_data(
                 test_data,
