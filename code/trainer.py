@@ -1008,7 +1008,7 @@ class DialogueSummarizationTrainer:
             'adam_beta2': train_config.get('adam_beta2', 0.999),
             'adam_epsilon': train_config.get('adam_epsilon', 1e-8),
             'max_grad_norm': train_config.get('max_grad_norm', 1.0),
-            'num_train_epochs': train_config['num_train_epochs'],
+            'num_train_epochs': 1 if os.environ.get('FORCE_ONE_EPOCH', '').lower() in ['1', 'true', 'yes'] else train_config['num_train_epochs'],
             'lr_scheduler_type': train_config.get('lr_scheduler_type', 'linear'),
             'warmup_ratio': train_config.get('warmup_ratio', 0.1),
             'warmup_steps': train_config.get('warmup_steps', 0),
@@ -1119,6 +1119,11 @@ if __name__ == "__main__":
     parser.add_argument("--sweep", action="store_true", help="Run in sweep mode")
     
     args = parser.parse_args()
+    
+    # 1에포크 모드 확인 및 메시지 출력
+    if os.environ.get('FORCE_ONE_EPOCH', '').lower() in ['1', 'true', 'yes']:
+        print("🚀 1에포크 모드로 실행합니다!")
+        print("📝 학습 epoch 수가 1로 강제 설정됩니다.")
     
     # WandB 초기화 (비 Sweep 모드)
     if not args.sweep:
