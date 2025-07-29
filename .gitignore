@@ -117,6 +117,9 @@ tmp/
 scratch/
 debug/.git/
 
+# Unsloth compiled cache
+unsloth_compiled_cache/
+
 # Exclude git directory
 .git/
 .git/
