@@ -290,13 +290,19 @@ class DialogueSummarizationTrainer:
         else:
             base_path = Path(data_path)
         
-        # 경로가 없으면 기본 파일명 사용
+        # 경로가 없으면 config에서 가져오거나 기본 파일명 사용
         if train_path is None:
-            train_path = str(base_path / 'train.json')
+            train_path = self.config.get('general', {}).get('train_path')
+            if train_path is None:
+                train_path = str(base_path / 'train.csv')
         if val_path is None:
-            val_path = str(base_path / 'dev.json')
-        if test_path is None and (base_path / 'test.json').exists():
-            test_path = str(base_path / 'test.json')
+            val_path = self.config.get('general', {}).get('val_path')
+            if val_path is None:
+                val_path = str(base_path / 'dev.csv')
+        if test_path is None:
+            test_path = self.config.get('general', {}).get('test_path')
+            if test_path is None and (base_path / 'test.csv').exists():
+                test_path = str(base_path / 'test.csv')
         
         logger.info("Loading and processing datasets...")
         logger.info(f"Project root: {Path(__file__).parent.parent}")
