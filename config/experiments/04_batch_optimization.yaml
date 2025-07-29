@@ -4,7 +4,7 @@ description: "큰 배치 크기와 gradient accumulation 실험"
 
 general:
   model_name: digit82/kobart-summarization
-  data_path: ../data/
+  data_path: /data/
   name: batch_optimization
 
 model:
