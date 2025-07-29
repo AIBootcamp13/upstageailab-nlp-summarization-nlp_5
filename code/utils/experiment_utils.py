@@ -230,9 +230,8 @@ class ExperimentTracker:
                 self.logger.info(f"🏆 New best combined F1: {rouge_combined:.4f}")
                 
                 def get_experiment_list(self, status: Optional[str] = None) -> List[ExperimentInfo]:
-                def get_experiment_list(self, status: Optional[str] = None) -> List[ExperimentInfo]:
-        """실험 리스트 조회"""
-        experiments = []
+                """실험 리스트 조회"""
+                experiments = []
         
         for exp_id in self.experiments_db:
             exp_info = self._load_experiment_info(exp_id)
