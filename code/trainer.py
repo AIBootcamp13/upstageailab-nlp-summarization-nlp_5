@@ -280,21 +280,17 @@ class DialogueSummarizationTrainer:
             처리된 데이터셋 딕셔너리
         """
         # 기본 데이터 경로 설정
-        data_path = self.config.get('general', {}).get('data_path', '../data/')
+        data_path = self.config.get('general', {}).get('data_path', 'data/')
         
-        # 절대 경로 처리
-        if data_path.startswith('/'):
-            base_path = Path(data_path)
+        # 상대 경로를 프로젝트 루트 기준으로 처리
+        if not Path(data_path).is_absolute():
+            # 프로젝트 루트 찾기 (trainer.py는 code/ 디렉토리에 있음)
+            project_root = Path(__file__).parent.parent
+            base_path = project_root / data_path
         else:
-            # 상대 경로인 경우 프로젝트 루트 기준
-            base_path = Path.cwd() / data_path
+            base_path = Path(data_path)
         
-        # 실제 데이터가 /data에 있는 경우 처리
-        if not base_path.exists() and Path('/data').exists():
-            logger.info("Using /data directory as fallback")
-            base_path = Path('/data')
-        
-        # 경로가 없으면 기본 경로 사용
+        # 경로가 없으면 기본 파일명 사용
         if train_path is None:
             train_path = str(base_path / 'train.json')
         if val_path is None:
@@ -303,6 +299,7 @@ class DialogueSummarizationTrainer:
             test_path = str(base_path / 'test.json')
         
         logger.info("Loading and processing datasets...")
+        logger.info(f"Project root: {Path(__file__).parent.parent}")
         logger.info(f"Base data path: {base_path}")
         logger.info(f"Train path: {train_path}")
         logger.info(f"Val path: {val_path}")
