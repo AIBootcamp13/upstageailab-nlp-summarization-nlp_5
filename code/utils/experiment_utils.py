@@ -155,7 +155,8 @@ class ExperimentTracker:
                       final_metrics: Optional[Dict[str, float]] = None,
                       model_path: Optional[str] = None,
                       status: str = "completed",
-                      notes: Optional[str] = None):
+                      notes: Optional[str] = None,
+                      best_metrics: Optional[Dict[str, float]] = None):
         """
         실험 종료 (컴플리트 실험의 에일리어스)
         
@@ -165,6 +166,7 @@ class ExperimentTracker:
             model_path: 모델 저장 경로
             status: 실험 상태
             notes: 추가 노트
+            best_metrics: 최고 성능 메트릭
         """
         # update_experiment를 직접 호출하여 status 처리
         self.update_experiment(
@@ -173,7 +175,8 @@ class ExperimentTracker:
             end_time=datetime.now().isoformat(),
             final_metrics=final_metrics,
             model_path=model_path,
-            notes=notes
+            notes=notes,
+            best_metrics=best_metrics
         )
         
         exp_id = experiment_id or self.current_experiment.experiment_id
