@@ -858,9 +858,22 @@ class DialogueSummarizationTrainer:
         # 모델 아키텍처에 따른 로딩
         if architecture in ['kobart', 'bart', 't5', 'mt5']:
             # 시퀀스-투-시퀀스 모델
+            model_config = {
+                'torch_dtype': torch.float16 if self.config['training'].get('fp16') else torch.float32
+            }
+            
+            # mT5 모델 특수 설정 (그래디언트 체크포인트 안정성)
+            if 'mt5' in model_checkpoint.lower() or 'multilingual' in model_checkpoint.lower():
+                model_config.update({
+                    'use_cache': False,  # gradient checkpointing과 충돌 방지
+                    'output_attentions': False,
+                    'output_hidden_states': False
+                })
+                logger.info("🔧 mT5 모델 안정성 설정 적용")
+            
             self.model = AutoModelForSeq2SeqLM.from_pretrained(
                 model_checkpoint,
-                torch_dtype=torch.float16 if self.config['training'].get('fp16') else torch.float32
+                **model_config
             )
         elif architecture in ['kogpt2', 'gpt2', 'gpt-neo']:
             # 인과 언어 모델

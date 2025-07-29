@@ -46,7 +46,6 @@ training:
   per_device_train_batch_size: 6      # 1.2B 파라미터 고려
   per_device_eval_batch_size: 12
   gradient_accumulation_steps: 4      # 유효 배치 크기 24
-  
   # 학습 파라미터
   num_train_epochs: 3                 # 대형 모델은 적은 epoch
   learning_rate: 3.0e-05
@@ -56,11 +55,10 @@ training:
   
   # 최적화 설정
   fp16: true                          # 필수
-  gradient_checkpointing: true        # 메모리 절약
-  dataloader_num_workers: 8           # 48코어 활용
-  dataloader_pin_memory: true         # 251GB RAM 활용
+  gradient_checkpointing: false       # mT5에서 grad_fn 에러 방지
+  dataloader_num_workers: 4           # 안정성을 위해 감소
+  dataloader_pin_memory: false        # 메모리 안정성 우선
   group_by_length: true
-  
   # 저장 및 로깅
   logging_steps: 100
   save_strategy: steps

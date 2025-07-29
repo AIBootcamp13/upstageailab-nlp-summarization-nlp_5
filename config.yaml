@@ -245,8 +245,9 @@ xlsum_mt5:
     logging_steps: 50  # 대형 모델은 자주 로깅
     
     # 메모리 최적화
+    gradient_checkpointing: false       # mT5에서 grad_fn 에러 방지
     dataloader_num_workers: 2
-    dataloader_pin_memory: true
+    dataloader_pin_memory: false        # 안정성 우선
     remove_unused_columns: false
     # mT5용 WandB 설정 (팀 공유 계정)
     wandb:
