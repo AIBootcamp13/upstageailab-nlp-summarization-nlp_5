@@ -5,6 +5,8 @@ description: "eenzeenee T5 1 epoch 빠른 테스트 - RTX 3090 최적화"
 general:
   model_name: eenzeenee/t5-base-korean-summarization
   data_path: ../data/
+  train_path: data/train.csv
+  val_path: data/dev.csv
   model_type: seq2seq
   name: eenzeenee_t5_1epoch_test
 

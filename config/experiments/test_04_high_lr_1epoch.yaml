@@ -5,6 +5,8 @@ description: "고성능 학습률 1 epoch 빠른 테스트 - RTX 3090 최적화"
 general:
   model_name: digit82/kobart-summarization
   data_path: ../data/
+  train_path: data/train.csv
+  val_path: data/dev.csv
   name: high_lr_1epoch_test
 
 tokenizer:

@@ -5,6 +5,8 @@ description: "mT5 XL-Sum 1 epoch 빠른 테스트 - RTX 3090 최적화"
 general:
   model_name: csebuetnlp/mT5_multilingual_XLSum
   data_path: ../data/
+  train_path: data/train.csv
+  val_path: data/dev.csv
   model_type: seq2seq
   name: mt5_xlsum_1epoch_test
 

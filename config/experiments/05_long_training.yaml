@@ -5,6 +5,8 @@ description: "긴 학습으로 최고 성능 추구 실험"
 general:
   model_name: digit82/kobart-summarization
   data_path: ../data/
+  train_path: data/train.csv
+  val_path: data/dev.csv
   name: long_training_experiment
 
 tokenizer:
