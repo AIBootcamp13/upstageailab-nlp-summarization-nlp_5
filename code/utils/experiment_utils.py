@@ -178,6 +178,7 @@ class ExperimentTracker:
         
         exp_id = experiment_id or self.current_experiment.experiment_id
         self.logger.info(f"Ended experiment: {exp_id}")
+    
     def update_experiment(self, experiment_id: Optional[str] = None, **kwargs):
         """실험 정보 업데이트"""
         if experiment_id is None:
@@ -197,8 +198,8 @@ class ExperimentTracker:
         
         if experiment_id is None or experiment_id == self.current_experiment.experiment_id:
             self.current_experiment = experiment_info
-        
-        def log_metrics(self, metrics: Dict[str, float], step: Optional[int] = None):
+    
+    def log_metrics(self, metrics: Dict[str, float], step: Optional[int] = None):
         """
         메트릭 로깅
         
@@ -228,14 +229,19 @@ class ExperimentTracker:
                     'rougeL_f1': metrics.get('eval_rougeL_f1', 0) or metrics.get('rougeL_f1', 0)
                 }
                 self._save_experiment_info(self.current_experiment)
-                self.logger.info(f"🏆 New best combined F1: {rouge_combined:.4f}")
-                
-                def get_experiment_list(self, status: Optional[str] = None) -> List[ExperimentInfo]:
-                """실험 리스트 조회"""
-                experiments = []
+                self.logger.info(f"🏆 New best ROUGE-F1: {rouge_combined:.4f}")
+    
+    def get_experiment_list(self, status: Optional[str] = None) -> List[ExperimentInfo]:
+        """실험 리스트 조회"""
+        experiments = []
+        for exp_id in self.experiments_db.keys():
+            try:
                 exp_info = self._load_experiment_info(exp_id)
                 if status is None or exp_info.status == status:
-                experiments.append(exp_info)
+                    experiments.append(exp_info)
+            except FileNotFoundError:
+                # 실험 정보 파일이 없는 경우 스킵
+                continue
         
         # 시작 시간으로 정렬 (최신순)
         experiments.sort(key=lambda x: x.start_time, reverse=True)
@@ -247,15 +253,17 @@ class ExperimentTracker:
         experiments = self.get_experiment_list(status="completed")
         
         # 메트릭 기준으로 정렬
-        experiments_with_metric = []
+        valid_experiments = []
         for exp in experiments:
             if exp.best_metrics and metric in exp.best_metrics:
-                experiments_with_metric.append((exp, exp.best_metrics[metric]))
+                valid_experiments.append(exp)
         
-        # 점수 기준 내림차순 정렬
-        experiments_with_metric.sort(key=lambda x: x[1], reverse=True)
+        valid_experiments.sort(
+            key=lambda x: x.best_metrics[metric], 
+            reverse=True
+        )
         
-        return [exp for exp, _ in experiments_with_metric[:top_k]]
+        return valid_experiments[:top_k]
     
     def _load_experiments_db(self) -> Dict[str, Any]:
         """실험 데이터베이스 로딩"""
@@ -282,7 +290,8 @@ class ExperimentTracker:
             'name': experiment_info.name,
             'status': experiment_info.status,
             'start_time': experiment_info.start_time,
-            'model_type': experiment_info.model_type
+            'end_time': experiment_info.end_time,
+            'best_metrics': experiment_info.best_metrics
         }
         self._save_experiments_db()
     
@@ -302,52 +311,29 @@ class ExperimentTracker:
         """설정 해시 생성"""
         config_str = json.dumps(config, sort_keys=True, ensure_ascii=False)
         return hashlib.md5(config_str.encode()).hexdigest()
-        
-        def log_metrics(self, metrics: Dict[str, float], step: Optional[int] = None):
-        """
-        메트릭 로깅
-        
-        Args:
-            metrics: 메트릭 딕셔너리
-            step: 단계 번호 (선택사항)
-        """
-        if not self.current_experiment:
-            self.logger.warning("⚠️  현재 실행 중인 실험이 없습니다.")
-            return
-        
-        # 메트릭 로깅 (간단한 정보만)
-        if step is not None:
-            self.logger.info(f"📊 Step {step} metrics logged")
-        else:
-            self.logger.info("📊 Metrics logged")
-        
-        # best_metrics 업데이트 (주요 메트릭만)
-        rouge_combined = metrics.get('eval_rouge_combined_f1', 0) or metrics.get('rouge_combined_f1', 0)
-        if rouge_combined > 0:
-            current_best = self.current_experiment.best_metrics or {}
-            if rouge_combined > current_best.get('rouge_combined_f1', 0):
-                self.current_experiment.best_metrics = {
-                    'rouge_combined_f1': rouge_combined,
-                    'rouge1_f1': metrics.get('eval_rouge1_f1', 0) or metrics.get('rouge1_f1', 0),
-                    'rouge2_f1': metrics.get('eval_rouge2_f1', 0) or metrics.get('rouge2_f1', 0),
-                    'rougeL_f1': metrics.get('eval_rougeL_f1', 0) or metrics.get('rougeL_f1', 0)
-                }
-                self._save_experiment_info(self.current_experiment)
-                self.logger.info(f"🏆 New best combined F1: {rouge_combined:.4f}")
 
 
 class ModelRegistry:
-    """모델 등록 및 관리 시스템"""
+    """
+    모델 등록 및 관리
     
-    def __init__(self, models_dir: Union[str, Path] = "./models"):
-        """ModelRegistry 초기화"""
-        self.models_dir = Path(models_dir)
-        self.models_dir.mkdir(parents=True, exist_ok=True)
+    학습된 모델들의 정보를 등록하고 관리하는 클래스입니다.
+    """
+    
+    def __init__(self, registry_dir: Union[str, Path] = "./models"):
+        """
+        ModelRegistry 초기화
+        
+        Args:
+            registry_dir: 모델 등록 정보 저장 디렉토리
+        """
+        self.registry_dir = Path(registry_dir)
+        self.registry_dir.mkdir(parents=True, exist_ok=True)
         
         self.logger = logging.getLogger(__name__)
         
-        # 모델 데이터베이스
-        self.db_path = self.models_dir / "models.json"
+        # 모델 데이터베이스 (JSON 파일)
+        self.db_path = self.registry_dir / "models.json"
         self.models_db = self._load_models_db()
     
     def register_model(self, name: str, architecture: str, checkpoint: str,
@@ -355,11 +341,26 @@ class ModelRegistry:
                       training_info: Dict[str, Any], file_path: str,
                       experiment_id: Optional[str] = None,
                       tags: Optional[List[str]] = None) -> str:
-        """모델 등록"""
+        """
+        모델 등록
+        
+        Args:
+            name: 모델명
+            architecture: 모델 아키텍처
+            checkpoint: 체크포인트 경로
+            config: 모델 설정
+            performance: 성능 메트릭
+            training_info: 학습 정보
+            file_path: 모델 파일 경로
+            experiment_id: 실험 ID
+            tags: 태그 리스트
+            
+        Returns:
+            모델 ID
+        """
         # 모델 ID 생성
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        name_hash = hashlib.md5(name.encode()).hexdigest()[:8]
-        model_id = f"{architecture}_{timestamp}_{name_hash}"
+        model_id = f"{name}_{timestamp}"
         
         # 모델 정보 생성
         model_info = ModelInfo(
@@ -382,6 +383,46 @@ class ModelRegistry:
         self.logger.info(f"Registered model: {model_id} - {name}")
         return model_id
     
+    def get_model_list(self, architecture: Optional[str] = None,
+                      tag: Optional[str] = None) -> List[ModelInfo]:
+        """모델 리스트 조회"""
+        models = []
+        for model_id in self.models_db.keys():
+            try:
+                model_info = self._load_model_info(model_id)
+                
+                # 필터링
+                if architecture and model_info.architecture != architecture:
+                    continue
+                if tag and tag not in model_info.tags:
+                    continue
+                    
+                models.append(model_info)
+            except FileNotFoundError:
+                continue
+        
+        # 생성 시간으로 정렬 (최신순)
+        models.sort(key=lambda x: x.created_at, reverse=True)
+        return models
+    
+    def get_best_models(self, metric: str = "rouge_combined_f1",
+                       top_k: int = 5) -> List[ModelInfo]:
+        """최고 성능 모델들 조회"""
+        models = self.get_model_list()
+        
+        # 메트릭 기준으로 정렬
+        valid_models = []
+        for model in models:
+            if metric in model.performance:
+                valid_models.append(model)
+        
+        valid_models.sort(
+            key=lambda x: x.performance[metric],
+            reverse=True
+        )
+        
+        return valid_models[:top_k]
+    
     def _load_models_db(self) -> Dict[str, Any]:
         """모델 데이터베이스 로딩"""
         if self.db_path.exists():
@@ -396,7 +437,7 @@ class ModelRegistry:
     
     def _save_model_info(self, model_info: ModelInfo):
         """모델 정보 저장"""
-        info_file = self.models_dir / f"{model_info.model_id}.json"
+        info_file = self.registry_dir / f"{model_info.model_id}.json"
         
         with open(info_file, 'w', encoding='utf-8') as f:
             json.dump(asdict(model_info), f, ensure_ascii=False, indent=2)
@@ -405,14 +446,15 @@ class ModelRegistry:
         self.models_db[model_info.model_id] = {
             'name': model_info.name,
             'architecture': model_info.architecture,
+            'performance': model_info.performance,
             'created_at': model_info.created_at,
-            'main_metric': model_info.performance.get('rouge_combined_f1', 0.0)
+            'tags': model_info.tags
         }
         self._save_models_db()
     
     def _load_model_info(self, model_id: str) -> ModelInfo:
         """모델 정보 로딩"""
-        info_file = self.models_dir / f"{model_id}.json"
+        info_file = self.registry_dir / f"{model_id}.json"
         
         if not info_file.exists():
             raise FileNotFoundError(f"Model not found: {model_id}")
@@ -421,117 +463,3 @@ class ModelRegistry:
             data = json.load(f)
         
         return ModelInfo(**data)
-    
-    def get_model_info(self, model_name: str) -> Optional[Dict[str, Any]]:
-        """
-        모델명에 따른 모델 정보 반환
-        
-        Args:
-            model_name: 모델 이름 (e.g., 't5-base-korean-summarization')
-            
-        Returns:
-            모델 정보 딕셔너리 또는 None
-        """
-        # 알려진 모델들에 대한 정보 매핑
-        model_name_lower = model_name.lower()
-        
-        # T5 기반 모델들
-        if any(keyword in model_name_lower for keyword in ['t5', 'flan-t5', 'mt5']):
-            return {
-                'architecture': 't5',
-                'model_type': 'seq2seq',
-                'recommended_params': {
-                    'learning_rate': 3e-5,
-                    'batch_size': 4,
-                    'gradient_accumulation_steps': 2,
-                    'num_epochs': 3
-                },
-                'memory_requirements': 'medium' if 'base' in model_name_lower else 'high'
-            }
-        
-        # BART/KoBART 기반 모델들  
-        elif any(keyword in model_name_lower for keyword in ['bart', 'kobart']):
-            return {
-                'architecture': 'bart',
-                'model_type': 'seq2seq',
-                'recommended_params': {
-                    'learning_rate': 2e-5,
-                    'batch_size': 8,
-                    'gradient_accumulation_steps': 1,
-                    'num_epochs': 5
-                },
-                'memory_requirements': 'low' if 'ko' in model_name_lower else 'medium'
-            }
-        
-        # GPT 기반 모델들
-        elif any(keyword in model_name_lower for keyword in ['gpt', 'kogpt']):
-            return {
-                'architecture': 'gpt',
-                'model_type': 'causal_lm',
-                'recommended_params': {
-                    'learning_rate': 1e-5,
-                    'batch_size': 2,
-                    'gradient_accumulation_steps': 4,
-                    'num_epochs': 3
-                },
-                'memory_requirements': 'very_high'
-            }
-        
-        # Polyglot 기반 모델들
-        elif 'polyglot' in model_name_lower:
-            return {
-                'architecture': 'gpt-neox',
-                'model_type': 'causal_lm',
-                'recommended_params': {
-                    'learning_rate': 2e-5,
-                    'batch_size': 4,
-                    'gradient_accumulation_steps': 2,
-                    'num_epochs': 3
-                },
-                'memory_requirements': 'high'
-            }
-        
-        # eenzeenee 모델 직접 지원
-        elif 'eenzeenee' in model_name_lower:
-            return {
-                'architecture': 't5',
-                'model_type': 'seq2seq',
-                'recommended_params': {
-                    'learning_rate': 3e-5,
-                    'batch_size': 8,
-                    'gradient_accumulation_steps': 1,
-                    'num_epochs': 5
-                },
-                'memory_requirements': 'medium',
-                'requires_prefix': True,
-                'input_prefix': 'summarize: '
-            }
-        
-        # 기본 지원 모델들 (KoBART 등)
-        elif any(keyword in model_name_lower for keyword in ['kobart', 'digit82']):
-            return {
-                'architecture': 'bart',
-                'model_type': 'seq2seq',
-                'recommended_params': {
-                    'learning_rate': 2e-5,
-                    'batch_size': 8,
-                    'gradient_accumulation_steps': 1,
-                    'num_epochs': 5
-                },
-                'memory_requirements': 'low'
-            }
-        
-        # 알 수 없는 모델의 경우 None 반환
-        self.logger.warning(f"Unknown model: {model_name}. Returning None.")
-        return None
-
-
-# 편의 함수들
-def create_experiment_tracker(experiments_dir: str = "./experiments") -> ExperimentTracker:
-    """실험 추적기 생성 편의 함수"""
-    return ExperimentTracker(experiments_dir)
-
-
-def create_model_registry(models_dir: str = "./models") -> ModelRegistry:
-    """모델 등록기 생성 편의 함수"""
-    return ModelRegistry(models_dir)
