@@ -228,6 +228,20 @@ class DataProcessor:
         """특수 토큰을 토크나이저에 추가"""
         special_tokens = self.text_preprocessor.special_tokens
         
+        # 모델 이름 확인
+        model_name = self.config.get('general', {}).get('model_name', '')
+        
+        # eenzeenee 모델의 경우 특별 처리
+        if "eenzeenee" in model_name.lower():
+            try:
+                from utils.eenzeenee_utils import check_and_fix_special_tokens
+                self.tokenizer = check_and_fix_special_tokens(
+                    self.tokenizer, special_tokens, model_name
+                )
+                return
+            except ImportError:
+                logger.warning("⚠️ eenzeenee_utils를 찾을 수 없습니다. 기본 처리를 사용합니다.")
+        
         # 기존에 없는 토큰만 추가
         new_tokens = [token for token in special_tokens 
                      if token not in self.tokenizer.get_vocab()]
@@ -420,10 +434,27 @@ class DataProcessor:
         Returns:
             토크나이징된 데이터 딕셔너리
         """
+        # 모델 이름 확인
+        model_name = self.config.get('general', {}).get('model_name', '')
+        
+        # eenzeenee 모델의 경우 길이 제한
+        if "eenzeenee" in model_name.lower():
+            try:
+                from utils.eenzeenee_utils import get_safe_max_length
+                safe_lengths = get_safe_max_length(model_name, self.config)
+                encoder_max_len = safe_lengths['encoder_max_len']
+                decoder_max_len = safe_lengths['decoder_max_len']
+            except ImportError:
+                encoder_max_len = min(self.encoder_max_len, 256)
+                decoder_max_len = min(self.decoder_max_len, 64)
+        else:
+            encoder_max_len = self.encoder_max_len
+            decoder_max_len = self.decoder_max_len
+        
         # 입력 토크나이징
         model_inputs = self.tokenizer(
             examples['input'],
-            max_length=self.encoder_max_len,
+            max_length=encoder_max_len,
             padding='max_length',
             truncation=True
         )
@@ -432,7 +463,7 @@ class DataProcessor:
         with self.tokenizer.as_target_tokenizer():
             labels = self.tokenizer(
                 examples['target'],
-                max_length=self.decoder_max_len,
+                max_length=decoder_max_len,
                 padding='max_length',
                 truncation=True
             )

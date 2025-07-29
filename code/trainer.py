@@ -373,8 +373,8 @@ class DialogueSummarizationTrainer:
         # 학습 인자 설정
         training_args = self._get_training_arguments()
         
-        # 데이터 콜레이터
-        data_collator = DataCollatorForSeq2Seq(
+        # 데이터 콜레이터 - 모델 타입에 따라 SmartDataCollatorForSeq2Seq 사용
+        data_collator = SmartDataCollatorForSeq2Seq(
             tokenizer=self.tokenizer,
             model=self.model,
             padding=True,
