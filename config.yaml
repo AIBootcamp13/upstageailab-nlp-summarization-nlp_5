@@ -141,7 +141,7 @@ xlsum_mt5:
     data_path: ../data/
     output_dir: ./xlsum_mt5_outputs/
     model_type: seq2seq
-    input_prefix: ""  # mT5는 prefix 없이 사용
+    input_prefix: "summarize: "  # mT5도 prefix 사용 (빈 요약 방지)
   
   # mT5 토크나이저 설정
   tokenizer:

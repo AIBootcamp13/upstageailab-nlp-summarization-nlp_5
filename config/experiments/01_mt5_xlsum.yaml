@@ -9,13 +9,12 @@ general:
   val_path: data/dev.csv
   model_type: seq2seq
   name: mt5_xlsum_optimized
-  name: mt5_xlsum_optimized
 
 model:
   architecture: mt5
   checkpoint: csebuetnlp/mT5_multilingual_XLSum
 
-input_prefix: ""  # mT5는 prefix 없이 사용
+input_prefix: "summarize: "  # mT5도 prefix 사용으로 변경 (빈 요약 방지)
 
 tokenizer:
   bos_token: <pad>
@@ -43,9 +42,9 @@ training:
   eval_steps: 300
   
   # 대형 모델 안전 배치 설정
-  per_device_train_batch_size: 6      # 1.2B 파라미터 고려
-  per_device_eval_batch_size: 12
-  gradient_accumulation_steps: 4      # 유효 배치 크기 24
+  per_device_train_batch_size: 2      # mT5 1.2B 안전 배치
+  per_device_eval_batch_size: 4       # 평가도 안전하게
+  gradient_accumulation_steps: 8      # 유효 배치 크기 16
   # 학습 파라미터
   num_train_epochs: 3                 # 대형 모델은 적은 epoch
   learning_rate: 3.0e-05
