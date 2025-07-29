@@ -87,7 +87,8 @@ class AutoExperimentRunner:
     def run_experiments(self, 
                        experiment_configs: List[str],
                        dry_run: bool = False,
-                       continue_on_error: bool = True) -> Dict[str, Any]:
+                       continue_on_error: bool = True,
+                       one_epoch: bool = False) -> Dict[str, Any]:
         """
         여러 실험을 순차적으로 실행
         
@@ -95,6 +96,7 @@ class AutoExperimentRunner:
             experiment_configs: 실험 설정 파일 경로 리스트 (상대 경로)
             dry_run: 실제 실행 없이 설정만 확인
             continue_on_error: 오류 발생 시 다음 실험 계속 진행
+            one_epoch: 1에포크만 실행 (빠른 테스트용)
             
         Returns:
             실험 결과 딕셔너리
@@ -124,7 +126,7 @@ class AutoExperimentRunner:
                     continue
                 
                 # 실험 실행
-                result = self._run_single_experiment(full_config, config_path)
+                result = self._run_single_experiment(full_config, config_path, one_epoch)
                 results[config_path] = result
                 
                 # 실험 추적
@@ -205,70 +207,73 @@ class AutoExperimentRunner:
         for key, value in opt_dict.items():
             if key not in training_config:
                 training_config[key] = value
-        
-        # 디바이스 정보 추가
         config['device'] = str(self.device)
         config['device_info'] = {
             'type': self.device_info.device_type,
             'name': self.device_info.device_name,
             'memory_gb': self.device_info.memory_gb
         } if hasattr(self.device_info, 'device_type') else None
-    
-    def _run_single_experiment(self, config: Dict[str, Any], config_path: str) -> Dict[str, Any]:
-        """단일 실험 실행"""
-        start_time = time.time()
         
-        try:
-            # trainer.py 실행 - 원본 config 파일 경로 전달
-            cmd = [
-                sys.executable,
-                str(path_manager.resolve_path("code/trainer.py")),
-                "--config", config_path  # 원본 config 파일 경로 사용
-            ]
+        def _run_single_experiment(self, config: Dict[str, Any], config_path: str, one_epoch: bool = False) -> Dict[str, Any]:
+            """단일 실험 실행"""
+            start_time = time.time()
             
-            print(f"\n실행 명령: {' '.join(cmd[:3])}...")
+            try:
+                # 1에포크 모드를 위한 환경 변수 설정
+                env = None
+                if one_epoch:
+                    import os
+                    env = os.environ.copy()
+                    env['FORCE_ONE_EPOCH'] = '1'
+                    print(f"\n🚀 1에포크 모드로 실행: {Path(config_path).stem}")
+                
+                # trainer.py 실행
+                cmd = [
+                    sys.executable,
+                    str(path_manager.resolve_path("code/trainer.py")),
+                    "--config", config_path
+                ]
+                
+                print(f"\n실행 명령: {' '.join(cmd[:3])}...")
+                
+                # 프로세스 실행
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    env=env
+                )
+                
+                # 모든 출력을 수집하면서 실시간 표시
+                output_lines = []
+                for line in process.stdout:
+                    print(line, end='')
+                    output_lines.append(line)
+                
+                # 프로세스 종료 대기
+                process.wait()
+                
+                # 결과 수집
+                if process.returncode == 0:
+                    result = self._collect_results(config, Path(config_path).stem)
+                    result['status'] = 'success'
+                    result['duration'] = time.time() - start_time
+                else:
+                    result = {
+                        'status': 'error',
+                        'error': f'Training failed with exit code {process.returncode}',
+                        'duration': time.time() - start_time
+                    }
             
-            # 프로세스 실행 - stderr도 stdout으로 통합하여 모든 출력 표시
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,  # stderr를 stdout으로 통합
-                text=True,
-                cwd=str(path_manager.project_root)
-            )
-            
-            # 모든 출력을 수집하면서 실시간 표시
-            output_lines = []
-            for line in process.stdout:
-                print(line, end='')
-                output_lines.append(line)
-            
-            # 프로세스 종료 대기
-            process.wait()
-            
-            # 결과 수집
-            if process.returncode == 0:
-                # 성공 - 결과 파일 읽기
-                result = self._collect_results(config, Path(config_path).stem)
-                result['status'] = 'success'
-                result['duration'] = time.time() - start_time
-            else:
-                # 실패 - 출력 내용을 에러로 저장
+            except Exception as e:
                 result = {
-                    'status': 'failed',
-                    'return_code': process.returncode,
-                    'error': ''.join(output_lines[-100:]),  # 마지막 100줄만 저장
+                    'status': 'error',
+                    'error': str(e),
                     'duration': time.time() - start_time
                 }
-                
-        except Exception as e:
-            result = {
-                'status': 'error',
-                'error': str(e),
-                'duration': time.time() - start_time
-            }
-        
-        return result
+            
+            return result
     
     def _collect_results(self, config: Dict[str, Any], experiment_name: str) -> Dict[str, Any]:
         """실험 결과 수집"""
@@ -379,6 +384,11 @@ def main():
         action='store_true',
         help='오류 발생 시 중단 (기본값: 계속 진행)'
     )
+    parser.add_argument(
+        '--one-epoch',
+        action='store_true',
+        help='1에포크만 실행 (빠른 테스트용)'
+    )
     
     args = parser.parse_args()
     
@@ -404,7 +414,8 @@ def main():
     results = runner.run_experiments(
         experiment_configs=args.config,
         dry_run=args.dry_run,
-        continue_on_error=not args.stop_on_error
+        continue_on_error=not args.stop_on_error,
+        one_epoch=args.one_epoch
     )
     
     # 결과 저장

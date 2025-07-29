@@ -1,0 +1,91 @@
+# AIStages 서버 동기화 설정 템플릿
+# 이 파일을 복사하여 config.conf로 이름을 변경하고 설정을 수정하세요
+# cp config.conf.template config.conf
+
+# =================================================================
+# 서버 연결 설정
+# =================================================================
+
+# AIStages 서버 호스트명 (SSH config에서 설정한 이름 사용)
+REMOTE_HOST="aistages"
+
+# SSH 포트 (SSH config에서 설정되어 있으면 생략 가능)
+SSH_PORT=22
+
+# =================================================================
+# 경로 설정 (각자 환경에 맞게 수정 필요)
+# =================================================================
+
+# 로컬 맥 프로젝트 경로 (각자 다름 - 반드시 수정)
+LOCAL_BASE="/Users/YOUR_USERNAME/Developer/Projects/upstageailab-nlp-summarization-nlp_5/nlp-sum-lyj"
+
+# AIStages 서버 프로젝트 경로 (각자 다름 - 반드시 수정)
+REMOTE_BASE="/data/ephemeral/home/upstageailab-nlp-summarization-nlp_5"
+
+# =================================================================
+# 실험 결과 데이터 경로 (일반적으로 동일)
+# =================================================================
+
+# 실험 결과가 저장되는 상대 경로들
+OUTPUTS_SUBDIR="outputs"           # 메인 실험 결과 디렉토리
+LOGS_SUBDIR="logs"                 # 로그 디렉토리  
+WANDB_SUBDIR="wandb"               # WandB 로그 디렉토리
+MODELS_SUBDIR="models"             # 모델 저장 디렉토리
+
+# =================================================================
+# 동기화 옵션
+# =================================================================
+
+# 동기화 후 서버에서 자동 삭제 여부 (true/false)
+AUTO_DELETE_AFTER_SYNC=false
+
+# 백업 보관 기간 (일)
+BACKUP_RETENTION_DAYS=30
+
+# 동기화할 파일 확장자 필터
+INCLUDE_EXTENSIONS="*.json,*.txt,*.log,*.csv,*.png,*.jpg,*.pt,*.pth,*.bin"
+
+# 제외할 디렉토리 패턴
+EXCLUDE_PATTERNS="__pycache__,*.pyc,*.tmp,*.cache"
+
+# =================================================================
+# 로그 설정
+# =================================================================
+
+# 로그 레벨 (DEBUG, INFO, WARNING, ERROR)
+LOG_LEVEL="INFO"
+
+# 로그 파일 보관 기간 (일)
+LOG_RETENTION_DAYS=7
+
+# =================================================================
+# 고급 설정
+# =================================================================
+
+# rsync 추가 옵션
+RSYNC_ADDITIONAL_OPTIONS="--compress --partial --progress"
+
+# 동시 연결 수 제한
+MAX_CONCURRENT_SYNC=3
+
+# 재시도 횟수
+MAX_RETRY_COUNT=3
+
+# 연결 타임아웃 (초)
+CONNECTION_TIMEOUT=30
+
+# =================================================================
+# 개인 설정 예시
+# =================================================================
+
+# 팀장 (jayden) 설정 예시:
+# LOCAL_BASE="/Users/jayden/Developer/Projects/upstageailab-nlp-summarization-nlp_5/nlp-sum-lyj"
+# REMOTE_BASE="/data/ephemeral/home/upstageailab-nlp-summarization-nlp_5"
+
+# 팀원 A 설정 예시:
+# LOCAL_BASE="/Users/teamA/Documents/nlp-project/nlp-sum-lyj"  
+# REMOTE_BASE="/data/ephemeral/home/upstageailab-nlp-summarization-nlp_5"
+
+# 팀원 B 설정 예시:
+# LOCAL_BASE="/Users/teamB/workspace/nlp-summarization/nlp-sum-lyj"
+# REMOTE_BASE="/data/ephemeral/home/upstageailab-nlp-summarization-nlp_5"

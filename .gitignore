@@ -115,7 +115,10 @@ docs/.doctrees/
 temp/
 tmp/
 scratch/
-debug/.git/
+debug/
+
+# Sync reports (자동 생성된 동기화 보고서)
+sync_report_*.txt
 
 # Unsloth compiled cache
 unsloth_compiled_cache/

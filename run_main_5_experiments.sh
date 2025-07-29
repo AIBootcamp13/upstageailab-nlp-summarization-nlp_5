@@ -3,6 +3,42 @@
 
 set -e  # 오류 시 중단
 
+# 옵션 파싱
+ONE_EPOCH=false
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --one-epoch)
+            ONE_EPOCH=true
+            shift
+            ;;
+        --1epoch)
+            ONE_EPOCH=true
+            shift
+            ;;
+        -1)
+            ONE_EPOCH=true
+            shift
+            ;;
+        --help|-h)
+            echo "사용법: $0 [옵션]"
+            echo "옵션:"
+            echo "  --one-epoch, --1epoch, -1    1에포크만 실행 (빠른 테스트용)"
+            echo "  --help, -h                   도움말 출력"
+            echo ""
+            echo "예시:"
+            echo "  $0                           # 전체 에포크 실행 (3에포크)"
+            echo "  $0 --one-epoch              # 1에포크만 실행"
+            echo "  $0 -1                       # 1에포크만 실행 (단축형)"
+            exit 0
+            ;;
+        *)
+            echo "알 수 없는 옵션: $1"
+            echo "도움말을 보려면 $0 --help 를 실행하세요."
+            exit 1
+            ;;
+    esac
+done
+
 # .env 파일에서 환경 변수 로드
 if [ -f .env ]; then
     echo "🔑 .env 파일에서 환경 변수 로드 중..."
@@ -21,14 +57,23 @@ fi
 # 추가 환경 변수 설정
 export TOKENIZERS_PARALLELISM=false
 export PYTHONWARNINGS="ignore"
-echo "🚀 5개 주요 모델 정상 실험 순차 실행"
-echo "======================================="
-echo "📋 실험 목록:"
-echo "  1. mT5 XL-Sum (1.2B parameters)"
-echo "  2. eenzeenee T5 Korean"  
-echo "  3. KoBART Baseline"
-echo "  4. High Learning Rate"
-echo "  5. Batch Optimization"
+
+# 1에포크 모드 메시지
+if [ "$ONE_EPOCH" = true ]; then
+    echo "🚀 5개 주요 모델 빠른 테스트 (1에포크)"
+    echo "======================================="
+    echo "🕰️ 예상 소요 시간: 약 2-3시간 (전체 대비 75% 단축)"
+    else
+    echo "🚀 5개 주요 모델 정상 실험 순차 실행"
+    echo "======================================="
+    echo "🕰️ 예상 소요 시간: 약 8-12시간"
+    fi
+    echo "📋 실험 목록:"
+    echo "  1. mT5 XL-Sum (1.2B parameters)"
+    echo "  2. eenzeenee T5 Korean"  
+    echo "  3. KoBART Baseline"
+    echo "  4. High Learning Rate"
+    echo "  5. Batch Optimization"
 echo ""
 
 # 실험 목록 정의 (설정 파일과 설명)
@@ -78,31 +123,60 @@ for i in "${!EXPERIMENTS[@]}"; do
     echo "🚀 실험 시작: $(date)"
     
     # 실험 실행 (로그 파일에 저장하면서 화면에도 출력)
-    if python code/auto_experiment_runner.py --config "${YAML_FILE}" 2>&1 | tee "$LOG_FILE"; then
-        EXPERIMENT_END=$(date +%s)
-        EXPERIMENT_TIME=$((EXPERIMENT_END - EXPERIMENT_START))
-        EXPERIMENT_HOURS=$((EXPERIMENT_TIME / 3600))
-        EXPERIMENT_MINUTES=$(((EXPERIMENT_TIME % 3600) / 60))
-        
-        echo ""
-        echo "✅ 실험 ${EXPERIMENT_NUM} 완료!"
-        echo "⏱️  소요 시간: ${EXPERIMENT_HOURS}시간 ${EXPERIMENT_MINUTES}분"
-        RESULTS+=("✅ ${DESCRIPTION}: ${EXPERIMENT_HOURS}시간 ${EXPERIMENT_MINUTES}분")
-    else
-        EXPERIMENT_END=$(date +%s)
-        EXPERIMENT_TIME=$((EXPERIMENT_END - EXPERIMENT_START))
-        EXPERIMENT_HOURS=$((EXPERIMENT_TIME / 3600))
-        EXPERIMENT_MINUTES=$(((EXPERIMENT_TIME % 3600) / 60))
-        
-        echo ""
-        echo "❌ 실험 ${EXPERIMENT_NUM} 실패!"
-        echo "⏱️  실패까지 시간: ${EXPERIMENT_HOURS}시간 ${EXPERIMENT_MINUTES}분"
-        echo "📄 로그 파일 확인: $LOG_FILE"
-        RESULTS+=("❌ ${DESCRIPTION}: 실패 (${EXPERIMENT_HOURS}시간 ${EXPERIMENT_MINUTES}분)")
-        
-        # 실패 시에도 계속 진행
-        echo "⚠️  다음 실험을 계속 진행합니다..."
-    fi
+    if [ "$ONE_EPOCH" = true ]; then
+        # 1에포크 모드로 실행
+        if python code/auto_experiment_runner.py --config "${YAML_FILE}" --one-epoch 2>&1 | tee "$LOG_FILE"; then
+            EXPERIMENT_END=$(date +%s)
+            EXPERIMENT_TIME=$((EXPERIMENT_END - EXPERIMENT_START))
+            EXPERIMENT_HOURS=$((EXPERIMENT_TIME / 3600))
+            EXPERIMENT_MINUTES=$(((EXPERIMENT_TIME % 3600) / 60))
+            
+            echo ""
+            echo "✅ 실험 ${EXPERIMENT_NUM} 완료!"
+            echo "⏱️  소요 시간: ${EXPERIMENT_HOURS}시간 ${EXPERIMENT_MINUTES}분"
+            RESULTS+=("✅ ${DESCRIPTION}: ${EXPERIMENT_HOURS}시간 ${EXPERIMENT_MINUTES}분")
+        else
+            EXPERIMENT_END=$(date +%s)
+            EXPERIMENT_TIME=$((EXPERIMENT_END - EXPERIMENT_START))
+            EXPERIMENT_HOURS=$((EXPERIMENT_TIME / 3600))
+            EXPERIMENT_MINUTES=$(((EXPERIMENT_TIME % 3600) / 60))
+            
+            echo ""
+            echo "❌ 실험 ${EXPERIMENT_NUM} 실패!"
+            echo "⏱️  실패까지 시간: ${EXPERIMENT_HOURS}시간 ${EXPERIMENT_MINUTES}분"
+            echo "📄 로그 파일 확인: $LOG_FILE"
+            RESULTS+=("❌ ${DESCRIPTION}: 실패 (${EXPERIMENT_HOURS}시갴 ${EXPERIMENT_MINUTES}분)")
+            
+            # 실패 시에도 계속 진행
+            echo "⚠️  다음 실험을 계속 진행합니다..."
+        fi
+        else
+            # 정상 모드로 실행
+            if python code/auto_experiment_runner.py --config "${YAML_FILE}" 2>&1 | tee "$LOG_FILE"; then
+                EXPERIMENT_END=$(date +%s)
+                EXPERIMENT_TIME=$((EXPERIMENT_END - EXPERIMENT_START))
+                EXPERIMENT_HOURS=$((EXPERIMENT_TIME / 3600))
+                EXPERIMENT_MINUTES=$(((EXPERIMENT_TIME % 3600) / 60))
+                
+                echo "✅ 실험 ${EXPERIMENT_NUM} 완료!"
+                echo "⏱️  소요 시간: ${EXPERIMENT_HOURS}시간 ${EXPERIMENT_MINUTES}분"
+                RESULTS+=("✅ ${DESCRIPTION}: ${EXPERIMENT_HOURS}시간 ${EXPERIMENT_MINUTES}분")
+                else
+                EXPERIMENT_END=$(date +%s)
+                EXPERIMENT_TIME=$((EXPERIMENT_END - EXPERIMENT_START))
+                EXPERIMENT_HOURS=$((EXPERIMENT_TIME / 3600))
+                EXPERIMENT_MINUTES=$(((EXPERIMENT_TIME % 3600) / 60))
+                
+                echo ""
+                echo "❌ 실험 ${EXPERIMENT_NUM} 실패!"
+                echo "⏱️  실패까지 시간: ${EXPERIMENT_HOURS}시간 ${EXPERIMENT_MINUTES}분"
+                echo "📄 로그 파일 확인: $LOG_FILE"
+                RESULTS+=("❌ ${DESCRIPTION}: 실패 (${EXPERIMENT_HOURS}시간 ${EXPERIMENT_MINUTES}분)")
+                
+                # 실패 시에도 계속 진행
+                echo "⚠️  다음 실험을 계속 진행합니다..."
+                fi
+                fi
     
     echo ""
     

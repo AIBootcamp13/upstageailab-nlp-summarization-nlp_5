@@ -280,6 +280,42 @@ class ExperimentTracker:
         with open(self.db_path, 'w', encoding='utf-8') as f:
             json.dump(self.experiments_db, f, ensure_ascii=False, indent=2)
     
+    def log_experiment(self, experiment_name: str, config: Dict[str, Any], 
+                      results: Dict[str, Any], **kwargs):
+        """
+        실험 결과를 로그에 기록
+        
+        Args:
+            experiment_name: 실험명
+            config: 실험 설정
+            results: 실험 결과
+            **kwargs: 추가 파라미터
+        """
+        try:
+            # 기본적으로 로그에 기록
+            self.logger.info(f"📊 실험 로그: {experiment_name}")
+            
+            # 결과가 성공적이면 간단한 메트릭 로그
+            if results.get('status') == 'success' and 'metrics' in results:
+                metrics = results['metrics']
+                self.logger.info(f"   ROUGE-1: {metrics.get('eval_rouge1_f1', 0):.4f}")
+                self.logger.info(f"   ROUGE-2: {metrics.get('eval_rouge2_f1', 0):.4f}")
+                self.logger.info(f"   ROUGE-L: {metrics.get('eval_rougeL_f1', 0):.4f}")
+            
+            # 실험이 이미 시작되었다면 업데이트
+            if self.current_experiment is not None:
+                if results.get('status') == 'success':
+                    self.complete_experiment(
+                        final_metrics=results.get('metrics', {})
+                    )
+                elif results.get('status') == 'error':
+                    self.update_experiment(status="failed", notes=results.get('error', 'Unknown error'))
+            
+        except Exception as e:
+            self.logger.warning(f"실험 로그 기록 중 오류: {e}")
+            # 로그 실패가 전체 실행을 방해하지 않도록 pass
+            pass
+    
     def _save_experiment_info(self, experiment_info: ExperimentInfo):
         """실험 정보 저장"""
         exp_dir = self.experiments_dir / experiment_info.experiment_id
