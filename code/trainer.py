@@ -396,16 +396,82 @@ class DialogueSummarizationTrainer:
             preds, labels = eval_preds
             
             # 토큰 ID를 텍스트로 디코딩 (특수 토큰 제거)
-            decoded_preds = self.tokenizer.batch_decode(preds, skip_special_tokens=True)
-            decoded_labels = self.tokenizer.batch_decode(labels, skip_special_tokens=True)
+            # 먼저 predictions 디코딩 (보통 문제없음)
+            try:
+                decoded_preds = self.tokenizer.batch_decode(preds, skip_special_tokens=True)
+            except Exception as e:
+                logger.warning(f"⚠️  Predictions 디코딩 오류: {e}")
+                decoded_preds = ["" for _ in range(len(preds))]
             
-            # HuggingFace에서 사용하는 -100 패딩 토큰을 정상 토큰으로 변환
-            # -100은 loss 계산에서 무시되는 라벨이지만 디코딩에서는 문제가 됨
-            labels = np.where(labels != -100, labels, self.tokenizer.pad_token_id)
-            decoded_labels = self.tokenizer.batch_decode(labels, skip_special_tokens=True)
+            # labels 안전 디코딩 (OverflowError 방지)
+            try:
+                # HuggingFace에서 사용하는 -100 패딩 토큰을 정상 토큰으로 변환
+                # -100은 loss 계산에서 무시되는 라벨이지만 디코딩에서는 문제가 됨
+                labels_fixed = np.where(labels != -100, labels, self.tokenizer.pad_token_id)
+                
+                # 토큰 ID 범위 검증 (추가 안전장치)
+                vocab_size = getattr(self.tokenizer, 'vocab_size', 50000)  # 기본값 설정
+                labels_fixed = np.clip(labels_fixed, 0, vocab_size - 1)
+                
+                # 데이터 타입 확인 및 변환
+                if hasattr(labels_fixed, 'astype'):
+                    labels_fixed = labels_fixed.astype(np.int32)
+                
+                decoded_labels = self.tokenizer.batch_decode(labels_fixed, skip_special_tokens=True)
+                
+            except Exception as e:
+                logger.warning(f"⚠️  Labels 디코딩 오류: {e}")
+                # 폴백: 빈 문자열로 처리
+                decoded_labels = ["" for _ in range(len(labels))]
             
             # 대화 요약에 특화된 ROUGE 메트릭 계산 (Multi-reference 지원)
-            result = self.rouge_calculator.compute_metrics(decoded_preds, decoded_labels)
+            try:
+                # 디코딩된 텍스트로 직접 ROUGE 계산
+                rouge_scores = []
+                for pred, ref in zip(decoded_preds, decoded_labels):
+                    if pred.strip() and ref.strip():  # 빈 문자열 방지
+                        score = self.rouge_calculator.calculate_single_reference(pred, ref)
+                        rouge_scores.append(score)
+                    else:
+                        # 빈 문자열에 대한 0점 처리
+                        from utils.metrics import RougeScore, EvaluationResult
+                        zero_rouge = RougeScore(precision=0.0, recall=0.0, f1=0.0)
+                        zero_result = EvaluationResult(
+                            rouge1=zero_rouge, rouge2=zero_rouge, rougeL=zero_rouge, rouge_combined_f1=0.0
+                        )
+                        rouge_scores.append(zero_result)
+                
+                if rouge_scores:
+                    # 평균 점수 계산
+                    avg_rouge1_f1 = sum(score.rouge1.f1 for score in rouge_scores) / len(rouge_scores)
+                    avg_rouge2_f1 = sum(score.rouge2.f1 for score in rouge_scores) / len(rouge_scores)
+                    avg_rougeL_f1 = sum(score.rougeL.f1 for score in rouge_scores) / len(rouge_scores)
+                    avg_combined_f1 = avg_rouge1_f1 + avg_rouge2_f1 + avg_rougeL_f1
+                    
+                    result = {
+                        'rouge1_f1': avg_rouge1_f1,
+                        'rouge2_f1': avg_rouge2_f1,
+                        'rougeL_f1': avg_rougeL_f1,
+                        'rouge_combined_f1': avg_combined_f1
+                    }
+                else:
+                    # 모든 샘플이 비어있는 경우
+                    result = {
+                        'rouge1_f1': 0.0,
+                        'rouge2_f1': 0.0,
+                        'rougeL_f1': 0.0,
+                        'rouge_combined_f1': 0.0
+                    }
+                    
+            except Exception as e:
+                logger.warning(f"⚠️  ROUGE 계산 오류: {e}")
+                # 폴백: 0점 반환
+                result = {
+                    'rouge1_f1': 0.0,
+                    'rouge2_f1': 0.0, 
+                    'rougeL_f1': 0.0,
+                    'rouge_combined_f1': 0.0
+                }
             
             return result
         
