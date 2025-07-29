@@ -197,8 +197,40 @@ class ExperimentTracker:
         
         if experiment_id is None or experiment_id == self.current_experiment.experiment_id:
             self.current_experiment = experiment_info
-    
-    def get_experiment_list(self, status: Optional[str] = None) -> List[ExperimentInfo]:
+        
+        def log_metrics(self, metrics: Dict[str, float], step: Optional[int] = None):
+        """
+        메트릭 로깅
+        
+        Args:
+            metrics: 메트릭 딕셔너리
+            step: 단계 번호 (선택사항)
+        """
+        if not self.current_experiment:
+            self.logger.warning("⚠️  현재 실행 중인 실험이 없습니다.")
+            return
+        
+        # 메트릭 로깅 (간단한 정보만)
+        if step is not None:
+            self.logger.info(f"📊 Step {step} metrics logged")
+        else:
+            self.logger.info("📊 Metrics logged")
+        
+        # best_metrics 업데이트 (주요 메트릭만)
+        rouge_combined = metrics.get('eval_rouge_combined_f1', 0) or metrics.get('rouge_combined_f1', 0)
+        if rouge_combined > 0:
+            current_best = self.current_experiment.best_metrics or {}
+            if rouge_combined > current_best.get('rouge_combined_f1', 0):
+                self.current_experiment.best_metrics = {
+                    'rouge_combined_f1': rouge_combined,
+                    'rouge1_f1': metrics.get('eval_rouge1_f1', 0) or metrics.get('rouge1_f1', 0),
+                    'rouge2_f1': metrics.get('eval_rouge2_f1', 0) or metrics.get('rouge2_f1', 0),
+                    'rougeL_f1': metrics.get('eval_rougeL_f1', 0) or metrics.get('rougeL_f1', 0)
+                }
+                self._save_experiment_info(self.current_experiment)
+                self.logger.info(f"🏆 New best combined F1: {rouge_combined:.4f}")
+                
+                def get_experiment_list(self, status: Optional[str] = None) -> List[ExperimentInfo]:
         """실험 리스트 조회"""
         experiments = []
         
