@@ -1,0 +1,167 @@
+experiment_name: combination_phase2_backtranslation
+description: 2차 조합 실험 - 1차 최적 구성 + 백트랜슬레이션 데이터 증강
+
+# 모델 구성
+model:
+  name: digit82/kobart-summarization
+  architecture: kobart
+
+# 토크나이저 구성  
+tokenizer:
+  encoder_max_len: 512
+  decoder_max_len: 200
+  bos_token: "<s>"
+  eos_token: "</s>"
+  special_tokens:
+    - '#Person1#'
+    - '#Person2#'
+    - '#Person3#'
+    - '#PhoneNumber#'
+    - '#Address#'
+    - '#DateOfBirth#'
+    - '#PassportNumber#'
+    - '#SSN#'
+    - '#CardNumber#'
+    - '#CarNumber#'
+    - '#Email#'
+
+# 학습 구성 (1차 최적 구성 기반)
+training:
+  num_train_epochs: 20
+  learning_rate: 3.0e-05
+  per_device_train_batch_size: 16
+  per_device_eval_batch_size: 16
+  gradient_accumulation_steps: 4
+  
+  # Cosine Annealing 스케줄러
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.1
+  
+  weight_decay: 0.01
+  seed: 42
+  evaluation_strategy: epoch
+  save_strategy: epoch
+  save_total_limit: 3
+  logging_steps: 50
+  load_best_model_at_end: true
+  metric_for_best_model: "eval_rouge_combined_f1"
+  greater_is_better: true
+  fp16: true
+  gradient_checkpointing: true
+  
+  # 조기 종료
+  early_stopping_patience: 3
+  early_stopping_threshold: 0.001
+  
+  # 데이터로더 설정
+  dataloader_num_workers: 4
+  dataloader_drop_last: false
+  group_by_length: true
+  predict_with_generate: true
+  remove_unused_columns: true
+
+# 전처리 설정 (1차 구성 유지)
+preprocessing:
+  enabled: true
+  normalizer:
+    normalize_spacing: true
+    normalize_punctuation: true
+    expand_abbreviations: true
+    reduce_repetition: true
+    max_repeat: 3
+    normalize_emoticons: true
+    preserve_special_tokens: true
+
+# 데이터 증강 설정 (백트랜슬레이션 추가)
+data_augmentation:
+  enabled: true
+  augmenters:
+    # 기존 간단한 증강
+    - type: "SynonymReplacement"
+      params:
+        replace_ratio: 0.15
+        preserve_special_tokens: true
+        preserve_speakers: true
+    - type: "SentenceReorder"
+      params:
+        reorder_ratio: 0.2
+        preserve_speaker_order: true
+        preserve_context_window: 3
+    # 백트랜슬레이션 추가
+    - type: "BackTranslation"
+      params:
+        model_type: "google"  # 'google' 또는 'marian'
+        source_lang: "ko"
+        target_lang: "en"
+        temperature: 0.9
+        preserve_special_tokens: true
+        preserve_structure: true
+        batch_size: 32
+        cache_translations: true
+        cache_dir: "cache/backtranslation"
+        quality_threshold: 0.7  # 품질 임계값
+  augmentation_ratio: 0.4  # 백트랜슬레이션으로 증가
+  backtranslation_ratio: 0.2  # 백트랜슬레이션 비율
+
+# 후처리 설정 (1차 구성 유지)
+postprocessing:
+  enabled: true
+  processors:
+    - type: "DuplicateRemover"
+      params:
+        similarity_threshold: 0.9
+        preserve_important: true
+    - type: "LengthOptimizer"
+      params:
+        target_length_ratio: 0.9
+        min_length: 30
+        max_length: 180
+        preserve_key_sentences: true
+    - type: "SpecialTokenValidator"
+      params:
+        ensure_all_tokens: true
+        correct_format: true
+  apply_to: ["validation", "test", "inference"]
+
+# 생성 구성
+generation:
+  max_length: 200
+  min_length: 30
+  num_beams: 4
+  no_repeat_ngram_size: 2
+  early_stopping: true
+  length_penalty: 1.0
+  temperature: 1.0
+  do_sample: false
+
+# 추론 구성
+inference:
+  batch_size: 16
+  generate_max_length: 200
+  remove_tokens:
+    - '<usr>'
+    - '<s>'
+    - '</s>'
+    - '<pad>'
+
+# WandB 구성
+wandb:
+  name: "10b_phase2_backtranslation"
+  notes: "조합 실험 2차: 1차 최적 구성 + 백트랜슬레이션"
+  tags: ["combination", "phase2", "backtranslation", "integrated", "kobart"]
+  
+# 데이터 구성
+data:
+  train_file: "train.csv"
+  dev_file: "dev.csv"
+  test_file: "test.csv"
+
+# 모니터링 설정
+monitoring:
+  log_memory_usage: true
+  log_training_speed: true
+  log_augmentation_stats: true
+  log_postprocessing_stats: true
+  log_preprocessing_stats: true
+  log_lr_curve: true
+  log_backtranslation_stats: true  # 백트랜슬레이션 통계 추가

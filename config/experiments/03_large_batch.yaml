@@ -1,0 +1,10 @@
+experiment_name: large_batch_size
+description: Experiment with larger batch size
+model:
+  name: digit82/kobart-summarization
+training:
+  learning_rate: 1.0e-05
+  per_device_train_batch_size: 16
+  num_train_epochs: 5
+wandb:
+  name: 03_large_batch_experiment

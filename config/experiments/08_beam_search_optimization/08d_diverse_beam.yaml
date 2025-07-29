@@ -1,0 +1,183 @@
+experiment_name: diverse_beam_search
+description: 다양한 빔 서치 실험 - num_beam_groups와 diversity_penalty 최적화
+
+# 모델 구성
+model:
+  name: digit82/kobart-summarization
+  architecture: kobart
+
+# 토크나이저 구성  
+tokenizer:
+  encoder_max_len: 512
+  decoder_max_len: 200
+  bos_token: "<s>"
+  eos_token: "</s>"
+  special_tokens:
+    - '#Person1#'
+    - '#Person2#'
+    - '#Person3#'
+    - '#PhoneNumber#'
+    - '#Address#'
+    - '#DateOfBirth#'
+    - '#PassportNumber#'
+    - '#SSN#'
+    - '#CardNumber#'
+    - '#CarNumber#'
+    - '#Email#'
+
+# 학습 구성 (빠른 테스트를 위해 짧게)
+training:
+  num_train_epochs: 3
+  learning_rate: 2.0e-05
+  per_device_train_batch_size: 16
+  per_device_eval_batch_size: 16
+  gradient_accumulation_steps: 4
+  warmup_steps: 300
+  weight_decay: 0.01
+  seed: 42
+  evaluation_strategy: epoch
+  save_strategy: epoch
+  save_total_limit: 1
+  logging_steps: 50
+  load_best_model_at_end: true
+  metric_for_best_model: "eval_rouge_combined_f1"
+  greater_is_better: true
+  fp16: true
+  gradient_checkpointing: true
+  predict_with_generate: true
+
+# 생성 구성 - Diverse Beam Search 실험
+generation:
+  # 고정 파라미터 (이전 실험의 최적값)
+  num_beams: 4
+  max_length: 200
+  min_length: 30
+  length_penalty: 1.2
+  no_repeat_ngram_size: 3
+  early_stopping: true
+  
+  # Diverse Beam Search 실험
+  experiments:
+    - name: "standard_beam"
+      num_beam_groups: 1  # 표준 빔 서치 (베이스라인)
+      diversity_penalty: 0.0
+      
+    - name: "diverse_2groups_low"
+      num_beam_groups: 2
+      diversity_penalty: 0.5
+      
+    - name: "diverse_2groups_high"
+      num_beam_groups: 2
+      diversity_penalty: 1.0
+      
+    - name: "diverse_4groups_low"
+      num_beam_groups: 4
+      diversity_penalty: 0.5
+      
+    - name: "diverse_4groups_high"
+      num_beam_groups: 4
+      diversity_penalty: 1.0
+      
+    - name: "diverse_4groups_very_high"
+      num_beam_groups: 4
+      diversity_penalty: 2.0
+
+# 추론 구성
+inference:
+  batch_size: 16
+  measure_time: true
+  
+  # 다양성 관련 메트릭
+  metrics:
+    - rouge
+    - diversity_metrics:
+        - self_bleu  # 생성 간 유사도
+        - distinct_1  # unigram 다양성
+        - distinct_2  # bigram 다양성
+        - semantic_diversity  # 의미적 다양성
+        - lexical_diversity  # 어휘 다양성
+    - quality_consistency  # 품질 일관성
+    - best_of_n_rouge  # N개 중 최고 점수
+    
+  # 다중 생성 설정
+  generate_multiple: true
+  num_return_sequences: 4  # beam groups와 동일
+  
+  remove_tokens:
+    - '<usr>'
+    - '<s>'
+    - '</s>'
+    - '<pad>'
+
+# 다양성 분석 설정
+diversity_analysis:
+  enabled: true
+  
+  # 다양성 vs 품질 분석
+  analyze:
+    - diversity_quality_tradeoff  # 다양성과 품질의 균형
+    - beam_group_comparison  # 그룹별 특성 비교
+    - consensus_analysis  # 공통 요소 분석
+    - unique_content_ratio  # 고유 내용 비율
+  
+  # 앙상블 전략
+  ensemble_methods:
+    - majority_voting  # 다수결
+    - weighted_average  # 가중 평균
+    - best_rouge  # 최고 ROUGE 선택
+    - diversity_weighted  # 다양성 가중
+  
+  # 시각화
+  plots:
+    - diversity_vs_quality_scatter
+    - beam_group_characteristics
+    - ensemble_performance
+    - parameter_heatmap
+
+# 고급 설정
+advanced_generation:
+  # 온도 조정 (선택적)
+  temperature_experiments:
+    - name: "with_temperature_0.8"
+      temperature: 0.8
+      do_sample: false  # 빔 서치에서는 false
+      
+    - name: "with_temperature_1.2"
+      temperature: 1.2
+      do_sample: false
+  
+  # Top-k/Top-p (빔 서치와 함께 사용 시 주의)
+  constrained_beam_search:
+    force_words: null  # 필수 포함 단어
+    bad_words: null  # 제외할 단어
+
+# WandB 구성
+wandb:
+  name: "08d_diverse_beam_search"
+  notes: "Diverse Beam Search 최적화 - 그룹 수와 다양성 패널티 실험"
+  tags: ["beam_search", "diversity", "ensemble", "optimization", "kobart"]
+  
+  # 추가 로깅
+  log_all_sequences: true
+  log_beam_scores: true
+  log_diversity_analysis: true
+
+# 데이터 구성
+data:
+  train_file: "train.csv"
+  dev_file: "dev.csv"
+  test_file: "test.csv"
+  
+  # 다양성이 중요한 샘플 식별
+  identify_ambiguous_samples: true
+  multiple_valid_summaries: true
+
+# 모니터링 설정
+monitoring:
+  log_diversity_metrics: true
+  log_ensemble_results: true
+  log_beam_group_stats: true
+  
+  # 실시간 다양성 추적
+  track_generation_diversity: true
+  alert_on_low_diversity: true

@@ -1,0 +1,100 @@
+experiment_name: lr_scheduling_exponential_decay
+description: Exponential learning rate decay for aggressive reduction
+
+# Model configuration
+model:
+  name: digit82/kobart-summarization
+  architecture: kobart
+
+# Tokenizer configuration  
+tokenizer:
+  encoder_max_len: 512
+  decoder_max_len: 200
+  bos_token: "<s>"
+  eos_token: "</s>"
+  special_tokens:
+    - '#Person1#'
+    - '#Person2#'
+    - '#Person3#'
+    - '#PhoneNumber#'
+    - '#Address#'
+    - '#DateOfBirth#'
+    - '#PassportNumber#'
+    - '#SSN#'
+    - '#CardNumber#'
+    - '#CarNumber#'
+    - '#Email#'
+
+# Training configuration with exponential decay
+training:
+  num_train_epochs: 5  # Quick experiment
+  learning_rate: 5.0e-05  # Higher initial LR for exponential decay
+  per_device_train_batch_size: 16
+  per_device_eval_batch_size: 16
+  gradient_accumulation_steps: 4
+  gradient_checkpointing: true
+  fp16: true
+  
+  # Exponential decay settings
+  lr_scheduler_type: "polynomial"  # Using polynomial with degree > 1 for exponential-like decay
+  warmup_ratio: 0.05  # Short warmup for exponential
+  lr_scheduler_kwargs:
+    power: 2.0  # Quadratic decay (exponential-like)
+    lr_end: 1.0e-07  # Very small final LR
+  
+  # Standard settings
+  weight_decay: 0.01
+  seed: 42
+  evaluation_strategy: epoch
+  save_strategy: epoch
+  save_total_limit: 1
+  logging_steps: 50
+  load_best_model_at_end: true
+  metric_for_best_model: "eval_rouge_combined_f1"
+  greater_is_better: true
+  
+  # Early stopping
+  early_stopping_patience: 2
+  early_stopping_threshold: 0.001
+  
+  # Other settings
+  dataloader_num_workers: 4
+  dataloader_drop_last: false
+  group_by_length: true
+  predict_with_generate: true
+  remove_unused_columns: true
+
+# Generation configuration
+generation:
+  max_length: 200
+  num_beams: 4
+  no_repeat_ngram_size: 2
+  early_stopping: true
+  length_penalty: 1.0
+
+# Inference configuration
+inference:
+  batch_size: 16
+  generate_max_length: 200
+  remove_tokens:
+    - '<usr>'
+    - '<s>'
+    - '</s>'
+    - '<pad>'
+
+# WandB configuration
+wandb:
+  name: "03c_lr_exponential_decay"
+  notes: "LR scheduling with exponential-like decay using polynomial scheduler"
+  tags: ["lr_scheduling", "exponential_decay", "optimization", "kobart"]
+  
+# Data configuration
+data:
+  train_file: "train.csv"
+  dev_file: "dev.csv"
+  test_file: "test.csv"
+
+# Logging configuration
+logging:
+  log_lr: true
+  log_lr_every_step: false
