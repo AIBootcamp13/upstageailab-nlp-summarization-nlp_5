@@ -241,7 +241,7 @@ class DialogueSummarizationTrainer:
                 experiments_dir=self.output_dir / "experiments"
             )
             self.model_registry = ModelRegistry(
-                models_dir=self.output_dir / "models"
+                registry_dir=self.output_dir / "models"
             )
         
         # 토크나이저 로딩
