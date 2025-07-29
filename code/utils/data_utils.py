@@ -562,8 +562,8 @@ class DialogueSummarizationDataset(Dataset):
         return {
             'input_ids': source_encoding['input_ids'].squeeze(),
             'attention_mask': source_encoding['attention_mask'].squeeze(),
-            'labels': labels.squeeze(),
-            'fname': sample.fname
+            'labels': labels.squeeze()
+            # fname 제거: DataCollator 호환성을 위해
         }
 
 

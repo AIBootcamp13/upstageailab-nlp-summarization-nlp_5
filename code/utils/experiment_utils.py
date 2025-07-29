@@ -151,6 +151,29 @@ class ExperimentTracker:
         exp_id = experiment_id or self.current_experiment.experiment_id
         self.logger.info(f"Completed experiment: {exp_id}")
     
+    def end_experiment(self, experiment_id: Optional[str] = None,
+                      final_metrics: Optional[Dict[str, float]] = None,
+                      model_path: Optional[str] = None,
+                      status: str = "completed",
+                      notes: Optional[str] = None):
+        """
+        실험 종료 (컴플리트 실험의 에일리어스)
+        
+        Args:
+            experiment_id: 실험 ID (없으면 현재 실험 사용)
+            final_metrics: 최종 메트릭
+            model_path: 모델 저장 경로
+            status: 실험 상태
+            notes: 추가 노트
+        """
+        # complete_experiment와 동일한 로직
+        self.complete_experiment(
+            experiment_id=experiment_id,
+            final_metrics=final_metrics,
+            model_path=model_path,
+            status=status,
+            notes=notes
+        )
     def update_experiment(self, experiment_id: Optional[str] = None, **kwargs):
         """실험 정보 업데이트"""
         if experiment_id is None:
