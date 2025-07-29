@@ -139,12 +139,11 @@ class WandbCallback(TrainerCallback):
                 log_metrics['best/rouge_combined_f1'] = rouge_combined
             
             wandb.log(log_metrics)
-            
-            # 실험 추적기에도 로깅 (선택사항 - 안정성을 위해 주석 처리)
-            # if self.trainer_instance.experiment_tracker:
-            #     self.trainer_instance.experiment_tracker.log_metrics(
-            #         metrics, step=state.global_step
-            #     )
+            # 실험 추적기에도 로깅
+            if self.trainer_instance.experiment_tracker:
+                self.trainer_instance.experiment_tracker.log_metrics(
+                    metrics, step=state.global_step
+                )
     
     def on_train_end(self, args, state: TrainerState, control: TrainerControl, **kwargs):
         """학습 종료 시 최종 결과 로깅"""
