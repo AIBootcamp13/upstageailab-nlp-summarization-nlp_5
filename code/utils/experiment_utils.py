@@ -166,14 +166,18 @@ class ExperimentTracker:
             status: 실험 상태
             notes: 추가 노트
         """
-        # complete_experiment와 동일한 로직
-        self.complete_experiment(
+        # update_experiment를 직접 호출하여 status 처리
+        self.update_experiment(
             experiment_id=experiment_id,
+            status=status,
+            end_time=datetime.now().isoformat(),
             final_metrics=final_metrics,
             model_path=model_path,
-            status=status,
             notes=notes
         )
+        
+        exp_id = experiment_id or self.current_experiment.experiment_id
+        self.logger.info(f"Ended experiment: {exp_id}")
     def update_experiment(self, experiment_id: Optional[str] = None, **kwargs):
         """실험 정보 업데이트"""
         if experiment_id is None:

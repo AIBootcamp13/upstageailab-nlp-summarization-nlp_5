@@ -239,11 +239,12 @@ class DataProcessor:
     def load_data(self, file_path: Union[str, Path], is_test: bool = False) -> pd.DataFrame:
         """
         데이터 파일 로딩 (CSV 또는 JSON 지원)
-        
-        Args:
-            file_path: 데이터 파일 경로
-            is_test: 테스트 데이터 여부 (True면 summary 컬럼 체크 안함)
-            
+        # 토크나이징
+        dataset = dataset.map(
+            self._tokenize_function,
+            batched=True,
+            remove_columns=['input', 'target', 'fname']  # fname도 제거하여 DataCollator 에러 방지
+        )
         Returns:
             로딩된 데이터프레임
         """
@@ -325,7 +326,7 @@ class DataProcessor:
         dataset = dataset.map(
             self._tokenize_function,
             batched=True,
-            remove_columns=['input', 'target']
+            remove_columns=['input', 'target', 'fname']  # fname도 제거하여 DataCollator 에러 방지
         )
         
         return dataset
@@ -443,7 +444,7 @@ class DataProcessor:
         ]
         
         model_inputs['labels'] = labels['input_ids']
-        model_inputs['fname'] = examples['fname']
+        # model_inputs['fname'] = examples['fname']  # DataCollator 에러 방지를 위해 제거
         
         return model_inputs
     
