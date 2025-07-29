@@ -87,6 +87,42 @@ from utils.path_utils import PathManager, path_manager
 logger = logging.getLogger(__name__)
 
 
+# BART 모델을 위한 커스텀 DataCollator
+class SmartDataCollatorForSeq2Seq(DataCollatorForSeq2Seq):
+    """
+    모델 타입에 따라 자동으로 token_type_ids 처리를 조정하는 DataCollator
+    """
+    
+    def __init__(self, tokenizer, model=None, **kwargs):
+        super().__init__(tokenizer, model, **kwargs)
+        
+        # 모델 타입 확인
+        self.model_type = None
+        if model is not None:
+            model_class_name = model.__class__.__name__
+            if "Bart" in model_class_name or "bart" in model_class_name.lower():
+                self.model_type = "bart"
+            elif "T5" in model_class_name or "t5" in model_class_name.lower():
+                self.model_type = "t5"
+            elif "MT5" in model_class_name or "mt5" in model_class_name.lower():
+                self.model_type = "mt5"
+                
+    def __call__(self, features, return_tensors=None):
+        """
+        모델 타입에 따라 적절히 처리된 배치 반환
+        """
+        batch = super().__call__(features, return_tensors)
+        
+        # BART 모델인 경우 token_type_ids 제거
+        if self.model_type == "bart":
+            if "token_type_ids" in batch:
+                del batch["token_type_ids"]
+            if "decoder_token_type_ids" in batch:
+                del batch["decoder_token_type_ids"]
+                
+        return batch
+
+
 @dataclass
 class TrainingResult:
     """학습 결과 데이터 클래스"""
