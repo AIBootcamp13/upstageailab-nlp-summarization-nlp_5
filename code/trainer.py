@@ -726,16 +726,16 @@ class DialogueSummarizationTrainer:
                     # 예측 실패해도 학습은 성공한 것으로 처리
 
             
-                        # WandB Artifacts로 best model 저장
-                        try:
-                            if training_result.best_metrics and training_result.model_path:
-                                self.save_best_model_as_artifact(
-                                    model_path=training_result.model_path,
-                                    metrics=training_result.best_metrics
-                                )
-                        except Exception as e:
-                            logger.warning(f"⚠️ WandB Artifacts 저장 실패: {e}")
-                            # Artifacts 저장 실패는 전체 학습을 중단하지 않음
+            # WandB Artifacts로 best model 저장
+            try:
+                if training_result.best_metrics and training_result.model_path:
+                    self.save_best_model_as_artifact(
+                        model_path=training_result.model_path,
+                        metrics=training_result.best_metrics
+                    )
+            except Exception as e:
+                logger.warning(f"⚠️ WandB Artifacts 저장 실패: {e}")
+                # Artifacts 저장 실패는 전체 학습을 중단하지 않음
             
             return training_result
             
