@@ -29,7 +29,7 @@ tokenizer:
 training:
   do_eval: true
   do_train: true
-  eval_strategy: steps
+  eval_strategy: no
   eval_steps: 400
   num_train_epochs: 5
   per_device_train_batch_size: 4      # CUDA 인덱스 에러 방지를 위해 감소
@@ -53,3 +53,11 @@ wandb:
   name: eenzeenee_t5_rtx3090_lyj
   tags: [eenzeenee, T5, Korean, RTX3090, lyj]
   notes: "eenzeenee T5 한국어 모델 RTX 3090 최적화"
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

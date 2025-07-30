@@ -188,3 +188,11 @@ monitoring:
     track_usage: true
     alert_on_quota: true
     fallback_on_limit: true
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

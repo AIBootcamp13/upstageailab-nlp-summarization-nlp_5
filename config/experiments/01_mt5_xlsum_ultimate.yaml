@@ -105,3 +105,11 @@ wandb:
   name: mt5_xlsum_ultimate_rtx3090_challenge
   tags: [mT5, XL-Sum, RTX3090, ultimate, world_competition_level, stage3]
   notes: "mT5 XL-Sum RTX 3090 세계 대회 수준 도전 - 극한 최적화"
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

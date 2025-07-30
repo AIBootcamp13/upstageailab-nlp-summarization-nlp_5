@@ -99,3 +99,11 @@ wandb:
   name: eenzeenee_t5_rtx3090_optimized
   tags: [eenzeenee, T5-base, RTX3090, optimized, korean, full_finetune]
   notes: "eenzeenee T5 RTX 3090 최고 성능 최적화 - Full Fine-tuning"
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

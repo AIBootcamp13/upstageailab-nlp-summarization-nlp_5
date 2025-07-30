@@ -248,13 +248,10 @@ class DialogueSummarizationTrainer:
         
         # ROUGE 계산기 초기화
         self.rouge_calculator = RougeCalculator(
-            tokenizer=self.tokenizer,
-            use_stemmer=self.config.get('evaluation', {}).get('rouge_use_stemmer', True),
-            tokenize_korean=self.config.get('evaluation', {}).get('rouge_tokenize_korean', True)
+            use_korean_tokenizer=self.config.get("evaluation", {}).get("rouge_tokenize_korean", True),
+            use_stemmer=self.config.get("evaluation", {}).get("rouge_use_stemmer", True)
         )
-        
         logger.info("All components initialized successfully")
-    
     def prepare_data(self, train_path: Optional[str] = None, 
                     val_path: Optional[str] = None,
                     test_path: Optional[str] = None) -> DatasetDict:
@@ -862,7 +859,7 @@ class DialogueSummarizationTrainer:
             'overwrite_output_dir': True,
             'do_train': True,
             'do_eval': True,
-            'evaluation_strategy': train_config.get('evaluation_strategy', 'steps'),
+            'eval_strategy': train_config.get('eval_strategy', 'steps'),
             'eval_steps': train_config.get('eval_steps', 500),
             'save_strategy': train_config.get('save_strategy', 'steps'),
             'save_steps': train_config.get('save_steps', 500),

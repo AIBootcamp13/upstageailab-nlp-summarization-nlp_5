@@ -73,3 +73,11 @@ wandb:
   name: high_lr_1epoch_test_lyj
   tags: [high_lr, 1epoch, test, fast_convergence, RTX3090, lyj]
   notes: "고성능 학습률 1 epoch 빠른 테스트"
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

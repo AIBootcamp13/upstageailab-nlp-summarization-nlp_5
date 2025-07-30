@@ -61,3 +61,11 @@ wandb:
   project: "nlp-5"
   name: "high_lr_kobart_safe"
   tags: ["high_lr", "kobart", "safe_mode"]
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

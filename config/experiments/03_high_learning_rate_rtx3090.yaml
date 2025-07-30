@@ -101,3 +101,11 @@ wandb:
   name: high_learning_rate_rtx3090_extreme
   tags: [KoBART, RTX3090, extreme_lr, high_performance, korean]
   notes: "RTX 3090 극한 고성능 학습률 실험 - 세계 대회 수준 도전"
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

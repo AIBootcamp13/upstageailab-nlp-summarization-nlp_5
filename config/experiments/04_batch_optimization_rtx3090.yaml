@@ -113,3 +113,11 @@ wandb:
   name: batch_optimization_rtx3090_ultimate
   tags: [KoBART, RTX3090, batch_optimization, ultimate, large_batch, korean]
   notes: "RTX 3090 24GB 메모리 극한 활용 배치 최적화 - 유효 배치 32"
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

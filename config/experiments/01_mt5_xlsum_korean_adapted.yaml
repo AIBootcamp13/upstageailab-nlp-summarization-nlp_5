@@ -103,3 +103,11 @@ wandb:
   name: mt5_xlsum_korean_adapted_rtx3090
   tags: [mT5, XL-Sum, RTX3090, korean_adapted, stage2]
   notes: "mT5 XL-Sum RTX 3090 한국어 도메인 적응 2단계"
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

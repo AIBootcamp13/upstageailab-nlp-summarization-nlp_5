@@ -100,3 +100,11 @@ wandb:
   name: kobart_baseline_rtx3090_optimized
   tags: [KoBART, RTX3090, optimized, korean, qlora]
   notes: "KoBART RTX 3090 최고 성능 최적화 - QLoRA"
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

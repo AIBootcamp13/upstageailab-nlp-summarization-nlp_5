@@ -143,3 +143,11 @@ monitoring:
       tokens: ['#PhoneNumber#', '#Address#', '#DateOfBirth#', '#PassportNumber#', '#SSN#', '#CardNumber#', '#CarNumber#', '#Email#']
     - category: "speaker"
       tokens: ['#Person1#', '#Person2#', '#Person3#']
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

@@ -184,3 +184,11 @@ fallback:
   
   # 비용 초과 시
   on_cost_exceed: "stop_using_api"
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

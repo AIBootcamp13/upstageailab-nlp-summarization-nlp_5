@@ -8,3 +8,11 @@ training:
   num_train_epochs: 5
 wandb:
   name: 01_baseline_experiment
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

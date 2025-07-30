@@ -82,3 +82,11 @@ data:
   train_file: "train.csv"
   dev_file: "dev.csv"
   test_file: "test.csv"
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

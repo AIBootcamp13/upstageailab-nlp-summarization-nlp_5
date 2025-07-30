@@ -92,3 +92,11 @@ wandb:
   name: mt5_xlsum_rtx3090_lyj
   tags: [mT5, XL-Sum, RTX3090, large_model, lyj]
   notes: "mT5 XL-Sum 1.2B 모델 RTX 3090 최적화"
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

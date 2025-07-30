@@ -143,3 +143,11 @@ monitoring:
   # 가중치 스케줄 시각화
   plot_weight_schedule: true
   save_plots_every: 1000  # 스텝
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

@@ -90,3 +90,11 @@ wandb:
   name: "01_simple_augmentation_high_ratio"
   notes: "Simple augmentation with 40% ratio for maximum data diversity"
   tags: ["augmentation", "high_ratio", "synonym", "reorder", "kobart"]
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

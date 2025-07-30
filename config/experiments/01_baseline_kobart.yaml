@@ -48,3 +48,11 @@ wandb:
   name: baseline_kobart_rtx3090_lyj
   tags: [baseline, kobart, RTX3090, optimized, lyj]
   notes: "KoBART 베이스라인 RTX 3090 최적화"
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

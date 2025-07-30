@@ -230,8 +230,8 @@ class DataProcessor:
             """특수 토큰을 토크나이저에 추가"""
             pass  # 임시 비활성화
             
-        def load_data(self, file_path: Union[str, Path], is_test: bool = False) -> pd.DataFrame:
-        """
+            def load_data(self, file_path: Union[str, Path], is_test: bool = False) -> pd.DataFrame:
+            """
         데이터 로딩
         
         Args:

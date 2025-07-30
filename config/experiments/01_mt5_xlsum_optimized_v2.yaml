@@ -97,3 +97,18 @@ wandb:
   name: mt5_xlsum_optimized_v2_rtx3090
   tags: [mT5, XL-Sum, RTX3090, optimized_v2, stage1]
   notes: "mT5 XL-Sum RTX 3090 최적화 1단계 - 성능 복원"
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no
