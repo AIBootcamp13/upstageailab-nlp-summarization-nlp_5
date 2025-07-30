@@ -310,6 +310,7 @@ class DataProcessor:
             
             # HuggingFace Dataset으로 변환
             dataset = HFDataset.from_dict(data_dict)
+            logger.info(f"Processed {len(dataset)} samples for {'training' if is_training else 'validation/test'}")
             
             # 토크나이징
             dataset = dataset.map(
@@ -318,7 +319,8 @@ class DataProcessor:
                 remove_columns=['input', 'target', 'fname']  # fname도 제거하여 DataCollator 에러 방지
             )
             
-            logger.info(f"Processed {len(dataset)} samples")
+            logger.info(f"Tokenized {len(dataset)} samples")
+            
             
             return dataset
     
