@@ -286,39 +286,41 @@ class DataProcessor:
             if not is_test:
                 df['summary'] = df['summary'].apply(self.text_preprocessor.clean_summary)
             
+            
+            # 길이 필터링 (학습 데이터만)
+            if is_training:
+                df = self._filter_by_length(df)
+            
+            # 데이터 딕셔너리 생성
+            data_dict = {
+                'input': df['dialogue'].tolist(),
+                'fname': df['fname'].tolist()
+            }
+            
+            # test 데이터가 아닌 경우에만 target 추가
+            if not is_test:
+                data_dict['target'] = df['summary'].tolist()
+            else:
+                # test 데이터의 경우 빈 target 생성
+                data_dict['target'] = [''] * len(df)
+            
+            # 모델별 전처리 적용
+            if self.model_preprocessor:
+                data_dict = self.model_preprocessor(data_dict)
+            
             # HuggingFace Dataset으로 변환
-            dataset = HFDataset.from_pandas(df)
-            df = self._filter_by_length(df)
-        
-        # 데이터 딕셔너리 생성
-        data_dict = {
-            'input': df['dialogue'].tolist(),
-            'fname': df['fname'].tolist()
-        }
-        # test 데이터가 아닌 경우에만 target 추가
-        if not is_test:
-            data_dict['target'] = df['summary'].tolist()
-        else:
-            # test 데이터의 경우 빈 target 생성
-            data_dict['target'] = [''] * len(df)
-        
-        # 모델별 전처리 적용
-        if self.model_preprocessor:
-            data_dict = self.model_preprocessor(data_dict)
-        
-        # HuggingFace Dataset 생성
-        dataset = HFDataset.from_dict(data_dict)
-        # 토크나이징
-        dataset = dataset.map(
-            self._tokenize_function,
-            batched=True,
-            remove_columns=['input', 'target', 'fname']  # fname도 제거하여 DataCollator 에러 방지
-        )
-        
-        
-        logger.info(f"Processed {len(dataset)} samples")
-        
-        return dataset
+            dataset = HFDataset.from_dict(data_dict)
+            
+            # 토크나이징
+            dataset = dataset.map(
+                self._tokenize_function,
+                batched=True,
+                remove_columns=['input', 'target', 'fname']  # fname도 제거하여 DataCollator 에러 방지
+            )
+            
+            logger.info(f"Processed {len(dataset)} samples")
+            
+            return dataset
     
     def _filter_by_length(self, df: pd.DataFrame) -> pd.DataFrame:
         """
