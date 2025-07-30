@@ -40,9 +40,9 @@ eenzeenee:
     do_sample: false
     result_path: ./eenzeenee_predictions/
   
-  # 서버 최적화 QLoRA 설정
+  # 서버 최적화 QLoRA 설정 (Unsloth 활성화)
   qlora:
-    use_unsloth: false
+    use_unsloth: true
     use_qlora: true
     name: eenzeenee_optimized
     lora_rank: 16
@@ -131,9 +131,9 @@ xlsum_mt5:
     num_beams: 4
     result_path: ./xlsum_mt5_predictions/
   
-  # 대형 모델 QLoRA 설정
+  # 대형 모델 QLoRA 설정 (Unsloth 활성화)
   qlora:
-    use_unsloth: false
+    use_unsloth: true
     r: 16
     lora_alpha: 32
     lora_dropout: 0.1
