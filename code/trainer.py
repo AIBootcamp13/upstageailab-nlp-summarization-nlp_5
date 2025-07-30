@@ -621,12 +621,24 @@ class DialogueSummarizationTrainer:
     
     def _load_tokenizer(self) -> None:
         """토크나이저 로딩"""
-        model_checkpoint = self.config['model']['checkpoint']
+        # model 섹션이 없으면 general에서 model_name 사용
+        if 'model' in self.config:
+            model_checkpoint = self.config['model']['checkpoint']
+        else:
+            model_checkpoint = self.config.get('general', {}).get('model_name')
+            if not model_checkpoint:
+                raise ValueError("Model checkpoint not found in config. Please specify 'model.checkpoint' or 'general.model_name'")
+        
         logger.info(f"Loading tokenizer: {model_checkpoint}")
+        
+        # 모델별 토크나이저 설정
+        use_fast = True
+        if 'mt5' in model_checkpoint.lower() or 't5' in model_checkpoint.lower():
+            use_fast = False  # T5/mT5는 SentencePiece로 use_fast=False 사용
         
         self.tokenizer = AutoTokenizer.from_pretrained(
             model_checkpoint,
-            use_fast=True
+            use_fast=use_fast
         )
         
         # 특수 토큰 설정 (필요시)
