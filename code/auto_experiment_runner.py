@@ -121,6 +121,9 @@ class AutoExperimentRunner:
                 # 디바이스 설정 적용
                 self._apply_device_config(full_config)
                 
+                # WandB 환경 설정 (미리 설정하여 trainer.py에서 자동 활용)
+                wandb_enabled = self.setup_wandb_environment(full_config)
+                
                 if dry_run:
                     print("\n[DRY RUN] 설정 내용:")
                     print(json.dumps(full_config, indent=2, ensure_ascii=False))
@@ -185,6 +188,36 @@ class AutoExperimentRunner:
         
         return result
     
+    def setup_wandb_environment(self, config: Dict[str, Any]) -> bool:
+        """
+        실험별 WandB 환경 설정
+        
+        Args:
+            config: 실험 설정 딕셔너리
+            
+        Returns:
+            WandB 활성화 여부
+        """
+        import os
+        
+        # 항상 WANDB_LOG_MODEL=end 설정 (best model만 저장)
+        os.environ["WANDB_LOG_MODEL"] = "end"
+        os.environ["TOKENIZERS_PARALLELISM"] = "true"
+        
+        # report_to 설정 확인
+        report_to = config.get('training', {}).get('report_to', 'wandb')
+        
+        if report_to in ['all', 'wandb']:
+            print("✅ WandB 활성화: best model artifacts 자동 저장")
+            # WandB 활성화를 위한 환경 세팅
+            if "WANDB_MODE" in os.environ:
+                del os.environ["WANDB_MODE"]
+            return True
+        else:
+            print(f"⚠️ WandB 비활성화 (report_to={report_to})")
+            os.environ["WANDB_MODE"] = "disabled"
+            return False
+    
     def _apply_device_config(self, config: Dict[str, Any]) -> None:
         """디바이스별 최적화 설정 적용"""
         if not self.device_info:
@@ -229,6 +262,20 @@ class AutoExperimentRunner:
             # 항상 환경 변수 복사
             import os
             env = os.environ.copy()
+            
+            # WandB 환경 설정
+            wandb_enabled = self.setup_wandb_environment(config)
+            
+            # 한국 시간 기반 실험 ID 생성
+            try:
+                from utils.experiment_utils import get_korean_time_format
+                korean_time = get_korean_time_format('MMDDHHMM')
+                experiment_name = config.get('experiment_name', Path(config_path).stem)
+                experiment_id = f"{experiment_name}_{korean_time}"
+                print(f"🔍 실험 ID: {experiment_id}")
+            except ImportError as e:
+                print(f"⚠️ 한국 시간 유틸리티 import 실패: {e}")
+                experiment_id = Path(config_path).stem
             
             # 1에포크 모드를 위한 환경 변수 설정
             if one_epoch:

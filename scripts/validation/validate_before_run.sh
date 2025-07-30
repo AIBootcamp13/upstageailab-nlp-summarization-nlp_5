@@ -150,7 +150,7 @@ check_project_structure() {
     REQUIRED_FILES=(
         "requirements.txt"
         "config.yaml"
-        "run_auto_experiments.sh"
+        "scripts/experiments/run_auto_experiments.sh"
         "code/trainer.py"
         "code/auto_experiment_runner.py"
     )
@@ -311,7 +311,7 @@ check_permissions() {
     print_header "파일 권한 확인"
     
     # 실행 스크립트 권한
-    SCRIPTS=("run_auto_experiments.sh" "setup_env.sh" "check_env.sh")
+    SCRIPTS=("scripts/experiments/run_auto_experiments.sh" "setup_env.sh" "check_env.sh")
     
     for script in "${SCRIPTS[@]}"; do
         if [[ -f "$script" ]]; then
@@ -423,7 +423,7 @@ print_summary() {
         fi
         
         echo -e "\n${BLUE}실험 실행 명령어:${NC}" | tee -a "$LOG_FILE"
-        echo -e "  ${BOLD}./run_auto_experiments.sh${NC}" | tee -a "$LOG_FILE"
+        echo -e "  ${BOLD}./scripts/experiments/run_auto_experiments.sh${NC}" | tee -a "$LOG_FILE"
         
         return 0
     else

@@ -17,6 +17,7 @@ import logging
 import pandas as pd
 import numpy as np
 from collections import defaultdict
+import pytz
 
 
 @dataclass
@@ -52,6 +53,69 @@ class ModelInfo:
     created_at: str
     experiment_id: Optional[str] = None
     tags: Optional[List[str]] = None
+
+
+# 한국 시간 기반 유틸리티 함수들
+def get_korean_time_format(format_type: str = 'MMDDHHMM') -> str:
+    """
+    한국 시간 기준 시간 형식 생성
+    
+    Args:
+        format_type: 시간 형식 타입
+            - 'MMDDHHMM': 월일시분 (예: 07301455)
+            - 'YYYYMMDD_HHMMSS': 년월일_시분초 (기존 형식)
+    
+    Returns:
+        형식화된 시간 문자열
+    """
+    # 한국 시간 timezone 설정
+    kst = pytz.timezone('Asia/Seoul')
+    now = datetime.now(kst)
+    
+    if format_type == 'MMDDHHMM':
+        return now.strftime('%m%d%H%M')  # 예: 0730 1455 -> 07301455
+    elif format_type == 'YYYYMMDD_HHMMSS':
+        return now.strftime('%Y%m%d_%H%M%S')  # 기존 형식 유지
+    else:
+        return now.strftime('%m%d%H%M')  # 기본값은 MMDDHHMM
+
+
+def generate_experiment_id_with_korean_time() -> str:
+    """
+    한국 시간 기반 실험 ID 생성
+    
+    Returns:
+        한국 시간 + 해시를 포함한 실험 ID
+    """
+    korean_time = get_korean_time_format('MMDDHHMM')
+    # 간단한 해시 생성 (시분초 마이크로초 기반)
+    import random
+    hash_suffix = str(hash(datetime.now().isoformat()))[-4:].replace('-', '0')
+    return f"{korean_time}_{hash_suffix}"
+
+
+def get_wandb_run_name_with_korean_time(model_name: str = None, prefix: str = None) -> str:
+    """
+    한국 시간 기반 WandB run name 생성
+    
+    Args:
+        model_name: 모델명 (선택사항)
+        prefix: 접두사 (선택사항)
+    
+    Returns:
+        WandB run name 문자열
+    """
+    korean_time = get_korean_time_format('MMDDHHMM')
+    
+    parts = []
+    if prefix:
+        parts.append(prefix)
+    if model_name:
+        parts.append(model_name)
+    parts.append(korean_time)
+    
+    return '_'.join(parts)
+
 
 
 class ExperimentTracker:

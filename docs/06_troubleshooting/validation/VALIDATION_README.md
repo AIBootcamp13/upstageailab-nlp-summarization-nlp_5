@@ -256,7 +256,7 @@ df -h .
 
 □ 8. 실험 실행
 ```bash
-./run_auto_experiments.sh
+./scripts/experiments/run_auto_experiments.sh
 ```
 
 ## 추가 도구

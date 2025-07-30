@@ -202,7 +202,7 @@ class ExperimentValidator:
         required_files = [
             "requirements.txt",
             "config.yaml",
-            "run_auto_experiments.sh",
+            "scripts/experiments/run_auto_experiments.sh",
             "code/trainer.py",
             "code/auto_experiment_runner.py",
             "code/utils/__init__.py"

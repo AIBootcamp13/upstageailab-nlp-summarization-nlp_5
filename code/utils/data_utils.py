@@ -196,7 +196,8 @@ class DataProcessor:
     def __init__(self, 
                  tokenizer: PreTrainedTokenizer, 
                  config: Optional[Dict[str, Any]] = None,
-                 preprocessor: Optional[Callable] = None):
+                 preprocessor: Optional[Callable] = None,
+                 model: Optional[Any] = None):  # 모델 추가
         """
         DataProcessor 초기화
         
@@ -204,17 +205,18 @@ class DataProcessor:
             tokenizer: 사전 학습된 토크나이저
             config: 데이터 처리 설정
             preprocessor: 모델별 전처리 함수 (optional)
+            model: 모델 객체 (embedding 크기 조정을 위해)
         """
         self.tokenizer = tokenizer
         self.config = config or {}
         self.logger = logging.getLogger(__name__)
         self.text_preprocessor = TextPreprocessor(config)
         self.model_preprocessor = preprocessor  # 모델별 전처리 함수
+        self.model = model  # 모델 객체 저장
         
         # 토크나이저 설정
         self.encoder_max_len = self.config.get('tokenizer', {}).get('encoder_max_len', 512)
         self.decoder_max_len = self.config.get('tokenizer', {}).get('decoder_max_len', 128)
-        
         # 데이터 필터 설정
         self.min_dialogue_length = self.config.get('data', {}).get('min_source_length', 10)
         self.max_dialogue_length = self.config.get('data', {}).get('max_source_length', 1024)
@@ -223,13 +225,38 @@ class DataProcessor:
         
         # 특수 토큰 추가
         self._add_special_tokens()
-    
-    def _add_special_tokens(self):
+        
+        def _add_special_tokens(self):
         """특수 토큰을 토크나이저에 추가"""
         special_tokens = self.text_preprocessor.special_tokens
         
         # 모델 이름 확인
         model_name = self.config.get('general', {}).get('model_name', '')
+        
+        # KoBART 모델의 경우 특별 처리
+        if "kobart" in model_name.lower() or "bart" in model_name.lower():
+            logger.info("🔍 KoBART/BART 모델 감지: 특수 토큰 처리를 조정합니다.")
+            
+            # 모델이 있으면 안전한 토큰 추가 사용
+            if self.model is not None:
+                try:
+                    from utils.model_utils import safe_add_special_tokens
+                    self.tokenizer, self.model = safe_add_special_tokens(
+                        self.tokenizer, self.model, special_tokens, model_name
+                    )
+                    return
+                except ImportError:
+                    logger.warning("⚠️ model_utils를 찾을 수 없습니다. 기본 처리를 사용합니다.")
+            else:
+                # 모델이 없으면 최소한의 토큰만 추가
+                logger.warning("모델 객체가 없어 안전 모드로 특수 토큰을 추가합니다.")
+                # 기본 PII 토큰만 추가
+                safe_tokens = ['#PhoneNumber#', '#Address#', '#PassportNumber#']
+                new_tokens = [token for token in safe_tokens if token not in self.tokenizer.get_vocab()]
+                if new_tokens:
+                    self.tokenizer.add_tokens(new_tokens)
+                    logger.info(f"🔒 {len(new_tokens)}개의 기본 PII 토큰만 추가했습니다.")
+                return
         
         # eenzeenee 모델의 경우 특별 처리
         if "eenzeenee" in model_name.lower():
@@ -248,6 +275,7 @@ class DataProcessor:
         
         if new_tokens:
             self.tokenizer.add_tokens(new_tokens)
+            logger.info(f"Added {len(new_tokens)} special tokens to tokenizer")
             logger.info(f"Added {len(new_tokens)} special tokens to tokenizer")
     
     def load_data(self, file_path: Union[str, Path], is_test: bool = False) -> pd.DataFrame:

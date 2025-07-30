@@ -169,7 +169,7 @@ python code/auto_experiment_runner.py \
     --config config/experiments/00_baseline_reproduction.yaml
 
 # 2. 1차 개선 실험
-./run_auto_experiments.sh phase1
+./scripts/experiments/run_auto_experiments.sh phase1
 
 # 3. 2차 통합 실험
 ./run_phase2_experiments.sh
