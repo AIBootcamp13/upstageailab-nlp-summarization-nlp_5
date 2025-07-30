@@ -265,32 +265,29 @@ class DataProcessor:
                 except Exception as e:
                     logger.error(f"Error loading data from {file_path}: {e}")
                     raise
-        except Exception as e:
-            logger.error(f"Failed to load data: {e}")
-            raise
-            
+        
         def process_data(self, df: pd.DataFrame, is_training: bool = True, is_test: bool = False) -> HFDataset:
-        """
-        데이터프레임을 HuggingFace Dataset으로 변환
-        
-        Args:
-            df: 원본 데이터프레임
-            is_training: 학습 데이터 여부
-            is_test: 테스트 데이터 여부 (summary 없음)
+            """
+            데이터프레임을 HuggingFace Dataset으로 변환
             
-        Returns:
-            HuggingFace Dataset 객체
-        """
-        # 텍스트 정제
-        df = df.copy()
-        df['dialogue'] = df['dialogue'].apply(self.text_preprocessor.clean_dialogue)
-        
-        # test 데이터가 아닌 경우에만 summary 처리
-        if not is_test:
-            df['summary'] = df['summary'].apply(self.text_preprocessor.clean_summary)
-        
-        # 길이 필터링 (학습 데이터만)
-        if is_training:
+            Args:
+                df: 원본 데이터프레임
+                is_training: 학습 데이터 여부
+                is_test: 테스트 데이터 여부 (summary 없음)
+                
+            Returns:
+                HuggingFace Dataset 객체
+            """
+            # 텍스트 정제
+            df = df.copy()
+            df['dialogue'] = df['dialogue'].apply(self.text_preprocessor.clean_dialogue)
+            
+            # test 데이터가 아닌 경우에만 summary 처리
+            if not is_test:
+                df['summary'] = df['summary'].apply(self.text_preprocessor.clean_summary)
+            
+            # HuggingFace Dataset으로 변환
+            dataset = HFDataset.from_pandas(df)
             df = self._filter_by_length(df)
         
         # 데이터 딕셔너리 생성
@@ -311,13 +308,15 @@ class DataProcessor:
         
         # HuggingFace Dataset 생성
         dataset = HFDataset.from_dict(data_dict)
-        
         # 토크나이징
         dataset = dataset.map(
             self._tokenize_function,
             batched=True,
             remove_columns=['input', 'target', 'fname']  # fname도 제거하여 DataCollator 에러 방지
         )
+        
+        
+        logger.info(f"Processed {len(dataset)} samples")
         
         return dataset
     
