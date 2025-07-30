@@ -1063,11 +1063,11 @@ if __name__ == "__main__":
     # 1에포크 모드 처리
     if args.one_epoch:
         logger.info("1에포크 모드 활성화: 학습 에포크를 1로 설정")
-        trainer.config.training.num_epochs = 1
-        trainer.config.training.max_steps = None  # max_steps 비활성화
-        trainer.config.training.evaluation_strategy = "no"  # 평가 비활성화
-        trainer.config.training.save_strategy = "epoch"  # 에포크마다 저장
-        trainer.config.training.logging_steps = 10  # 로깅 빈도 증가
+        trainer.config['training']['num_epochs'] = 1
+        trainer.config['training']['max_steps'] = None  # max_steps 비활성화
+        trainer.config['training']['evaluation_strategy'] = "no"  # 평가 비활성화
+        trainer.config['training']['save_strategy'] = "epoch"  # 에포크마다 저장
+        trainer.config['training']['logging_steps'] = 10  # 로깅 빈도 증가
     
     # 데이터 준비
     datasets = trainer.prepare_data(
