@@ -376,6 +376,9 @@ class DialogueSummarizationTrainer:
             
             # 로그 디렉토리 설정
             self.log_dir = path_manager.get_log_path(experiment_name)
+            
+            # 파일 핸들러 추가 (output_dir이 설정된 후)
+            self._add_file_handler()
         
     def initialize_components(self) -> None:
         """모든 컴포넌트 초기화"""
@@ -874,18 +877,35 @@ class DialogueSummarizationTrainer:
     def _setup_logging(self) -> None:
         """로깅 설정"""
         log_level = self.config.get('logging', {}).get('level', 'INFO')
+        
+        # 기본 로깅 설정 (콘솔만)
         logging.basicConfig(
             level=getattr(logging, log_level),
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler(self.output_dir / 'training.log'),
                 logging.StreamHandler(sys.stdout)
             ]
         )
+        
+        # output_dir이 설정된 후에 파일 핸들러 추가
+        # train() 메서드에서 호출됨
+    
+    def _add_file_handler(self) -> None:
+        """로깅에 파일 핸들러 추가 (output_dir 설정 후 호출)"""
+        if hasattr(self, 'output_dir') and self.output_dir:
+            # 기존 핸들러 가져오기
+            root_logger = logging.getLogger()
+            
+            # 파일 핸들러 추가
+            file_handler = logging.FileHandler(self.output_dir / 'training.log')
+            file_handler.setFormatter(
+                logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            )
+            root_logger.addHandler(file_handler)
+            logger.info(f"로깅 파일 생성: {self.output_dir / 'training.log'}")
     
     def _print_environment_info(self) -> None:
         """환경 정보 출력"""
-        logger.info("\n" + "="*60)
         logger.info("🔍 자동 환경 감지 결과")
         logger.info("="*60)
         logger.info(f"OS: {self.env_info['os']} ({self.env_info['os_release']})")
