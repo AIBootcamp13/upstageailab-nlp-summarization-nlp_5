@@ -26,7 +26,8 @@ class CSVResultsSaver:
         self.output_dir.mkdir(parents=True, exist_ok=True)
     
     def save_experiment_results(self, experiment_name: str, config: Dict[str, Any], 
-                              metrics: Dict[str, float], timestamp: Optional[str] = None) -> Path:
+                              metrics: Dict[str, float], timestamp: Optional[str] = None,
+                              submission_path: Optional[str] = None) -> Path:
         """
         단일 실험 결과를 CSV로 저장
         
@@ -35,6 +36,7 @@ class CSVResultsSaver:
             config: 실험 설정
             metrics: 평가 메트릭
             timestamp: 타임스탬프 (없으면 자동 생성)
+            submission_path: 제출 파일 경로
             
         Returns:
             저장된 CSV 파일 경로
@@ -59,7 +61,8 @@ class CSVResultsSaver:
             'rouge_combined': metrics.get('eval_rouge_combined', 0),
             'rouge_combined_f1': metrics.get('eval_rouge_combined_f1', 0),
             'eval_loss': metrics.get('eval_loss', 0),
-            'config_path': str(config.get('__config_path__', 'N/A'))
+            'config_path': str(config.get('__config_path__', 'N/A')),
+            'submission_path': submission_path or 'N/A'  # 제출 파일 경로 추가
         }
         
         # DataFrame 생성 및 저장

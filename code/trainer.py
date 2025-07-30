@@ -76,13 +76,13 @@ logger = logging.getLogger(__name__)
 @dataclass
 class TrainingResult:
     """학습 결과 데이터 클래스"""
+    model_path: str
     best_metrics: Dict[str, float]
     final_metrics: Dict[str, float]
-    model_path: str
-    config_used: Dict[str, Any]
-    training_history: List[Dict[str, Any]] = field(default_factory=list)
     wandb_run_id: Optional[str] = None
     experiment_id: Optional[str] = None
+    config_used: Optional[Dict[str, Any]] = None
+    submission_path: Optional[str] = None  # 제출 파일 경로 추가
 
 
 class WandbCallback(TrainerCallback):
@@ -457,6 +457,25 @@ class DialogueSummarizationTrainer:
             
             # 결과 저장
             self._save_results(training_result)
+            
+            # test.csv에 대한 자동 추론 수행
+            if self.config.get('inference', {}).get('run_test_inference', True):
+                try:
+                    logger.info("Running inference on test.csv...")
+                    from post_training_inference import generate_submission_after_training
+                    
+                    submission_path = generate_submission_after_training(
+                        experiment_name=self.experiment_name,
+                        model_path=str(best_model_path),
+                        config_dict=self.config
+                    )
+                    
+                    training_result.submission_path = submission_path
+                    logger.info(f"Test inference completed. Submission file: {submission_path}")
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to run test inference: {e}")
+                    # Test inference 실패는 전체 학습을 실패로 처리하지 않음
             
             return training_result
             
@@ -923,9 +942,9 @@ class DialogueSummarizationTrainer:
             'wandb_run_id': result.wandb_run_id,
             'experiment_id': result.experiment_id,
             'config': result.config_used,
-            'timestamp': str(Path(result.model_path).parent.parent.name)
+            'timestamp': str(Path(result.model_path).parent.parent.name),
+            'submission_path': result.submission_path  # 제출 파일 경로 추가
         }
-        
         # JSON 저장
         results_file = self.results_dir / 'training_results.json'
         with open(results_file, 'w', encoding='utf-8') as f:
