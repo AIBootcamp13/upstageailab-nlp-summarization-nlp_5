@@ -1075,9 +1075,9 @@ if __name__ == "__main__":
     
     # 데이터 준비
     datasets = trainer.prepare_data(
-        train_path=args.train_data,
-        val_path=args.val_data,
-        test_path=args.test_data
+        train_path=args.train_data or trainer.config['general'].get('train_path'),
+        val_path=args.val_data or trainer.config['general'].get('val_path'),
+        test_path=args.test_data or trainer.config['general'].get('test_path')
     )
     
     # 학습 실행
