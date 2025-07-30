@@ -95,7 +95,8 @@ class AutoExperimentRunner:
                        experiment_configs: List[str],
                        dry_run: bool = False,
                        continue_on_error: bool = True,
-                       one_epoch: bool = False) -> Dict[str, Any]:
+                       one_epoch: bool = False,
+                       disable_eval: bool = False) -> Dict[str, Any]:
         """
         여러 실험을 순차적으로 실행
         
@@ -104,6 +105,7 @@ class AutoExperimentRunner:
             dry_run: 실제 실행 없이 설정만 확인
             continue_on_error: 오류 발생 시 다음 실험 계속 진행
             one_epoch: 1에포크만 실행 (빠른 테스트용)
+            disable_eval: 평가 비활성화 (1에포크 모드용)
             
         Returns:
             실험 결과 딕셔너리
@@ -136,7 +138,7 @@ class AutoExperimentRunner:
                     continue
                 
                 # 실험 실행
-                result = self._run_single_experiment(full_config, config_path, one_epoch)
+                result = self._run_single_experiment(full_config, config_path, one_epoch, disable_eval)
                 results[config_path] = result
                 
                 # 실험 추적 - try-except 블록 추가
@@ -274,7 +276,7 @@ class AutoExperimentRunner:
             'memory_gb': self.device_info.memory_gb
         } if hasattr(self.device_info, 'device_type') else None
     
-    def _run_single_experiment(self, config: Dict[str, Any], config_path: str, one_epoch: bool = False) -> Dict[str, Any]:
+    def _run_single_experiment(self, config: Dict[str, Any], config_path: str, one_epoch: bool = False, disable_eval: bool = False) -> Dict[str, Any]:
         """단일 실험 실행"""
         print(f"\n🔧 _run_single_experiment 시작: {config_path}")
         start_time = time.time()
@@ -309,6 +311,14 @@ class AutoExperimentRunner:
                 str(path_manager.resolve_path("code/trainer.py")),
                 "--config", config_path
             ]
+            
+            # 1에포크 모드 옵션 추가
+            if one_epoch:
+                cmd.append("--one-epoch")
+            
+            # 평가 비활성화 옵션 추가
+            if disable_eval:
+                cmd.append("--disable-eval")
             
             print(f"\n실행 명령: {' '.join(cmd)}")
             print(f"현재 디렉토리: {os.getcwd()}")
@@ -480,6 +490,11 @@ def main():
         action='store_true',
         help='1에포크만 실행 (빠른 테스트용)'
     )
+    parser.add_argument(
+        '--disable-eval',
+        action='store_true',
+        help='평가 비활성화 (1에포크 모드용)'
+    )
     
     args = parser.parse_args()
     
@@ -506,7 +521,8 @@ def main():
         experiment_configs=args.config,
         dry_run=args.dry_run,
         continue_on_error=not args.stop_on_error,
-        one_epoch=args.one_epoch
+        one_epoch=args.one_epoch,
+        disable_eval=args.disable_eval
     )
     
     # 결과 저장

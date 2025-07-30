@@ -332,8 +332,8 @@ for i in "${!experiments[@]}"; do
 
     # 1에포크 모드일 때 --one-epoch 옵션 추가
     if [[ "$ONE_EPOCH_MODE" == "true" ]]; then
-        EXPERIMENT_CMD="$EXPERIMENT_CMD --one-epoch"
-        echo -e "${YELLOW}1에포크 모드로 실행 중...${NC}"
+        EXPERIMENT_CMD="$EXPERIMENT_CMD --one-epoch --disable-eval"
+        echo -e "${YELLOW}1에포크 모드로 실행 중... (평가 비활성화)${NC}"
     fi
 
     if eval "$EXPERIMENT_CMD > ${LOG_FILE} 2>&1"; then

@@ -995,13 +995,15 @@ class DialogueSummarizationTrainer:
 
 
 def create_trainer(config: Union[str, Dict[str, Any]], 
-                  sweep_mode: bool = False) -> DialogueSummarizationTrainer:
+                  sweep_mode: bool = False,
+                  disable_eval: bool = False) -> DialogueSummarizationTrainer:
     """
     트레이너 생성 편의 함수
     
     Args:
         config: 설정 파일 경로 또는 설정 딕셔너리
         sweep_mode: WandB Sweep 모드 여부
+        disable_eval: 평가 비활성화 여부
         
     Returns:
         초기화된 트레이너 인스턴스
@@ -1011,6 +1013,14 @@ def create_trainer(config: Union[str, Dict[str, Any]],
         config_dict = load_config(config)
     else:
         config_dict = config
+    
+    # 평가 비활성화 옵션 처리
+    if disable_eval:
+        if 'training' not in config_dict:
+            config_dict['training'] = {}
+        config_dict['training']['do_eval'] = False
+        config_dict['training']['evaluation_strategy'] = 'no'
+        print("⚠️  평가 비활성화: evaluation_strategy=no, do_eval=False")
     
     # 트레이너 생성
     trainer = DialogueSummarizationTrainer(
@@ -1034,6 +1044,7 @@ if __name__ == "__main__":
     parser.add_argument("--val-data", type=str, help="Validation data path")
     parser.add_argument("--test-data", type=str, help="Test data path")
     parser.add_argument("--sweep", action="store_true", help="Run in sweep mode")
+    parser.add_argument("--disable-eval", action="store_true", help="Disable evaluation (for 1-epoch mode)")
     
     args = parser.parse_args()
     
@@ -1046,7 +1057,7 @@ if __name__ == "__main__":
         )
     
     # 트레이너 생성 및 학습
-    trainer = create_trainer(args.config, sweep_mode=args.sweep)
+    trainer = create_trainer(args.config, sweep_mode=args.sweep, disable_eval=args.disable_eval)
     
     # 데이터 준비
     datasets = trainer.prepare_data(
