@@ -1045,6 +1045,7 @@ if __name__ == "__main__":
     parser.add_argument("--test-data", type=str, help="Test data path")
     parser.add_argument("--sweep", action="store_true", help="Run in sweep mode")
     parser.add_argument("--disable-eval", action="store_true", help="Disable evaluation (for 1-epoch mode)")
+    parser.add_argument("--one-epoch", action="store_true", help="Run training for only 1 epoch (for testing)")
     
     args = parser.parse_args()
     
@@ -1058,6 +1059,15 @@ if __name__ == "__main__":
     
     # 트레이너 생성 및 학습
     trainer = create_trainer(args.config, sweep_mode=args.sweep, disable_eval=args.disable_eval)
+    
+    # 1에포크 모드 처리
+    if args.one_epoch:
+        logger.info("1에포크 모드 활성화: 학습 에포크를 1로 설정")
+        trainer.config.training.num_epochs = 1
+        trainer.config.training.max_steps = None  # max_steps 비활성화
+        trainer.config.training.evaluation_strategy = "no"  # 평가 비활성화
+        trainer.config.training.save_strategy = "epoch"  # 에포크마다 저장
+        trainer.config.training.logging_steps = 10  # 로깅 빈도 증가
     
     # 데이터 준비
     datasets = trainer.prepare_data(
