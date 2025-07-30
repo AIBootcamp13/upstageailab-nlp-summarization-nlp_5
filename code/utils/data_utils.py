@@ -228,31 +228,19 @@ class DataProcessor:
         
         def _add_special_tokens(self):
         """특수 토큰을 토크나이저에 추가"""
-        special_tokens = [
-            '#Person1#', '#Person2#', '#Person3#', '#Person4#',
-            '#Person5#', '#Person6#', '#Person7#',
-            '#PhoneNumber#', '#Address#', '#PassportNumber#'
-        ]
-        
-        # 기존에 없는 토큰만 추가
-        new_tokens = [token for token in special_tokens 
-                     if token not in self.tokenizer.get_vocab()]
-        
-        if new_tokens:
-            self.tokenizer.add_tokens(new_tokens)
-            logger.info(f"Added {len(new_tokens)} special tokens to tokenizer")
+        pass  # 임시 비활성화
         
         def load_data(self, file_path: Union[str, Path], is_test: bool = False) -> pd.DataFrame:
-            """
-            데이터 파일 로딩 (CSV 또는 JSON 지원)
+        """
+        데이터 로딩
+        
+        Args:
+            file_path: 데이터 파일 경로
+            is_test: 테스트 데이터 여부
             
-            Args:
-                file_path: 데이터 파일 경로
-                is_test: 테스트 데이터 여부
-                
-            Returns:
-                로딩된 데이터프레임
-            """
+        Returns:
+            로딩된 데이터프레임
+        """
             file_path = Path(file_path)
             
             if not file_path.exists():
