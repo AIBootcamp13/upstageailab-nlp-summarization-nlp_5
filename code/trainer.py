@@ -401,8 +401,15 @@ class DialogueSummarizationTrainer:
             )
             
             # 최종 평가
+            # 최종 평가
             logger.info("Running final evaluation...")
             eval_results = self.trainer.evaluate()
+            
+            # 평가 결과를 eval_results.json으로 저장
+            eval_results_file = self.model_save_dir / 'eval_results.json'
+            with open(eval_results_file, 'w', encoding='utf-8') as f:
+                json.dump(eval_results, f, ensure_ascii=False, indent=2)
+            logger.info(f"Evaluation results saved to {eval_results_file}")
             
             # 모델 저장
             best_model_path = self.model_save_dir / "best_model"

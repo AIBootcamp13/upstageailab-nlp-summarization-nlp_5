@@ -22,14 +22,16 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 # code 디렉토리의 utils 임포트
+# code 디렉토리의 utils 임포트
 from utils.path_utils import PathManager, path_manager
 from utils.device_utils import get_optimal_device, setup_device_config
 from utils.experiment_utils import ExperimentTracker, ModelRegistry
+from utils.csv_results_saver import CSVResultsSaver
 from utils import load_config
+
 
 class AutoExperimentRunner:
     """자동 실험 실행 관리자 (상대 경로 기준)"""
-    
     def __init__(self, 
                  base_config_path: str = "config/base_config.yaml",
                  output_dir: str = "outputs/auto_experiments"):
@@ -59,6 +61,9 @@ class AutoExperimentRunner:
         print(f"\n🆗 ExperimentTracker 초기화 완료")
         print(f"   log_experiment 메서드 존재: {hasattr(self.tracker, 'log_experiment')}")
         self.registry = ModelRegistry(f"{output_dir}/models")
+        
+        # CSV 결과 저장기 초기화
+        self.csv_saver = CSVResultsSaver(f"{output_dir}/csv_results")
         
         # 로깅 설정
         self.logger = self._setup_logger()
@@ -159,6 +164,14 @@ class AutoExperimentRunner:
         
         # 전체 결과 요약
         self._print_summary(results)
+        
+        # 전체 결과를 CSV로 저장
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        summary_csv = self.csv_saver.save_batch_results(
+            results=results,
+            output_filename=f"experiment_summary_{timestamp}.csv"
+        )
+        print(f"\n실험 결과 CSV 저장: {summary_csv}")
         
         return results
     
@@ -351,13 +364,24 @@ class AutoExperimentRunner:
                 metrics = json.load(f)
                 results['metrics'] = metrics
         
+        
         # 베스트 모델 정보
         checkpoint_dirs = list(output_dir.glob('checkpoint-*'))
         if checkpoint_dirs:
             results['best_checkpoint'] = str(max(checkpoint_dirs, key=lambda p: p.stat().st_mtime))
         
+        # CSV 결과 저장
+        if 'metrics' in results:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            csv_path = self.csv_saver.save_experiment_results(
+                experiment_name=experiment_name,
+                config=config,
+                metrics=results['metrics'],
+                timestamp=timestamp
+            )
+            results['csv_path'] = str(csv_path)
+        
         return results
-    
     def _print_summary(self, results: Dict[str, Dict[str, Any]]) -> None:
         """실험 결과 요약 출력"""
         print("\n" + "="*60)
