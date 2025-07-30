@@ -1020,7 +1020,9 @@ def create_trainer(config: Union[str, Dict[str, Any]],
             config_dict['training'] = {}
         config_dict['training']['do_eval'] = False
         config_dict['training']['evaluation_strategy'] = 'no'
-        print("⚠️  평가 비활성화: evaluation_strategy=no, do_eval=False")
+        config_dict['training']['load_best_model_at_end'] = False  # best model 로드 비활성화
+        config_dict['training']['metric_for_best_model'] = None  # best model 메트릭 비활성화
+        print("⚠️  평가 비활성화: evaluation_strategy=no, do_eval=False, load_best_model_at_end=False")
     
     # 트레이너 생성
     trainer = DialogueSummarizationTrainer(
