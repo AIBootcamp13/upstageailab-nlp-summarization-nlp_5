@@ -227,9 +227,9 @@ class DataProcessor:
         # self._add_special_tokens()
         
         def _add_special_tokens(self):
-        """특수 토큰을 토크나이저에 추가"""
-        pass  # 임시 비활성화
-        
+            """특수 토큰을 토크나이저에 추가"""
+            pass  # 임시 비활성화
+            
         def load_data(self, file_path: Union[str, Path], is_test: bool = False) -> pd.DataFrame:
         """
         데이터 로딩
@@ -239,40 +239,40 @@ class DataProcessor:
             is_test: 테스트 데이터 여부
             
         Returns:
-            로딩된 데이프레임
+            로딩된 데이터프레임
         """
         file_path = Path(file_path)
+        
+        if not file_path.exists():
+            raise FileNotFoundError(f"Data file not found: {file_path}")
+        
+        try:
+            if file_path.suffix == '.csv':
+                df = pd.read_csv(file_path)
+            elif file_path.suffix == '.json':
+                df = pd.read_json(file_path)
+            else:
+                raise ValueError(f"Unsupported file format: {file_path.suffix}")
             
-            if not file_path.exists():
-                raise FileNotFoundError(f"Data file not found: {file_path}")
+            logger.info(f"Loaded {len(df)} samples from {file_path}")
             
-            try:
-                if file_path.suffix == '.csv':
-                    df = pd.read_csv(file_path)
-                elif file_path.suffix == '.json':
-                    df = pd.read_json(file_path)
-                else:
-                    raise ValueError(f"Unsupported file format: {file_path.suffix}")
-                
-                logger.info(f"Loaded {len(df)} samples from {file_path}")
-                
-                # 필수 컴럼 확인
-                if is_test:
-                    required_columns = ['fname', 'dialogue']
-                else:
-                    required_columns = ['fname', 'dialogue', 'summary']
-                missing_columns = [col for col in required_columns if col not in df.columns]
-                
-                if missing_columns:
-                    raise ValueError(f"Missing required columns: {missing_columns}")
-                
-                return df
-                
-            except Exception as e:
-                logger.error(f"Failed to load data: {e}")
-                raise
+            # 필수 컬럼 확인
+            if is_test:
+                required_columns = ['fname', 'dialogue']
+            else:
+                required_columns = ['fname', 'dialogue', 'summary']
+            missing_columns = [col for col in required_columns if col not in df.columns]
             
-            def process_data(self, df: pd.DataFrame, is_training: bool = True, is_test: bool = False) -> HFDataset:
+            if missing_columns:
+                raise ValueError(f"Missing required columns: {missing_columns}")
+            
+            return df
+            
+        except Exception as e:
+            logger.error(f"Failed to load data: {e}")
+            raise
+            
+        def process_data(self, df: pd.DataFrame, is_training: bool = True, is_test: bool = False) -> HFDataset:
         """
         데이터프레임을 HuggingFace Dataset으로 변환
         
