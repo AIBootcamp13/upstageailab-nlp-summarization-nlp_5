@@ -239,9 +239,9 @@ class DataProcessor:
             is_test: 테스트 데이터 여부
             
         Returns:
-            로딩된 데이터프레임
+            로딩된 데이프레임
         """
-            file_path = Path(file_path)
+        file_path = Path(file_path)
             
             if not file_path.exists():
                 raise FileNotFoundError(f"Data file not found: {file_path}")
@@ -256,7 +256,7 @@ class DataProcessor:
                 
                 logger.info(f"Loaded {len(df)} samples from {file_path}")
                 
-                # 필수 컬럼 확인
+                # 필수 컴럼 확인
                 if is_test:
                     required_columns = ['fname', 'dialogue']
                 else:
@@ -271,7 +271,8 @@ class DataProcessor:
             except Exception as e:
                 logger.error(f"Failed to load data: {e}")
                 raise
-    def process_data(self, df: pd.DataFrame, is_training: bool = True, is_test: bool = False) -> HFDataset:
+            
+            def process_data(self, df: pd.DataFrame, is_training: bool = True, is_test: bool = False) -> HFDataset:
         """
         데이터프레임을 HuggingFace Dataset으로 변환
         
