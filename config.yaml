@@ -40,7 +40,7 @@ eenzeenee:
   
   # eenzeenee용 QLoRA 설정 (T5 아키텍처에 최적화)
   qlora:
-    use_unsloth: false  # macOS 환경
+    use_unsloth: true  # AIStages RTX 3090 환경에서 활성화
     use_qlora: true
     
     # LoRA 설정 (T5에 최적화)
@@ -179,7 +179,7 @@ xlsum_mt5:
   
   # mT5용 QLoRA 설정 (대형 모델 메모리 최적화)
   qlora:
-    use_unsloth: false  # macOS 환경
+    use_unsloth: true  # AIStages RTX 3090 환경에서 활성화
     r: 16              # LoRA rank (대형 모델에 적합)
     lora_alpha: 32     # LoRA alpha
     lora_dropout: 0.1  # LoRA dropout
@@ -316,3 +316,16 @@ wandb:
       - baseline
       - lyj
     notes: "기본 설정 실험 (lyj)"
+
+# inference 설정 추가 (baseline.ipynb와 동일)
+inference:
+  batch_size: 32
+  no_repeat_ngram_size: 2
+  early_stopping: true
+  generate_max_length: 100
+  num_beams: 4
+  remove_tokens:
+    - '<usr>'
+    - '<s>'
+    - '</s>'
+    - '<pad>'

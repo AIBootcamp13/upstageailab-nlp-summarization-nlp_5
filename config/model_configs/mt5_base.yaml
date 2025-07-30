@@ -61,5 +61,5 @@ logging:
   level: INFO
   
 qlora:
-  use_unsloth: false
-  use_qlora: false
+  use_unsloth: true  # AIStages RTX 3090 환경에서 활성화
+  use_qlora: true

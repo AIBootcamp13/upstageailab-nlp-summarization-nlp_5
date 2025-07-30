@@ -33,6 +33,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 import numpy as np
+import pandas as pd
 from tqdm import tqdm
 
 from transformers import (
@@ -81,6 +82,7 @@ from utils import load_config
 from utils.data_utils import DataProcessor
 from utils.metrics import RougeCalculator
 from utils.experiment_utils import ExperimentTracker, ModelRegistry
+from utils.environment_detector import EnvironmentDetector, get_auto_config, should_use_unsloth
 from utils.path_utils import PathManager, path_manager
 
 
@@ -133,6 +135,7 @@ class TrainingResult:
     training_history: List[Dict[str, Any]] = field(default_factory=list)
     wandb_run_id: Optional[str] = None
     experiment_id: Optional[str] = None
+    submission_file: Optional[str] = None  # CSV 제출 파일 경로
 
 
 class WandbCallback(TrainerCallback):
@@ -224,13 +227,15 @@ class DialogueSummarizationTrainer:
         self.sweep_mode = sweep_mode
         self.experiment_name = experiment_name or config.get('meta', {}).get('experiment_name', 'dialogue_summarization')
         
+        # 환경 자동 감지 및 설정 최적화
+        self.env_detector = EnvironmentDetector()
+        self.env_info = self.env_detector.detect_environment()
+        self.auto_config = self.env_detector.get_recommended_config()
+        
         # 디바이스 설정
         self.device = self._setup_device()
         
-        # 경로 설정
-        self.setup_paths()
-        
-        # 컴포넌트 초기화
+        # 모델 및 토크나이저 초기화
         self.model = None
         self.tokenizer = None
         self.data_processor = None
@@ -242,31 +247,136 @@ class DialogueSummarizationTrainer:
         self.model_registry = None
         
         # 로깅 설정
+        # 로깅 설정
         self._setup_logging()
+        
+        # 환경 정보 출력
+        self._print_environment_info()
         
         logger.info(f"Trainer initialized with config: {self.experiment_name}")
         
-    def setup_paths(self) -> None:
-        """경로 설정"""
-        # 경로 관리자를 사용하여 경로 관리
-        experiment_name = self.experiment_name
+        def setup_wandb_with_korean_time(self, config: Dict[str, Any]) -> bool:
+            """
+            한국 시간 기반 WandB 초기화
+            
+            Args:
+                config: 실험 설정 딕셔너리
+                
+            Returns:
+                WandB 활성화 여부
+            """
+            if os.environ.get("WANDB_MODE") == "disabled":
+                print("⚠️ WandB가 비활성화되어 있습니다.")
+                return False
+                
+            try:
+                from utils.experiment_utils import get_wandb_run_name_with_korean_time
+                korean_time = get_wandb_run_name_with_korean_time()
+                
+                # 기존 wandb 설정을 한국 시간으로 개선
+                wandb_config = config.get('wandb', {})
+                original_name = wandb_config.get('name', self.experiment_name)
+                wandb_config['name'] = f"{original_name}_{korean_time}"
+                
+                # WandB 초기화 (이미 초기화된 경우 스킨)
+                if wandb.run is None:
+                    wandb.init(
+                        entity=wandb_config.get('entity', 'lyjune37-juneictlab'),
+                        project=wandb_config.get('project', 'nlp-5'),
+                        name=wandb_config['name'],
+                        config=config,
+                        tags=wandb_config.get('tags', []) + ['rtx3090_optimized', 'korean_time']
+                    )
+                    print(f"✅ WandB 초기화 완료: {wandb_config['name']}")
+                else:
+                    print(f"ℹ️ WandB 이미 초기화됨: {wandb.run.name}")
+                
+                return True
+                
+            except ImportError as e:
+                print(f"⚠️ 한국 시간 유틸리티 import 실패: {e}")
+                return False
+            except Exception as e:
+                print(f"⚠️ WandB 초기화 실패: {e}")
+                return False
         
-        # Sweep 모드일 때는 run ID를 포함
-        if self.sweep_mode and wandb.run:
-            experiment_name = f"sweep_{wandb.run.id}"
-        else:
-            from datetime import datetime
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            experiment_name = f"{self.experiment_name}_{timestamp}"
+        def save_best_model_as_artifact(self, model_path: str, metrics: Dict[str, float]) -> None:
+            """
+            Best model을 WandB Artifacts로 저장
+            
+            Args:
+                model_path: 모델 저장 경로
+                metrics: 성능 메트릭
+            """
+            if wandb.run is None:
+                print("⚠️ WandB가 초기화되지 않아 Artifacts 저장을 건너뗁니다.")
+                return
+                
+            try:
+                from utils.experiment_utils import get_korean_time_format
+                korean_time = get_korean_time_format('MMDDHHMM')
+                
+                # ROUGE 종합 점수 계산
+                rouge_combined = metrics.get('rouge_combined_f1', 0)
+                if rouge_combined == 0:
+                    # 대체 계산 방법
+                    rouge1 = metrics.get('eval_rouge1_f1', 0) or metrics.get('rouge1_f1', 0)
+                    rouge2 = metrics.get('eval_rouge2_f1', 0) or metrics.get('rouge2_f1', 0)
+                    rougeL = metrics.get('eval_rougeL_f1', 0) or metrics.get('rougeL_f1', 0)
+                    rouge_combined = (rouge1 + rouge2 + rougeL) / 3
+                
+                # Artifact 생성
+                artifact = wandb.Artifact(
+                    name=f"best-model-{korean_time}",
+                    type="model",
+                    description=f"Best model (ROUGE-F1: {rouge_combined:.4f}) - Korean time: {korean_time}"
+                )
+                
+                # 모델 디렉토리 추가
+                model_path = Path(model_path)
+                if model_path.exists():
+                    artifact.add_dir(str(model_path))
+                    
+                    # 메타데이터 추가
+                    artifact.metadata = {
+                        "best_metrics": metrics,
+                        "korean_time": korean_time,
+                        "model_path": str(model_path),
+                        "rouge_combined_f1": rouge_combined
+                    }
+                    
+                    # Artifact 로깅
+                    wandb.log_artifact(artifact, aliases=["latest", "best"])
+                    print(f"✅ WandB Artifacts 저장 완료: {artifact.name}")
+                    print(f"   모델 경로: {model_path}")
+                    print(f"   ROUGE-F1: {rouge_combined:.4f}")
+                else:
+                    print(f"⚠️ 모델 경로가 존재하지 않습니다: {model_path}")
+                    
+            except Exception as e:
+                print(f"⚠️ WandB Artifacts 저장 실패: {e}")
         
-        # 경로 관리자를 통한 경로 설정
-        self.output_dir = path_manager.get_output_path(experiment_name)
-        self.model_save_dir = path_manager.get_model_path(experiment_name)
-        self.results_dir = path_manager.ensure_dir(self.output_dir / "results")
+        def setup_paths(self) -> None:
+            """경로 설정"""
+            # 경로 관리자를 사용하여 경로 관리
+            experiment_name = self.experiment_name
+            
+            # Sweep 모드일 때는 run ID를 포함
+            if self.sweep_mode and wandb.run:
+                experiment_name = f"sweep_{wandb.run.id}"
+            else:
+                from datetime import datetime
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                experiment_name = f"{self.experiment_name}_{timestamp}"
+            
+            # 경로 관리자를 통한 경로 설정
+            self.output_dir = path_manager.get_output_path(experiment_name)
+            self.model_save_dir = path_manager.get_model_path(experiment_name)
+            self.results_dir = path_manager.ensure_dir(self.output_dir / "results")
+            
+            # 로그 디렉토리 설정
+            self.log_dir = path_manager.get_log_path(experiment_name)
         
-        # 로그 디렉토리 설정
-        self.log_dir = path_manager.get_log_path(experiment_name)
-    
     def initialize_components(self) -> None:
         """모든 컴포넌트 초기화"""
         logger.info("Initializing components...")
@@ -592,6 +702,40 @@ class DialogueSummarizationTrainer:
             
             # 결과 저장
             self._save_results(training_result)
+
+            # 테스트 데이터셋이 있으면 예측 및 CSV 생성
+            if 'test' in dataset:
+                logger.info("🔮 테스트 데이터셋에 대한 예측 생성 중...")
+                try:
+                    # 예측 생성
+                    test_predictions = self.generate_test_predictions(dataset['test'])
+                    
+                    # CSV 파일 생성
+                    submission_path = self._save_submission_csv(test_predictions)
+                    logger.info(f"✅ 제출 파일 생성 완료: {submission_path}")
+                    
+                    # 결과에 추가
+                    training_result.submission_file = str(submission_path)
+                    
+                    # 결과 다시 저장 (제출 파일 경로 포함)
+                    self._save_results(training_result)
+                except Exception as e:
+                    logger.error(f"❌ 테스트 예측 생성 실패: {e}")
+                    import traceback
+                    logger.debug(traceback.format_exc())
+                    # 예측 실패해도 학습은 성공한 것으로 처리
+
+            
+                        # WandB Artifacts로 best model 저장
+                        try:
+                            if training_result.best_metrics and training_result.model_path:
+                                self.save_best_model_as_artifact(
+                                    model_path=training_result.model_path,
+                                    metrics=training_result.best_metrics
+                                )
+                        except Exception as e:
+                            logger.warning(f"⚠️ WandB Artifacts 저장 실패: {e}")
+                            # Artifacts 저장 실패는 전체 학습을 중단하지 않음
             
             return training_result
             
@@ -739,6 +883,37 @@ class DialogueSummarizationTrainer:
             ]
         )
     
+    def _print_environment_info(self) -> None:
+        """환경 정보 출력"""
+        logger.info("\n" + "="*60)
+        logger.info("🔍 자동 환경 감지 결과")
+        logger.info("="*60)
+        logger.info(f"OS: {self.env_info['os']} ({self.env_info['os_release']})")
+        logger.info(f"Python: {self.env_info['python_version']}")
+        logger.info(f"CPU Cores: {self.env_info['cpu_count']}")
+        
+        if self.env_info['is_cuda_available']:
+            logger.info(f"🎮 CUDA: Available (v{self.env_info['cuda_version']})")
+            logger.info(f"GPU Count: {self.env_info['gpu_info']['count']}")
+            for device in self.env_info['gpu_info']['devices']:
+                logger.info(f"  - {device['name']}: {device['memory_gb']:.1f}GB")
+        else:
+            logger.info("🎮 CUDA: Not Available")
+        
+        logger.info(f"\n⚡ Unsloth 지원")
+        unsloth_status = "✅ 추천" if self.env_info['unsloth_recommended'] else "❌ 비추천"
+        logger.info(f"추천 여부: {unsloth_status}")
+        
+        install_status = "✅ 설치됨" if self.env_info['unsloth_available'] else "❌ 미설치"
+        logger.info(f"설치 상태: {install_status}")
+        
+        logger.info(f"\n🚀 자동 최적화 설정")
+        logger.info(f"use_unsloth: {self.auto_config['use_unsloth']}")
+        logger.info(f"recommended_batch_size: {self.auto_config['recommended_batch_size']}")
+        logger.info(f"fp16: {self.auto_config['fp16']}, bf16: {self.auto_config['bf16']}")
+        logger.info(f"dataloader_num_workers: {self.auto_config['dataloader_num_workers']}")
+        logger.info("="*60 + "\n")
+    
     def _load_tokenizer(self) -> None:
         """토크나이저 로딩"""
         # model 섹션이 없으면 general에서 model_name 사용
@@ -808,8 +983,23 @@ class DialogueSummarizationTrainer:
         
         # QLoRA 설정 확인
         qlora_config = self.config.get('qlora', {})
-        use_unsloth = qlora_config.get('use_unsloth', False) and UNSLOTH_AVAILABLE
-        use_qlora = qlora_config.get('use_qlora', False)
+        # QLoRA 설정 확인 및 자동 최적화
+        qlora_config = self.config.get('qlora', {})
+        
+        # 환경 기반 자동 Unsloth 활성화
+        config_use_unsloth = qlora_config.get('use_unsloth', False)
+        auto_use_unsloth = self.auto_config.get('use_unsloth', False)
+        
+        # 최종 Unsloth 사용 결정: 설정파일 OR 자동감지
+        use_unsloth = (config_use_unsloth or auto_use_unsloth) and UNSLOTH_AVAILABLE
+        use_qlora = qlora_config.get('use_qlora', True)  # 기본값 True로 변경
+        
+        # 자동 최적화 적용
+        if auto_use_unsloth and not config_use_unsloth:
+            logger.info(f"🚀 환경 자동 감지: Ubuntu + CUDA 환경에서 Unsloth 자동 활성화")
+            # 자동 배치 크기 적용
+            recommended_batch = self.auto_config.get('recommended_batch_size', 4)
+            logger.info(f"📊 기본 배치 크기 권장: {recommended_batch}")
         
         logger.info(f"Loading model: {model_checkpoint} ({architecture})")
         logger.info(f"QLoRA enabled: {use_qlora}, unsloth enabled: {use_unsloth}")
@@ -904,12 +1094,22 @@ class DialogueSummarizationTrainer:
             
             # 모델 로딩
             if architecture in ['kobart', 'bart', 't5', 'mt5']:
-                model = AutoModelForSeq2SeqLM.from_pretrained(
-                    model_checkpoint,
-                    quantization_config=bnb_config,
-                    device_map="auto",
-                    torch_dtype=torch.float16 if self.config['training'].get('fp16') else torch.float32
-                )
+                # csebuetnlp/mT5_multilingual_XLSum 모델 특수 처리
+                if 'mT5_multilingual_XLSum' in model_checkpoint or 'csebuetnlp' in model_checkpoint:
+                    model = AutoModelForSeq2SeqLM.from_pretrained(
+                        model_checkpoint,
+                        quantization_config=bnb_config,
+                        device_map="auto",
+                        torch_dtype=torch.float16 if self.config['training'].get('fp16') else torch.float32,
+                        trust_remote_code=True  # DiaConfig 허용
+                    )
+                else:
+                    model = AutoModelForSeq2SeqLM.from_pretrained(
+                        model_checkpoint,
+                        quantization_config=bnb_config,
+                        device_map="auto",
+                        torch_dtype=torch.float16 if self.config['training'].get('fp16') else torch.float32
+                    )
             else:
                 model = AutoModelForCausalLM.from_pretrained(
                     model_checkpoint,
@@ -948,7 +1148,7 @@ class DialogueSummarizationTrainer:
     
     def _load_model_standard(self, model_checkpoint: str, architecture: str) -> None:
         """
-        표준 모델 로딩 (기존 방식)
+        표준 모델 로딩 (기존 방식, DiaConfig 문제 해결 포함)
         
         Args:
             model_checkpoint: 모델 체크포인트 경로
@@ -963,8 +1163,18 @@ class DialogueSummarizationTrainer:
                 'torch_dtype': torch.float16 if self.config['training'].get('fp16') else torch.float32
             }
             
-            # mT5 모델 특수 설정 (그래디언트 체크포인트 안정성)
-            if 'mt5' in model_checkpoint.lower() or 'multilingual' in model_checkpoint.lower():
+            # csebuetnlp/mT5_multilingual_XLSum 모델 특수 처리 (DiaConfig 문제 해결)
+            if 'mT5_multilingual_XLSum' in model_checkpoint or 'csebuetnlp' in model_checkpoint:
+                model_config.update({
+                    'trust_remote_code': True,  # DiaConfig 허용
+                    'use_cache': False,  # gradient checkpointing과 충돌 방지
+                    'output_attentions': False,
+                    'output_hidden_states': False
+                })
+                logger.info("🔧 mT5_multilingual_XLSum 모델 특수 설정 적용 (DiaConfig 지원)")
+            
+            # 일반 mT5 모델 특수 설정 (그래디언트 체크포인트 안정성)
+            elif 'mt5' in model_checkpoint.lower() or 'multilingual' in model_checkpoint.lower():
                 model_config.update({
                     'use_cache': False,  # gradient checkpointing과 충돌 방지
                     'output_attentions': False,
@@ -1109,8 +1319,166 @@ class DialogueSummarizationTrainer:
             f.write("\nModel saved to: " + result.model_path + "\n")
             if result.wandb_run_id:
                 f.write(f"WandB Run ID: {result.wandb_run_id}\n")
+            if result.submission_file:
+                f.write(f"\nSubmission File: {result.submission_file}\n")
         
         logger.info(f"Results saved to {self.results_dir}")
+
+
+
+    def generate_test_predictions(self, test_dataset: Dataset) -> pd.DataFrame:
+        """
+        테스트 데이터셋에 대한 예측 생성 (baseline.ipynb와 완전히 동일, 모든 모델 지원)
+        
+        Args:
+            test_dataset: 테스트 데이터셋
+            
+        Returns:
+            예측 결과 DataFrame (fname, summary 컬럼)
+        """
+        self.model.eval()
+        summary = []
+        fname_list = []
+        
+        # baseline.ipynb의 inference config 사용
+        inference_config = self.config.get('inference', {})
+        if not inference_config:
+            # 기본값 설정 (baseline.ipynb config와 동일)
+            inference_config = {
+                'batch_size': 32,
+                'no_repeat_ngram_size': 2,
+                'early_stopping': True,
+                'generate_max_length': 100,
+                'num_beams': 4,
+                'remove_tokens': self._get_default_remove_tokens()
+            }
+        
+        # DataLoader 생성 (baseline처럼)
+        batch_size = inference_config.get('batch_size', 32)
+        dataloader = DataLoader(test_dataset, batch_size=batch_size)
+        
+        with torch.no_grad():
+            for item in tqdm(dataloader, desc="Generating predictions"):
+                # fname 데이터 수집 (baseline과 동일한 방식)
+                if 'fname' in item:
+                    fname_list.extend(item['fname'])
+                elif 'ID' in item:
+                    fname_list.extend(item['ID'])
+                else:
+                    # 기본값으로 배치 인덱스 사용
+                    batch_size_actual = len(item['input_ids'])
+                    fname_list.extend([f"test_{len(fname_list) + i:04d}" for i in range(batch_size_actual)])
+                
+                # baseline.ipynb와 동일한 생성
+                generated_ids = self.model.generate(
+                    input_ids=item['input_ids'].to(self.device),
+                    no_repeat_ngram_size=inference_config['no_repeat_ngram_size'],
+                    early_stopping=inference_config['early_stopping'],
+                    max_length=inference_config['generate_max_length'],
+                    num_beams=inference_config['num_beams'],
+                )
+                
+                # 각 ID별로 디코딩 (baseline과 동일, skip_special_tokens=False)
+                for ids in generated_ids:
+                    result = self.tokenizer.decode(ids, skip_special_tokens=False)
+                    summary.append(result)
+        
+        # 정확한 평가를 위하여 노이즈에 해당되는 스페셜 토큰을 제거합니다.
+        remove_tokens = inference_config.get('remove_tokens', self._get_default_remove_tokens())
+        preprocessed_summary = summary.copy()
+        for token in remove_tokens:
+            if token is not None:  # None 토큰 방지
+                preprocessed_summary = [sentence.replace(str(token), " ") for sentence in preprocessed_summary]
+        
+        # DataFrame 생성 (baseline과 동일)
+        output = pd.DataFrame({
+            "fname": fname_list[:len(preprocessed_summary)],
+            "summary": preprocessed_summary,
+        })
+        
+        return output
+    
+    def _get_default_remove_tokens(self) -> List[str]:
+        """
+        모델별 기본 제거 토큰 목록 반환
+        
+        Returns:
+            제거할 토큰 목록
+        """
+        tokens = ['<usr>']
+        
+        # 토크나이저 특수 토큰들 추가 (None 체크)
+        if hasattr(self.tokenizer, 'bos_token') and self.tokenizer.bos_token is not None:
+            tokens.append(self.tokenizer.bos_token)
+        if hasattr(self.tokenizer, 'eos_token') and self.tokenizer.eos_token is not None:
+            tokens.append(self.tokenizer.eos_token)
+        if hasattr(self.tokenizer, 'pad_token') and self.tokenizer.pad_token is not None:
+            tokens.append(self.tokenizer.pad_token)
+        
+        # 모델별 추가 토큰
+        model_arch = self._get_model_architecture().lower()
+        
+        # T5/mT5 계열
+        if 't5' in model_arch:
+            if hasattr(self.tokenizer, 'additional_special_tokens'):
+                tokens.extend([token for token in self.tokenizer.additional_special_tokens if token is not None])
+        
+        # BART 계열
+        elif 'bart' in model_arch:
+            # BART 특수 토큰들
+            bart_tokens = ['<s>', '</s>', '<pad>', '<unk>']
+            tokens.extend(bart_tokens)
+        
+        # 중복 제거 및 None 필터링
+        return list(set([token for token in tokens if token is not None]))
+    
+    def _save_submission_csv(self, predictions_df: pd.DataFrame) -> Path:
+        """
+        예측 결과를 CSV 파일로 저장 (baseline.ipynb 형식)
+        
+        Args:
+            predictions_df: 예측 결과 DataFrame
+            
+        Returns:
+            저장된 파일 경로
+        """
+        from datetime import datetime
+        
+        # baseline.ipynb처럼 prediction 폴더에 저장
+        result_path = self.output_dir / "prediction"
+        if not result_path.exists():
+            result_path.mkdir(parents=True)
+        
+        # 파일명 생성
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        model_name = self._get_model_architecture().replace('/', '_')
+        
+        # baseline.ipynb에서 output.csv 사용하지만 다중 모델 구분을 위해 타임스탬프 추가
+        filename = f"output_{model_name}_{timestamp}.csv"
+        
+        # 저장 경로
+        submission_path = result_path / filename
+        
+        # CSV 저장 (baseline과 동일하게 index=False)
+        predictions_df.to_csv(submission_path, index=False)
+        
+        # 복사본을 최상위 디렉터리에도 저장
+        latest_submission_path = self.output_dir.parent / f"submission_latest_{model_name}.csv"
+        predictions_df.to_csv(latest_submission_path, index=False)
+        
+        # 통계 출력
+        logger.info(f"\n=== Submission Statistics ===") 
+        logger.info(f"Total samples: {len(predictions_df)}")
+        logger.info(f"Average summary length: {predictions_df['summary'].str.len().mean():.1f}")
+        logger.info(f"Min summary length: {predictions_df['summary'].str.len().min()}")
+        logger.info(f"Max summary length: {predictions_df['summary'].str.len().max()}")
+        
+        # 첫 3개 예측 샘플 출력
+        logger.info(f"\n첫 3개 예측 샘플:")
+        for i in range(min(3, len(predictions_df))):
+            logger.info(f"[{predictions_df.iloc[i]['fname']}] {predictions_df.iloc[i]['summary'][:80]}...")
+        
+        return submission_path
 
 
 def create_trainer(config: Union[str, Dict[str, Any]], 
@@ -1161,18 +1529,33 @@ if __name__ == "__main__":
         print("🚀 1에포크 모드로 실행합니다!")
         print("📝 학습 epoch 수가 1로 강제 설정됩니다.")
     
-    # WandB 초기화 (비 Sweep 모드)
+    # WandB 초기화 (비 Sweep 모드) - 한국 시간 기반 개선
     if not args.sweep:
-        # .env에서 로드된 WandB 설정 확인
-        wandb_entity = os.getenv('WANDB_ENTITY', 'lyjune37-juneictlab')
-        wandb_project = os.getenv('WANDB_PROJECT', 'nlp-5')
-        
-        wandb.init(
-            entity=wandb_entity,
-            project=wandb_project,
-            name="manual_training",
-            config={"manual_run": True}
-        )
+        # 환경변수로 비활성화 확인
+        if os.environ.get("WANDB_MODE") == "disabled":
+            print("⚠️ WandB가 비활성화되어 있습니다.")
+        else:
+            # .env에서 로드된 WandB 설정 확인
+            wandb_entity = os.getenv('WANDB_ENTITY', 'lyjune37-juneictlab')
+            wandb_project = os.getenv('WANDB_PROJECT', 'nlp-5')
+            
+            # 한국 시간 기반 run name 생성
+            try:
+                from utils.experiment_utils import get_wandb_run_name_with_korean_time
+                run_name = get_wandb_run_name_with_korean_time(
+                    model_name="manual_training", 
+                    prefix="auto"
+                )
+            except ImportError:
+                run_name = "manual_training"
+            
+            wandb.init(
+                entity=wandb_entity,
+                project=wandb_project,
+                name=run_name,
+                config={"manual_run": True, "korean_time_enabled": True},
+                tags=["rtx3090_optimized", "korean_time"]
+            )
     
     # 트레이너 생성 및 학습
     trainer = create_trainer(args.config, sweep_mode=args.sweep)
