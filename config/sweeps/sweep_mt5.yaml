@@ -1,0 +1,69 @@
+# WandB Sweep 설정 - mT5 모델 하이퍼파라미터 튜닝
+program: code/trainer.py
+method: bayes  # 베이지안 최적화
+entity: lyjune37-juneictlab  # .env에서 로드되지만 명시적 지정
+project: nlp-5
+metric:
+  goal: maximize
+  name: eval_rouge_combined_f1  # 통합 ROUGE F1 스코어 사용
+parameters:
+  # 학습률 최적화
+  learning_rate:
+    distribution: log_uniform_values
+    min: 1e-5
+    max: 5e-5
+  
+  # 배치 크기 최적화 (대형 모델)
+  per_device_train_batch_size:
+    values: [1, 2]  # RTX 3090 24GB에 안전한 크기
+  
+  # 그래디언트 누적
+  gradient_accumulation_steps:
+    values: [8, 16, 32]  # 유효 배치 크기: 8-64
+  
+  # 워밍업 비율
+  warmup_ratio:
+    values: [0.05, 0.1, 0.2]
+  
+  # 가중치 감쇠
+  weight_decay:
+    distribution: uniform
+    min: 0.0
+    max: 0.1
+  
+  # 학습 에포크
+  num_train_epochs:
+    values: [3, 5]  # 대형 모델은 적은 에포크로도 충분
+  
+  # LoRA 파라미터 (QLoRA 사용 시)
+  lora_rank:
+    values: [8, 16, 32]
+  
+  lora_alpha:
+    values: [16, 32, 64]
+  
+  lora_dropout:
+    distribution: uniform
+    min: 0.05
+    max: 0.2
+  
+  # 생성 파라미터
+  generation_num_beams:
+    values: [4, 6]
+  
+  generation_max_length:
+    values: [84, 128]  # mT5 XL-Sum 최적 길이
+  
+  # 고정 파라미터
+  config:
+    value: config/experiments/01_mt5_xlsum.yaml
+  
+  sweep:
+    value: true  # Sweep 모드 활성화
+
+# 조기 종료 설정 (Hyperband)
+early_terminate:
+  type: hyperband
+  s: 2  # 최대 bracket 수
+  eta: 3  # 각 bracket에서 살아남는 실행의 비율
+  max_iter: 20  # 최대 에포크
