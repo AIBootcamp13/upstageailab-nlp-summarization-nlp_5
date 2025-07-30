@@ -313,14 +313,8 @@ class DataProcessor:
             logger.info(f"Processed {len(dataset)} samples for {'training' if is_training else 'validation/test'}")
             
             # 토크나이징
-            dataset = dataset.map(
-                self._tokenize_function,
-                batched=True,
-                remove_columns=['input', 'target', 'fname']  # fname도 제거하여 DataCollator 에러 방지
-            )
             
-            logger.info(f"Tokenized {len(dataset)} samples")
-            
+            logger.info(f"Processed {len(dataset)} samples")
             
             return dataset
     
