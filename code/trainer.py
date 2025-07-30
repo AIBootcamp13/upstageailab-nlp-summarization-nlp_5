@@ -60,16 +60,19 @@ try:
     from utils.experiment_utils import ExperimentTracker, ModelRegistry
     from utils.environment_detector import EnvironmentDetector, get_auto_config, should_use_unsloth
     from utils.path_utils import PathManager, path_manager
+    from utils.wandb_utils import setup_wandb_for_experiment, log_model_to_wandb
 except ImportError:
     # code 디렉토리에서 실행되는 경우
     import sys
-    sys.path.append('..')
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
     from utils import load_config
     from utils.data_utils import DataProcessor
     from utils.metrics import RougeCalculator
     from utils.experiment_utils import ExperimentTracker, ModelRegistry
     from utils.environment_detector import EnvironmentDetector, get_auto_config, should_use_unsloth
     from utils.path_utils import PathManager, path_manager
+    from utils.wandb_utils import setup_wandb_for_experiment, log_model_to_wandb
 logger = logging.getLogger(__name__)
 
 
@@ -305,7 +308,7 @@ class DialogueSummarizationTrainer:
     def train(self, dataset: DatasetDict, 
              resume_from_checkpoint: Optional[str] = None) -> TrainingResult:
         """
-        모델 학습
+        학습 실행
         
         Args:
             dataset: 학습/검증 데이터셋
@@ -314,7 +317,18 @@ class DialogueSummarizationTrainer:
         Returns:
             학습 결과
         """
-        # 실험 시작
+        # WandB 초기화 (sweep 모드가 아니고 이미 초기화되지 않은 경우)
+        if not self.sweep_mode and wandb.run is None:
+            wandb_config = setup_wandb_for_experiment(
+                config=self.config,
+                experiment_name=self.experiment_name,
+                sweep_mode=self.sweep_mode
+            )
+            wandb.init(**wandb_config)
+            logger.info(f"WandB run initialized: {wandb.run.name}")
+        
+        # 실험 추적 시작
+        experiment_id = None
         if self.experiment_tracker:
             experiment_id = self.experiment_tracker.start_experiment(
                 name=self.experiment_name,
@@ -454,8 +468,18 @@ class DialogueSummarizationTrainer:
                     experiment_id=experiment_id
                 )
                 logger.info(f"Model registered with ID: {model_id}")
-            
-            # 결과 저장
+                
+                # WandB Model Registry에 모델 등록
+                if wandb.run is not None:
+                    log_model_to_wandb(
+                        model_path=str(best_model_path),
+                        model_name=f"{self.config['model']['architecture']}_{self.experiment_name}",
+                        metrics=wandb_callback.best_metrics,
+                        config=self.config,
+                        aliases=["latest", "best"] if wandb_callback.best_metrics.get('rouge_combined_f1', 0) > 0.3 else ["latest"]
+                    )
+                
+                # 결과 저장
             self._save_results(training_result)
             
             # test.csv에 대한 자동 추론 수행

@@ -225,6 +225,13 @@ class AutoExperimentRunner:
             # WandB 활성화를 위한 환경 세팅
             if "WANDB_MODE" in os.environ:
                 del os.environ["WANDB_MODE"]
+            
+            # 실험을 식별할 수 있는 고유한 설정 추가
+            experiment_path = config.get('__config_path__', 'unknown')
+            if experiment_path and experiment_path != 'unknown':
+                # 실험 이름을 WandB config에 추가
+                config['wandb_experiment_name'] = Path(experiment_path).stem
+            
             return True
         else:
             print(f"⚠️ WandB 비활성화 (report_to={report_to})")
@@ -234,6 +241,7 @@ class AutoExperimentRunner:
     def _apply_device_config(self, config: Dict[str, Any]) -> None:
         """디바이스별 최적화 설정 적용"""
         if not self.device_info:
+            return
             return
             
         # 모델 크기 추정
