@@ -1,0 +1,114 @@
+# mT5 XL-Sum RTX 3090 최적화 실험 v2
+experiment_name: mt5_xlsum_optimized_v2_rtx3090
+description: "mT5 XL-Sum RTX 3090 24GB 최적화 - 1단계 성능 복원"
+
+general:
+  model_name: csebuetnlp/mT5_multilingual_XLSum
+  data_path: data/
+  train_path: data/train.csv
+  val_path: data/dev.csv
+  model_type: seq2seq
+  name: mt5_xlsum_optimized_v2_rtx3090
+
+model:
+  architecture: mt5
+  checkpoint: csebuetnlp/mT5_multilingual_XLSum
+
+# ✅ 한국어 특화 prefix
+input_prefix: "요약: "
+
+tokenizer:
+  bos_token: <pad>
+  eos_token: </s>
+  encoder_max_len: 512
+  decoder_max_len: 128
+  special_tokens:
+    - '#Person1#'
+    - '#Person2#'
+    - '#Person3#'
+    - '#PhoneNumber#'
+    - '#Address#'
+    - '#PassportNumber#'
+    - '#DateOfBirth#'
+    - '#SSN#'
+    - '#CardNumber#'
+    - '#CarNumber#'
+    - '#Email#'
+
+# 🚀 RTX 3090 24GB 최적화 학습 설정
+training:
+  do_eval: true
+  do_train: true
+  evaluation_strategy: steps
+  eval_steps: 200
+  
+  # 🔥 RTX 3090 최적 배치 설정
+  per_device_train_batch_size: 6       # RTX 3090 최적화
+  per_device_eval_batch_size: 12       # 평가 시 더 큰 배치
+  gradient_accumulation_steps: 3       # 유효 배치 18
+  
+  # 🎯 1단계 학습 파라미터
+  num_train_epochs: 4
+  learning_rate: 6.0e-05               # RTX 3090 안정적 학습률
+  lr_scheduler_type: cosine_with_restarts
+  warmup_ratio: 0.03
+  weight_decay: 0.005
+  
+  # ⚡ RTX 3090 최적화
+  fp16: true                           # RTX 3090 fp16 성능 우수
+  gradient_checkpointing: false
+  dataloader_num_workers: 6
+  dataloader_pin_memory: true
+  group_by_length: true
+  
+  # 📊 모니터링
+  logging_steps: 50
+  save_strategy: steps
+  save_steps: 200
+  save_total_limit: 5
+  load_best_model_at_end: true
+  early_stopping_patience: 5
+  
+  # 🎯 생성 설정
+  predict_with_generate: true
+  generation_num_beams: 6
+  generation_max_length: 128
+  generation_min_length: 10
+  
+  report_to: wandb
+  seed: 42
+
+# 🚀 RTX 3090 최적화 QLoRA (Unsloth 활성화)
+qlora:
+  use_unsloth: true
+  use_qlora: true
+  lora_rank: 48                        # RTX 3090 메모리 활용
+  lora_alpha: 96                       # rank의 2배
+  lora_dropout: 0.05
+  target_modules: ["q", "k", "v", "o", "wi", "wo"]
+  load_in_4bit: true
+  bnb_4bit_compute_dtype: "bfloat16"   # RTX 3090 안정성
+  bnb_4bit_quant_type: "nf4"
+  bnb_4bit_use_double_quant: true
+
+wandb:
+  entity: lyjune37-juneictlab
+  project: nlp-5
+  name: mt5_xlsum_optimized_v2_rtx3090
+  tags: [mT5, XL-Sum, RTX3090, optimized_v2, stage1]
+  notes: "mT5 XL-Sum RTX 3090 최적화 1단계 - 성능 복원"
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

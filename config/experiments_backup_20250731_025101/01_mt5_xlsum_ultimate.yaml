@@ -1,6 +1,6 @@
-# mT5 XL-Sum RTX 3090 극한 최적화 실험 3단계 (세계 대회 도전)
-experiment_name: mt5_xlsum_extreme_stage3_ultimate
-description: "mT5 XL-Sum RTX 3090 + Unsloth 극한 최적화 3단계 - 배치 12 + 시퀀스 1536 + LoRA 256 세계대회 도전"
+# mT5 XL-Sum RTX 3090 극한 최적화 실험 (세계 대회 도전)
+experiment_name: mt5_xlsum_ultimate_rtx3090
+description: "mT5 XL-Sum RTX 3090 세계 대회 수준 성능 도전 - 3단계 극한 최적화"
 
 general:
   model_name: csebuetnlp/mT5_multilingual_XLSum
@@ -8,7 +8,7 @@ general:
   train_path: data/train.csv
   val_path: data/dev.csv
   model_type: seq2seq
-  name: mt5_xlsum_extreme_stage3_ultimate
+  name: mt5_xlsum_ultimate_rtx3090
 
 model:
   architecture: mt5
@@ -46,10 +46,10 @@ training:
   evaluation_strategy: steps
   eval_steps: 100
   
-  # 🔥 RTX 3090 극한 최적화 3단계 배치 설정
-  per_device_train_batch_size: 12     # 극한 최적화 최대 배치
-  per_device_eval_batch_size: 24      # 평가시 최대 배치
-  gradient_accumulation_steps: 4      # 유효 배치 48
+  # 🔥 RTX 3090 최대 성능 활용
+  per_device_train_batch_size: 4      # 긴 시퀀스(1024) 고려
+  per_device_eval_batch_size: 8
+  gradient_accumulation_steps: 4      # 유효 배치 16
   
   # ⚡ 극한 학습률 (세계 대회 수준)
   num_train_epochs: 8                 # 충분한 학습
@@ -62,7 +62,7 @@ training:
   fp16: false
   bf16: true                          # 최고 안정성
   gradient_checkpointing: false
-  dataloader_num_workers: 36          # 48코어의 75% 극한 활용
+  dataloader_num_workers: 12          # RTX 3090 최대 활용
   dataloader_pin_memory: true
   group_by_length: true
   
@@ -76,7 +76,7 @@ training:
   
   # 🏆 세계 대회 수준 생성
   predict_with_generate: true
-  generation_num_beams: 16            # RTX 3090 극한 최적화로 16개 빔 사용
+  generation_num_beams: 10            # RTX 3090에서 가능한 최대
   generation_max_length: 200
   generation_min_length: 20
   generation_length_penalty: 0.6
@@ -86,12 +86,12 @@ training:
   report_to: wandb
   seed: 42
 
-# 🔥 RTX 3090 + Unsloth 극한 최적화 3단계 QLoRA (최대 표현력)
+# 🚀 RTX 3090 극한 QLoRA (최대 표현력) (Unsloth 활성화)
 qlora:
   use_unsloth: true
   use_qlora: true
-  lora_rank: 256                      # RTX 3090 극한 최적화 최대 rank
-  lora_alpha: 512                     # rank의 2배
+  lora_rank: 96                       # RTX 3090 한계까지
+  lora_alpha: 192                     # rank의 2배
   lora_dropout: 0.01                  # 최소 드롭아웃
   target_modules: ["q", "k", "v", "o", "wi", "wo", "lm_head", "embed_tokens"]
   load_in_4bit: true

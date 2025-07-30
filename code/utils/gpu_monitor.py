@@ -151,6 +151,66 @@ class GPUMemoryMonitor:
         }
 
 
+def monitor_gpu_memory_simple() -> float:
+    """
+    RTX 3090 극한 최적화용 간단한 GPU 메모리 모니터링
+    
+    Returns:
+        현재 GPU 메모리 사용량 (GB)
+    """
+    if not torch.cuda.is_available():
+        return 0.0
+    
+    memory_info = torch.cuda.mem_get_info()
+    used_gb = (memory_info[1] - memory_info[0]) / (1024**3)
+    return used_gb
+
+
+def check_rtx3090_memory_critical(threshold_gb: float = 22.0) -> bool:
+    """
+    RTX 3090 메모리 임계점 확인
+    
+    Args:
+        threshold_gb: 임계점 (GB, 기본값 22GB)
+        
+    Returns:
+        True if 메모리 사용량이 임계점 초과
+    """
+    current_usage = monitor_gpu_memory_simple()
+    return current_usage > threshold_gb
+
+
+def get_rtx3090_memory_status() -> Dict[str, Any]:
+    """
+    RTX 3090 메모리 상태 상세 정보
+    
+    Returns:
+        메모리 상태 딕셔너리
+    """
+    if not torch.cuda.is_available():
+        return {'available': False}
+    
+    memory_info = torch.cuda.mem_get_info()
+    device_props = torch.cuda.get_device_properties(0)
+    
+    total_gb = memory_info[1] / (1024**3)
+    free_gb = memory_info[0] / (1024**3)
+    used_gb = total_gb - free_gb
+    usage_percent = (used_gb / total_gb) * 100
+    
+    return {
+        'available': True,
+        'device_name': device_props.name,
+        'total_gb': total_gb,
+        'used_gb': used_gb,
+        'free_gb': free_gb,
+        'usage_percent': usage_percent,
+        'is_rtx3090': 'RTX 3090' in device_props.name,
+        'is_critical': used_gb > 22.0,
+        'safe_for_optimization': used_gb < 20.0
+    }
+
+
 def optimize_batch_size_for_memory(model, tokenizer, sample_data, 
                                  device: torch.device,
                                  min_batch_size: int = 1,

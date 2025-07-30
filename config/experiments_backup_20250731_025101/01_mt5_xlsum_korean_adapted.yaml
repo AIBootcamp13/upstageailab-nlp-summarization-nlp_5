@@ -1,0 +1,113 @@
+# mT5 XL-Sum RTX 3090 한국어 도메인 적응 실험
+experiment_name: mt5_xlsum_korean_adapted_rtx3090
+description: "mT5 XL-Sum RTX 3090 한국어 대화 특화 도메인 적응 - 2단계"
+
+general:
+  model_name: csebuetnlp/mT5_multilingual_XLSum
+  data_path: data/
+  train_path: data/train.csv
+  val_path: data/dev.csv
+  model_type: seq2seq
+  name: mt5_xlsum_korean_adapted_rtx3090
+
+model:
+  architecture: mt5
+  checkpoint: csebuetnlp/mT5_multilingual_XLSum
+
+# 🇰🇷 한국어 도메인 특화 prefix
+input_prefix: "한국어 대화를 요약하세요: "
+
+tokenizer:
+  bos_token: <pad>
+  eos_token: </s>
+  encoder_max_len: 768               # 긴 대화 처리
+  decoder_max_len: 150
+  special_tokens:
+    - '#Person1#'
+    - '#Person2#'
+    - '#Person3#'
+    - '#PhoneNumber#'
+    - '#Address#'
+    - '#PassportNumber#'
+    - '#DateOfBirth#'
+    - '#SSN#'
+    - '#CardNumber#'
+    - '#CarNumber#'
+    - '#Email#'
+    - '<대화시작>'
+    - '<대화종료>'
+    - '<중요>'
+    - '<결론>'
+
+# 🚀 RTX 3090 도메인 적응 최적화
+training:
+  do_eval: true
+  do_train: true
+  evaluation_strategy: steps
+  eval_steps: 150
+  
+  # 📈 RTX 3090 고성능 배치 설정
+  per_device_train_batch_size: 5      # 긴 시퀀스 고려 조정
+  per_device_eval_batch_size: 10
+  gradient_accumulation_steps: 4      # 유효 배치 20
+  
+  # 🎯 도메인 적응 특화 학습률
+  num_train_epochs: 6                 # 충분한 도메인 적응
+  learning_rate: 9.0e-05              # 2단계 더 높은 학습률
+  lr_scheduler_type: polynomial
+  warmup_ratio: 0.05
+  weight_decay: 0.001
+  
+  # ⚡ RTX 3090 혼합 정밀도 최적화
+  fp16: false
+  bf16: true                          # 더 안정적
+  gradient_checkpointing: false
+  dataloader_num_workers: 8
+  dataloader_pin_memory: true
+  group_by_length: true
+  
+  # 📊 세밀한 모니터링
+  logging_steps: 25
+  save_strategy: steps
+  save_steps: 150
+  save_total_limit: 8
+  load_best_model_at_end: true
+  early_stopping_patience: 8
+  
+  # 🎯 한국어 특화 생성
+  predict_with_generate: true
+  generation_num_beams: 8
+  generation_max_length: 150
+  generation_min_length: 15
+  generation_length_penalty: 0.8
+  generation_no_repeat_ngram_size: 3
+  
+  report_to: wandb
+  seed: 42
+
+# 🚀 RTX 3090 고급 QLoRA
+qlora:
+  use_qlora: true
+  lora_rank: 64                       # 더 높은 표현력
+  lora_alpha: 128
+  lora_dropout: 0.03
+  target_modules: ["q", "k", "v", "o", "wi", "wo", "lm_head"]
+  load_in_4bit: true
+  bnb_4bit_compute_dtype: "bfloat16"
+  bnb_4bit_quant_type: "nf4"
+  bnb_4bit_use_double_quant: true
+
+wandb:
+  entity: lyjune37-juneictlab
+  project: nlp-5
+  name: mt5_xlsum_korean_adapted_rtx3090
+  tags: [mT5, XL-Sum, RTX3090, korean_adapted, stage2]
+  notes: "mT5 XL-Sum RTX 3090 한국어 도메인 적응 2단계"
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

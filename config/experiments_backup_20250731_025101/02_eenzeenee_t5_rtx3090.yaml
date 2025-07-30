@@ -1,0 +1,109 @@
+# eenzeenee T5 RTX 3090 24GB 최적화 실험
+experiment_name: eenzeenee_t5_rtx3090_optimized
+description: "eenzeenee T5 한국어 요약 모델 RTX 3090 최고 성능 최적화"
+
+general:
+  model_name: eenzeenee/t5-base-korean-summarization
+  data_path: data/
+  train_path: data/train.csv
+  val_path: data/dev.csv
+  model_type: seq2seq
+  name: eenzeenee_t5_rtx3090_optimized
+
+model:
+  architecture: t5
+  checkpoint: eenzeenee/t5-base-korean-summarization
+
+# 🎯 T5 한국어 특화 prefix
+input_prefix: "summarize: "
+
+tokenizer:
+  bos_token: <pad>
+  eos_token: </s>
+  encoder_max_len: 768               # 긴 대화 처리 가능
+  decoder_max_len: 150               # 충분한 요약 길이
+  special_tokens:
+    - '#Person1#'
+    - '#Person2#'
+    - '#Person3#'
+    - '#PhoneNumber#'
+    - '#Address#'
+    - '#PassportNumber#'
+    - '#DateOfBirth#'
+    - '#SSN#'
+    - '#CardNumber#'
+    - '#CarNumber#'
+    - '#Email#'
+
+# 🚀 RTX 3090 최적화 학습 설정
+training:
+  do_eval: true
+  do_train: true
+  evaluation_strategy: steps
+  eval_steps: 200
+  
+  # 🔥 RTX 3090 T5-base 최적 배치
+  per_device_train_batch_size: 12     # T5-base는 더 큰 배치 가능
+  per_device_eval_batch_size: 24      # 평가시 더 큰 배치
+  gradient_accumulation_steps: 2      # 유효 배치 24
+  
+  # 🎯 T5 한국어 최적화 학습률
+  num_train_epochs: 4                 # 충분한 학습
+  learning_rate: 5.0e-05              # T5-base 최적 학습률
+  lr_scheduler_type: cosine_with_restarts
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  
+  # ⚡ RTX 3090 가속 최적화
+  fp16: true                          # RTX 3090 fp16 우수
+  gradient_checkpointing: false       # T5-base는 메모리 여유
+  dataloader_num_workers: 8           # RTX 3090 최적 워커
+  dataloader_pin_memory: true
+  group_by_length: true
+  
+  # 📊 모니터링
+  logging_steps: 50
+  save_strategy: steps
+  save_steps: 200
+  save_total_limit: 5
+  load_best_model_at_end: true
+  early_stopping_patience: 5
+  
+  # 🎯 T5 한국어 최적 생성 설정
+  predict_with_generate: true
+  generation_num_beams: 6             # HuggingFace 권장보다 높게
+  generation_max_length: 150
+  generation_min_length: 20
+  generation_length_penalty: 0.8
+  generation_no_repeat_ngram_size: 3
+  generation_do_sample: false         # 결정적 생성
+  
+  report_to: wandb
+  seed: 42
+
+# 🚀 T5 고성능 QLoRA (Unsloth 활성화)
+qlora:
+  use_unsloth: true
+  use_qlora: true                    # T5-base는 Full Fine-tuning 가능
+  # 필요시 QLoRA 설정
+  lora_rank: 64
+  lora_alpha: 128
+  lora_dropout: 0.1
+  target_modules: ["q", "k", "v", "o"]
+  load_in_4bit: false
+  load_in_8bit: false
+
+wandb:
+  entity: lyjune37-juneictlab
+  project: nlp-5
+  name: eenzeenee_t5_rtx3090_optimized
+  tags: [eenzeenee, T5-base, RTX3090, optimized, korean, full_finetune]
+  notes: "eenzeenee T5 RTX 3090 최고 성능 최적화 - Full Fine-tuning"
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

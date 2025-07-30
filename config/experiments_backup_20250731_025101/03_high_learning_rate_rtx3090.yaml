@@ -1,0 +1,111 @@
+# 고성능 학습률 RTX 3090 24GB 최적화 실험
+experiment_name: high_learning_rate_rtx3090_optimized
+description: "고성능 학습률 RTX 3090 극한 최적화 - 세계 대회 수준 도전"
+
+general:
+  model_name: digit82/kobart-summarization
+  data_path: data/
+  train_path: data/train.csv
+  val_path: data/dev.csv
+  model_type: seq2seq
+  name: high_learning_rate_rtx3090_optimized
+
+model:
+  architecture: bart
+  checkpoint: digit82/kobart-summarization
+
+# 🎯 고성능 prefix
+input_prefix: ""
+
+tokenizer:
+  bos_token: <s>
+  eos_token: </s>
+  encoder_max_len: 1024              # 최대 컨텍스트
+  decoder_max_len: 200               # 긴 요약 지원
+  special_tokens:
+    - '#Person1#'
+    - '#Person2#'
+    - '#Person3#'
+    - '#PhoneNumber#'
+    - '#Address#'
+    - '#PassportNumber#'
+    - '#DateOfBirth#'
+    - '#SSN#'
+    - '#CardNumber#'
+    - '#CarNumber#'
+    - '#Email#'
+
+# 🚀 RTX 3090 극한 고성능 학습률 실험
+training:
+  do_eval: true
+  do_train: true
+  evaluation_strategy: steps
+  eval_steps: 150
+  
+  # 🔥 고성능 배치 설정
+  per_device_train_batch_size: 6      # 긴 시퀀스 고려
+  per_device_eval_batch_size: 12
+  gradient_accumulation_steps: 4      # 유효 배치 24
+  
+  # ⚡ 극한 고성능 학습률
+  num_train_epochs: 5                 # 충분한 학습
+  learning_rate: 8.0e-05              # 극한 고성능 학습률
+  lr_scheduler_type: cosine_with_restarts  # 고성능 스케줄러
+  warmup_ratio: 0.02                  # 짧은 웜업
+  weight_decay: 0.005                 # 낮은 weight decay
+  
+  # 🎯 RTX 3090 극한 최적화
+  fp16: false
+  bf16: true                          # 더 안정적인 정밀도
+  gradient_checkpointing: true
+  dataloader_num_workers: 12          # 최대 워커
+  dataloader_pin_memory: true
+  group_by_length: true
+  
+  # 📊 극세밀 모니터링
+  logging_steps: 25
+  save_strategy: steps
+  save_steps: 150
+  save_total_limit: 8
+  load_best_model_at_end: true
+  early_stopping_patience: 8
+  
+  # 🏆 고성능 생성 설정
+  predict_with_generate: true
+  generation_num_beams: 10            # 극한 빔 서치
+  generation_max_length: 200
+  generation_min_length: 25
+  generation_length_penalty: 0.6
+  generation_no_repeat_ngram_size: 4
+  generation_do_sample: false
+  
+  report_to: wandb
+  seed: 42
+
+# 🚀 극한 QLoRA 설정 (Unsloth 활성화)
+qlora:
+  use_unsloth: true
+  use_qlora: true
+  lora_rank: 96                       # 극한 표현력
+  lora_alpha: 192
+  lora_dropout: 0.05                  # 낮은 드롭아웃
+  target_modules: ["q_proj", "k_proj", "v_proj", "out_proj", "fc1", "fc2"]
+  load_in_4bit: true
+  bnb_4bit_compute_dtype: "bfloat16"
+  bnb_4bit_quant_type: "nf4"
+  bnb_4bit_use_double_quant: true
+
+wandb:
+  entity: lyjune37-juneictlab
+  project: nlp-5
+  name: high_learning_rate_rtx3090_extreme
+  tags: [KoBART, RTX3090, extreme_lr, high_performance, korean]
+  notes: "RTX 3090 극한 고성능 학습률 실험 - 세계 대회 수준 도전"
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

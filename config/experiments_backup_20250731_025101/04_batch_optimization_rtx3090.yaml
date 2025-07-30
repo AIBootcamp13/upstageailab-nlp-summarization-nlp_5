@@ -1,0 +1,123 @@
+# 배치 최적화 RTX 3090 24GB 극한 활용 실험
+experiment_name: batch_optimization_rtx3090_ultimate
+description: "RTX 3090 24GB 메모리 최대 활용 배치 최적화 - 극한 성능"
+
+general:
+  model_name: digit82/kobart-summarization
+  data_path: data/
+  train_path: data/train.csv
+  val_path: data/dev.csv
+  model_type: seq2seq
+  name: batch_optimization_rtx3090_ultimate
+
+model:
+  architecture: bart
+  checkpoint: digit82/kobart-summarization
+
+# 🎯 배치 최적화 prefix
+input_prefix: ""
+
+tokenizer:
+  bos_token: <s>
+  eos_token: </s>
+  encoder_max_len: 1024              # 최대 시퀀스 길이
+  decoder_max_len: 256               # 최대 요약 길이
+  special_tokens:
+    - '#Person1#'
+    - '#Person2#'
+    - '#Person3#'
+    - '#PhoneNumber#'
+    - '#Address#'
+    - '#PassportNumber#'
+    - '#DateOfBirth#'
+    - '#SSN#'
+    - '#CardNumber#'
+    - '#CarNumber#'
+    - '#Email#'
+
+# 🚀 RTX 3090 24GB 메모리 극한 활용
+training:
+  do_eval: true
+  do_train: true
+  evaluation_strategy: steps
+  eval_steps: 100                     # 자주 평가
+  
+  # 🔥 RTX 3090 극한 배치 최적화
+  per_device_train_batch_size: 4      # 긴 시퀀스 + 큰 배치
+  per_device_eval_batch_size: 8       # 평가시 더 큰 배치
+  gradient_accumulation_steps: 8      # 유효 배치 32 (극대)
+  
+  # 🎯 배치 최적화 특화 학습률
+  num_train_epochs: 6                 # 긴 학습
+  learning_rate: 4.0e-05              # 큰 배치에 적합한 학습률
+  lr_scheduler_type: polynomial       # 안정적 스케줄링
+  warmup_ratio: 0.06                  # 긴 웜업 (큰 배치)
+  weight_decay: 0.01
+  
+  # ⚡ RTX 3090 극한 메모리 활용
+  fp16: false
+  bf16: true                          # 안정성 우선
+  gradient_checkpointing: true        # 메모리 절약
+  dataloader_num_workers: 16          # 최대 데이터 로딩
+  dataloader_pin_memory: true
+  group_by_length: true
+  remove_unused_columns: false        # 모든 정보 활용
+  
+  # 📊 배치 최적화 모니터링
+  logging_steps: 10                   # 매우 자주 로깅
+  save_strategy: steps
+  save_steps: 100
+  save_total_limit: 10                # 많은 체크포인트
+  load_best_model_at_end: true
+  early_stopping_patience: 10         # 충분한 patience
+  
+  # 🏆 배치 최적화 생성 설정
+  predict_with_generate: true
+  generation_num_beams: 12            # 극한 빔 서치
+  generation_max_length: 256
+  generation_min_length: 30
+  generation_length_penalty: 0.8
+  generation_no_repeat_ngram_size: 4
+  generation_do_sample: false
+  generation_early_stopping: true
+  
+  report_to: wandb
+  seed: 42
+
+# 🚀 배치 최적화 QLoRA (Unsloth 활성화)
+qlora:
+  use_unsloth: true
+  use_qlora: true
+  lora_rank: 128                      # 최대 표현력
+  lora_alpha: 256                     # 최대 스케일링
+  lora_dropout: 0.02                  # 최소 드롭아웃
+  target_modules: [
+    "q_proj", "k_proj", "v_proj", "out_proj",  # attention
+    "fc1", "fc2",                               # feed-forward
+    "lm_head"                                   # 출력 헤드
+  ]
+  load_in_4bit: true
+  bnb_4bit_compute_dtype: "bfloat16"
+  bnb_4bit_quant_type: "nf4"
+  bnb_4bit_use_double_quant: true
+
+# 🔧 고급 배치 최적화 설정
+advanced_optimization:
+  dataloader_drop_last: false         # 모든 데이터 활용
+  eval_accumulation_steps: 4          # 평가도 배치 최적화
+  prediction_loss_only: false        # 전체 출력 계산
+
+wandb:
+  entity: lyjune37-juneictlab
+  project: nlp-5
+  name: batch_optimization_rtx3090_ultimate
+  tags: [KoBART, RTX3090, batch_optimization, ultimate, large_batch, korean]
+  notes: "RTX 3090 24GB 메모리 극한 활용 배치 최적화 - 유효 배치 32"
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

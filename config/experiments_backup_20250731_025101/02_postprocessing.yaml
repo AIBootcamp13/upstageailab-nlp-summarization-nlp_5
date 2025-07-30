@@ -1,0 +1,128 @@
+experiment_name: postprocessing_pipeline
+description: Baseline with rule-based postprocessing for summary quality improvement
+
+# Model configuration - Same as baseline
+model:
+  name: digit82/kobart-summarization
+  architecture: kobart
+
+# Tokenizer configuration  
+tokenizer:
+  encoder_max_len: 512
+  decoder_max_len: 200
+  bos_token: "<s>"
+  eos_token: "</s>"
+  special_tokens:
+    - '#Person1#'
+    - '#Person2#'
+    - '#Person3#'
+    - '#PhoneNumber#'
+    - '#Address#'
+    - '#DateOfBirth#'
+    - '#PassportNumber#'
+    - '#SSN#'
+    - '#CardNumber#'
+    - '#CarNumber#'
+    - '#Email#'
+
+# Postprocessing configuration
+postprocessing:
+  enabled: true
+  
+  # Duplicate removal settings
+  duplicate_removal:
+    enabled: true
+    min_phrase_length: 3  # Minimum words in a phrase to check
+    similarity_threshold: 0.85  # Threshold for considering sentences as duplicates
+  
+  # Length optimization settings
+  length_optimization:
+    enabled: true
+    min_tokens: 50   # Minimum summary length
+    max_tokens: 100  # Maximum summary length
+    target_tokens: 75  # Target length
+  
+  # Special token validation
+  token_validation:
+    enabled: true
+    copy_missing_tokens: true  # Copy missing PII tokens from dialogue
+    special_tokens:  # Tokens to validate
+      - '#PhoneNumber#'
+      - '#Address#'
+      - '#Email#'
+      - '#DateOfBirth#'
+      - '#PassportNumber#'
+      - '#SSN#'
+      - '#CardNumber#'
+      - '#CarNumber#'
+
+# Training configuration - Same as baseline
+training:
+  num_train_epochs: 20
+  learning_rate: 1.0e-05
+  per_device_train_batch_size: 16
+  per_device_eval_batch_size: 16
+  gradient_accumulation_steps: 4
+  gradient_checkpointing: true
+  fp16: true
+  warmup_steps: 10
+  weight_decay: 0.01
+  seed: 42
+  
+  # Evaluation settings
+  evaluation_strategy: steps
+  eval_steps: 400
+  save_steps: 400
+  save_total_limit: 1
+  logging_steps: 100
+  
+  # Early stopping
+  early_stopping_patience: 3
+  early_stopping_threshold: 0.001
+  load_best_model_at_end: true
+  
+  # Other settings
+  dataloader_num_workers: 4
+  dataloader_drop_last: false
+  group_by_length: true
+  predict_with_generate: true
+  remove_unused_columns: true
+
+# Generation configuration
+generation:
+  max_length: 200
+  num_beams: 4
+  no_repeat_ngram_size: 2
+  early_stopping: true
+  length_penalty: 1.0
+
+# Inference configuration with postprocessing
+inference:
+  batch_size: 16
+  generate_max_length: 200
+  apply_postprocessing: true  # Enable postprocessing during inference
+  remove_tokens:
+    - '<usr>'
+    - '<s>'
+    - '</s>'
+    - '<pad>'
+
+# WandB configuration
+wandb:
+  name: "02_postprocessing_pipeline"
+  notes: "Baseline with comprehensive postprocessing pipeline"
+  tags: ["postprocessing", "duplicate_removal", "length_optimization", "token_validation", "kobart"]
+  
+# Data configuration
+data:
+  train_file: "train.csv"
+  dev_file: "dev.csv"
+  test_file: "test.csv"
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

@@ -1,0 +1,83 @@
+# 고성능 학습률 1 epoch 테스트 (RTX 3090 24GB 최적화)
+experiment_name: high_lr_1epoch_test
+description: "고성능 학습률 1 epoch 빠른 테스트 - RTX 3090 최적화"
+
+general:
+  model_name: digit82/kobart-summarization
+  data_path: ../data/
+  train_path: data/train.csv
+  val_path: data/dev.csv
+  name: high_lr_1epoch_test
+
+tokenizer:
+  bos_token: <s>
+  eos_token: </s>
+  encoder_max_len: 256    # 테스트용 짧은 길이
+  decoder_max_len: 64     # 테스트용 짧은 길이
+  special_tokens:
+    - '#Person1#'
+    - '#Person2#'
+    - '#Person3#'
+    - '#PhoneNumber#'
+    - '#Address#'
+    - '#PassportNumber#'
+
+# 1 epoch 고성능 학습률 테스트
+training:
+  do_eval: true
+  do_train: true
+  
+  # 1 epoch 설정
+  num_train_epochs: 1                 # 1 epoch만
+  max_steps: 80                       # 더 적은 스텝 (빠른 수렴)
+  
+  evaluation_strategy: steps
+  eval_steps: 20                      # 자주 평가
+  
+  # RTX 3090 테스트용 배치 설정
+  per_device_train_batch_size: 10     # 높은 학습률에 맞는 배치
+  per_device_eval_batch_size: 20
+  gradient_accumulation_steps: 1
+  
+  # 고성능 학습률 설정
+  learning_rate: 8.0e-05              # 높은 학습률
+  lr_scheduler_type: linear
+  warmup_steps: 8                     # 매우 적은 웜업
+  weight_decay: 0.01
+  
+  # 최적화 설정
+  fp16: true
+  gradient_checkpointing: false
+  dataloader_num_workers: 6
+  dataloader_pin_memory: true
+  group_by_length: true
+  
+  # 저장 및 로깅
+  logging_steps: 10
+  save_strategy: steps
+  save_steps: 40
+  save_total_limit: 1
+  load_best_model_at_end: false
+  
+  # 생성 설정
+  predict_with_generate: true
+  generation_num_beams: 2
+  generation_max_length: 64
+  
+  report_to: []                       # WandB 비활성화 (테스트)
+  seed: 42
+
+wandb:
+  entity: lyjune37-juneictlab
+  project: nlp-5
+  name: high_lr_1epoch_test_lyj
+  tags: [high_lr, 1epoch, test, fast_convergence, RTX3090, lyj]
+  notes: "고성능 학습률 1 epoch 빠른 테스트"
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no
