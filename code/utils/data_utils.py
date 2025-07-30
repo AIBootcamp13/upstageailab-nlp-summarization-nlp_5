@@ -223,8 +223,24 @@ class DataProcessor:
         self.min_summary_length = self.config.get('data', {}).get('min_target_length', 5)
         self.max_summary_length = self.config.get('data', {}).get('max_target_length', 256)
         
-        # 특수 토큰 추가
-        self._add_special_tokens()
+        # 특수 토큰 추가 (임시 비활성화)
+        # self._add_special_tokens()
+        
+        def _add_special_tokens(self):
+        """특수 토큰을 토크나이저에 추가"""
+        special_tokens = [
+            '#Person1#', '#Person2#', '#Person3#', '#Person4#',
+            '#Person5#', '#Person6#', '#Person7#',
+            '#PhoneNumber#', '#Address#', '#PassportNumber#'
+        ]
+        
+        # 기존에 없는 토큰만 추가
+        new_tokens = [token for token in special_tokens 
+                     if token not in self.tokenizer.get_vocab()]
+        
+        if new_tokens:
+            self.tokenizer.add_tokens(new_tokens)
+            logger.info(f"Added {len(new_tokens)} special tokens to tokenizer")
         
         def load_data(self, file_path: Union[str, Path], is_test: bool = False) -> pd.DataFrame:
             """
