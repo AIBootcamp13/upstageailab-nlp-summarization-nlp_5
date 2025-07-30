@@ -611,7 +611,8 @@ class DialogueSummarizationTrainer:
             
             # 디바이스별 최적화 설정 가져오기
             model_size = self.config.get('model', {}).get('size', 'base')
-            optimization_config = setup_device_config(device_info, model_size)
+            use_qlora = self.config.get('qlora', {}).get('use_qlora', False)
+            optimization_config = setup_device_config(device_info, model_size, use_qlora)
             
             # 최적화 설정을 config에 병합
             if 'training' not in self.config:

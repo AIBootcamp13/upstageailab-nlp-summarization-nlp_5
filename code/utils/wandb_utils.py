@@ -36,8 +36,10 @@ def setup_wandb_for_experiment(config: Dict[str, Any],
     wandb_config = config.get('wandb', {})
     
     # 실험별 고유한 run name 생성
+    # 조장님 패턴: b_automodel_{current_time}
     model_name = config.get('model', {}).get('architecture', 'unknown')
-    run_name = f"{model_name}_{experiment_name}_{korean_time}"
+    model_short = model_name[:1] if model_name != 'unknown' else 'x'  # 첫 글자만
+    run_name = f"{model_short}_{experiment_name}_{korean_time}"
     
     # Job type 설정
     job_type = "sweep" if sweep_mode else "experiment"
@@ -100,8 +102,26 @@ def log_model_to_wandb(model_path: str,
         logger.warning("WandB run이 활성화되지 않아 모델을 등록할 수 없습니다.")
         return
     
+    # 모델 크기 확인
+    model_size_mb = get_directory_size_mb(model_path)
+    size_threshold = config.get('wandb', {}).get('log_model_size_threshold', 2000)  # 기본 2GB
+    
+    # 모델 크기가 임계값을 초과하면 로컬만 저장
+    if model_size_mb > size_threshold:
+        logger.warning(f"모델 크기({model_size_mb:.1f}MB)가 임계값({size_threshold}MB)을 초과하여 WandB에 업로드하지 않습니다.")
+        logger.info(f"모델은 로컬에만 저장되었습니다: {model_path}")
+        # WandB에 메타데이터만 기록
+        wandb.run.summary.update({
+            "model_saved_locally": True,
+            "model_size_mb": model_size_mb,
+            "model_path": model_path,
+            **metrics
+        })
+        return
+    
     try:
         # 모델 아티팩트 생성
+        from utils.experiment_utils import get_korean_time_format
         model_artifact = wandb.Artifact(
             name=model_name,
             type="model",
@@ -114,7 +134,8 @@ def log_model_to_wandb(model_path: str,
                 "architecture": config.get('model', {}).get('architecture', 'unknown'),
                 "base_model": config.get('model', {}).get('checkpoint', 'unknown'),
                 "training_epochs": config.get('training', {}).get('num_train_epochs', 0),
-                "korean_time": get_korean_time_format('MMDDHHMM')
+                "korean_time": get_korean_time_format('MMDDHHMM'),
+                "model_size_mb": model_size_mb
             }
         )
         
@@ -131,10 +152,30 @@ def log_model_to_wandb(model_path: str,
         # WandB에 로그
         wandb.run.log_artifact(model_artifact, aliases=aliases)
         
-        logger.info(f"모델이 WandB에 등록되었습니다: {model_name}")
+        logger.info(f"모델이 WandB에 등록되었습니다: {model_name} ({model_size_mb:.1f}MB)")
         
     except Exception as e:
         logger.error(f"WandB 모델 등록 실패: {e}")
+
+
+def get_directory_size_mb(directory_path: str) -> float:
+    """
+    디렉토리의 전체 크기를 MB 단위로 계산
+    
+    Args:
+        directory_path: 크기를 계산할 디렉토리 경로
+        
+    Returns:
+        디렉토리 크기 (MB)
+    """
+    total_size = 0
+    for dirpath, dirnames, filenames in os.walk(directory_path):
+        for filename in filenames:
+            filepath = os.path.join(dirpath, filename)
+            if os.path.exists(filepath):
+                total_size += os.path.getsize(filepath)
+    
+    return total_size / (1024 * 1024)  # bytes to MB
 
 
 def finish_wandb_run(summary_metrics: Dict[str, Any] = None):

@@ -192,15 +192,14 @@ def get_optimal_device() -> Tuple[torch.device, DeviceInfo]:
     device = torch.device('cpu')
     logger.info(f"GPU를 사용할 수 없어 CPU 사용: {cpu_info}")
     return device, cpu_info
-
-
-def setup_device_config(device_info: DeviceInfo, model_size: str = 'base') -> OptimizationConfig:
+def setup_device_config(device_info: DeviceInfo, model_size: str = 'base', use_qlora: bool = False) -> OptimizationConfig:
     """
     디바이스별 최적화 설정을 생성합니다.
     
     Args:
         device_info: 디바이스 정보
         model_size: 모델 크기 ('small', 'base', 'large')
+        use_qlora: QLoRA 사용 여부
         
     Returns:
         최적화 설정
@@ -208,11 +207,21 @@ def setup_device_config(device_info: DeviceInfo, model_size: str = 'base') -> Op
     config = OptimizationConfig()
     
     # 모델 크기별 기본 배치 크기
-    base_batch_sizes = {
-        'small': {'cuda': 16, 'mps': 8, 'cpu': 4},
-        'base': {'cuda': 8, 'mps': 4, 'cpu': 2},
-        'large': {'cuda': 4, 'mps': 2, 'cpu': 1}
-    }
+    # QLoRA 사용 시 메모리 효율이 높아 배치 크기를 크게 설정
+    if use_qlora:
+        # 조장님 권장사항: QLoRA로 batch_size 24~32
+        base_batch_sizes = {
+            'small': {'cuda': 32, 'mps': 16, 'cpu': 8},
+            'base': {'cuda': 24, 'mps': 12, 'cpu': 6},
+            'large': {'cuda': 16, 'mps': 8, 'cpu': 4}
+        }
+    else:
+        # Full fine-tuning 배치 크기 (보수적)
+        base_batch_sizes = {
+            'small': {'cuda': 16, 'mps': 8, 'cpu': 4},
+            'base': {'cuda': 8, 'mps': 4, 'cpu': 2},
+            'large': {'cuda': 4, 'mps': 2, 'cpu': 1}
+        }
     
     base_batch_size = base_batch_sizes.get(model_size, base_batch_sizes['base'])
     
@@ -225,11 +234,23 @@ def setup_device_config(device_info: DeviceInfo, model_size: str = 'base') -> Op
         config.pin_memory = True
         
         # 메모리 크기에 따른 조정
-        if device_info.memory_gb and device_info.memory_gb < 8:
-            config.batch_size = max(1, config.batch_size // 2)
-            config.gradient_checkpointing = True
-        elif device_info.memory_gb and device_info.memory_gb >= 16:
-            config.batch_size = min(32, config.batch_size * 2)
+        if device_info.memory_gb:
+            if device_info.memory_gb < 8:
+                # 메모리가 적을 때
+                config.batch_size = max(1, config.batch_size // 2)
+                config.gradient_checkpointing = True
+            elif device_info.memory_gb >= 16 and device_info.memory_gb < 24:
+                # 중간 메모리 (16-24GB)
+                if use_qlora:
+                    config.batch_size = min(32, config.batch_size)
+                else:
+                    config.batch_size = config.batch_size
+            elif device_info.memory_gb >= 24:
+                # 충분한 메모리 (24GB 이상)
+                if use_qlora:
+                    config.batch_size = min(48, int(config.batch_size * 1.5))
+                else:
+                    config.batch_size = min(32, config.batch_size * 2)
         
         # 컴퓨트 능력에 따른 조정
         if device_info.compute_capability:
@@ -261,11 +282,16 @@ def setup_device_config(device_info: DeviceInfo, model_size: str = 'base') -> Op
         config.gradient_checkpointing = True  # 메모리 절약
     
     # 그래디언트 누적으로 유효 배치 크기 유지
-    target_batch_size = base_batch_sizes['base']['cuda']
-    if config.batch_size < target_batch_size:
+    # QLoRA 사용 시는 큰 배치 크기를 허용하므로 gradient accumulation 최소화
+    if use_qlora:
+        target_batch_size = config.batch_size  # QLoRA는 큰 배치 그대로 사용
+    else:
+        target_batch_size = base_batch_sizes['base']['cuda']
+        
+    if config.batch_size < target_batch_size and not use_qlora:
         config.gradient_accumulation_steps = target_batch_size // config.batch_size
     
-    logger.info(f"{device_info.device_type} 최적화 설정: {config}")
+    logger.info(f"{device_info.device_type} 최적화 설정 ({'QLoRA' if use_qlora else 'Full FT'}): {config}")
     return config
 
 

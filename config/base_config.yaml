@@ -114,21 +114,21 @@ evaluation:
 
 wandb:
   # WandB 설정
-  entity: "wandb_repo"
-  project: "nlp-summarization-auto"
-  name: "base_experiment"
+  entity: "lyjune37-juneictlab"  # 팀 실험 organization
+  project: "nlp-5"  # 프로젝트명
+  name: "base_experiment"  # 기본값, 실행 시 동적 생성
   notes: "Base configuration experiment"
   tags: ["nlp", "summarization", "kobart", "baseline"]
   group: "base_experiments"
   job_type: "train"
   
   # WandB 로깅 설정
-  log_model: "end"  # end, checkpoint, false
+  log_model: "end"  # end: best model만, false: 저장 안함
+  log_model_size_threshold: 2000  # MB 단위, 이 크기 이상은 로컬만 저장
   watch: "gradients"  # gradients, parameters, all, false
   save_code: true
 
 inference:
-  # 추론 설정 (기존 config.yaml과 호환)
   ckt_path: "model_ckt_path"
   result_path: "./prediction/"
   batch_size: 32
