@@ -1068,6 +1068,8 @@ if __name__ == "__main__":
         trainer.config['training']['evaluation_strategy'] = "no"  # 평가 비활성화
         trainer.config['training']['save_strategy'] = "epoch"  # 에포크마다 저장
         trainer.config['training']['logging_steps'] = 10  # 로깅 빈도 증가
+        trainer.config['training']['load_best_model_at_end'] = False  # best model 로드 비활성화
+        trainer.config['training']['metric_for_best_model'] = None  # best model 메트릭 비활성화
     
     # 데이터 준비
     datasets = trainer.prepare_data(
