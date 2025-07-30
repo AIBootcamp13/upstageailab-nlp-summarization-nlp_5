@@ -53,13 +53,23 @@ from datasets import Dataset, DatasetDict
 import evaluate
 import wandb
 # 로컬 유틸리티 임포트
-from utils import load_config
-from utils.data_utils import DataProcessor
-from utils.metrics import RougeCalculator
-from utils.experiment_utils import ExperimentTracker, ModelRegistry
-from utils.path_utils import PathManager, path_manager
-
-
+try:
+    from utils import load_config
+    from utils.data_utils import DataProcessor
+    from utils.metrics import RougeCalculator
+    from utils.experiment_utils import ExperimentTracker, ModelRegistry
+    from utils.environment_detector import EnvironmentDetector, get_auto_config, should_use_unsloth
+    from utils.path_utils import PathManager, path_manager
+except ImportError:
+    # code 디렉토리에서 실행되는 경우
+    import sys
+    sys.path.append('..')
+    from utils import load_config
+    from utils.data_utils import DataProcessor
+    from utils.metrics import RougeCalculator
+    from utils.experiment_utils import ExperimentTracker, ModelRegistry
+    from utils.environment_detector import EnvironmentDetector, get_auto_config, should_use_unsloth
+    from utils.path_utils import PathManager, path_manager
 logger = logging.getLogger(__name__)
 
 
