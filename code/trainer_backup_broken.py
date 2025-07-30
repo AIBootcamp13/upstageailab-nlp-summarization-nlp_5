@@ -1,5 +1,760 @@
+"""
+NLP 대화 요약 모델 학습 모듈
+
+baseline.ipynb의 핵심 학습 로직을 모듈화한 트레이너 클래스.
+WandB Sweep과의 통합을 위해 설계되었으며, 다양한 모델과 설정을 지원합니다.
+"""
+
+import os
+import sys
+from pathlib import Path
+
+# .env 파일 로드 (WandB API 키 등)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    print("⚠️ python-dotenv가 설치되지 않았습니다. .env 파일을 로드할 수 없습니다.")
+    pass
+
+# 프로젝트 루트 디렉토리를 Python 경로에 추가
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(Path(__file__).parent))
+import json
+import logging
+from pathlib import Path
+from typing import Dict, Any, Optional, List, Tuple, Union
+from dataclasses import dataclass, field
+import warnings
+warnings.filterwarnings("ignore")
+
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
+import numpy as np
+import pandas as pd
+from tqdm import tqdm
+
+from transformers import (
+    AutoTokenizer,
+    AutoModelForSeq2SeqLM,
+    AutoModelForCausalLM,
+    DataCollatorForSeq2Seq,
+    Seq2SeqTrainingArguments,
+    Seq2SeqTrainer,
+    EarlyStoppingCallback,
+    TrainerCallback,
+    TrainerState,
+    TrainerControl,
+    PreTrainedModel,
+    PreTrainedTokenizer
+)
+
+# QLoRA 및 unsloth 관련 import (선택적)
+try:
+    from unsloth import FastLanguageModel
+    from peft import LoraConfig, get_peft_model, TaskType
+    UNSLOTH_AVAILABLE = True
+except ImportError:
+    # macOS 환경이나 unsloth가 설치되지 않은 경우
+    FastLanguageModel = None
+    LoraConfig = None
+    get_peft_model = None
+    TaskType = None
+    UNSLOTH_AVAILABLE = False
+
+from datasets import Dataset, DatasetDict
+
+# evaluate 모듈 선택적 import
+try:
+    import evaluate
+    EVALUATE_AVAILABLE = True
+except ImportError:
+    print("⚠️ evaluate 라이브러리를 찾을 수 없습니다. ROUGE 메트릭 계산이 제한될 수 있습니다.")
+    print("👉 'pip install evaluate' 명령으로 설치하세요.")
+    evaluate = None
+    EVALUATE_AVAILABLE = False
+
+import wandb
+# 로컬 유틸리티 임포트
+from utils import load_config
+from utils.data_utils import DataProcessor
+from utils.metrics import RougeCalculator
+from utils.experiment_utils import ExperimentTracker, ModelRegistry
+from utils.environment_detector import EnvironmentDetector, get_auto_config, should_use_unsloth
+from utils.path_utils import PathManager, path_manager
+
+
+logger = logging.getLogger(__name__)
+
+
+# BART 모델을 위한 커스텀 DataCollator
+class SmartDataCollatorForSeq2Seq(DataCollatorForSeq2Seq):
+    """
+    모델 타입에 따라 자동으로 token_type_ids 처리를 조정하는 DataCollator
+    """
+    
+    def __init__(self, tokenizer, model=None, **kwargs):
+        super().__init__(tokenizer, model, **kwargs)
+        
+        # 모델 타입 확인
+        self.model_type = None
+        if model is not None:
+            model_class_name = model.__class__.__name__
+            if "Bart" in model_class_name or "bart" in model_class_name.lower():
+                self.model_type = "bart"
+            elif "T5" in model_class_name or "t5" in model_class_name.lower():
+                self.model_type = "t5"
+            elif "MT5" in model_class_name or "mt5" in model_class_name.lower():
+                self.model_type = "mt5"
+                
+    def __call__(self, features, return_tensors=None):
+        """
+        모델 타입에 따라 적절히 처리된 배치 반환
+        """
+        batch = super().__call__(features, return_tensors)
+        
+        # BART 모델인 경우 token_type_ids 제거
+        if self.model_type == "bart":
+            if "token_type_ids" in batch:
+                del batch["token_type_ids"]
+            if "decoder_token_type_ids" in batch:
+                del batch["decoder_token_type_ids"]
+                
+        return batch
+
+
+@dataclass
+class TrainingResult:
+    """학습 결과 데이터 클래스"""
+    best_metrics: Dict[str, float]
+    final_metrics: Dict[str, float]
+    model_path: str
+    config_used: Dict[str, Any]
+    training_history: List[Dict[str, Any]] = field(default_factory=list)
+    wandb_run_id: Optional[str] = None
+    experiment_id: Optional[str] = None
+    submission_file: Optional[str] = None  # CSV 제출 파일 경로
+
+
+class WandbCallback(TrainerCallback):
+    """WandB 로깅을 위한 커스텀 콜백"""
+    
+    def __init__(self, trainer_instance: 'DialogueSummarizationTrainer') -> None:
+        self.trainer_instance = trainer_instance
+        self.best_metrics = {}
+        
+    def on_evaluate(self, args, state: TrainerState, control: TrainerControl, 
+                   metrics: Dict[str, float], **kwargs):
+        """평가 시 WandB에 메트릭 로깅"""
+        if wandb.run is not None:
+            # ROUGE 점수 결합 (F1 기준)
+            rouge_combined = (
+                metrics.get('eval_rouge1', 0) * 0.33 +
+                metrics.get('eval_rouge2', 0) * 0.33 +
+                metrics.get('eval_rougeL', 0) * 0.34
+            )
+            
+            log_metrics = {
+                'eval/rouge1_f1': metrics.get('eval_rouge1', 0),
+                'eval/rouge2_f1': metrics.get('eval_rouge2', 0),
+                'eval/rougeL_f1': metrics.get('eval_rougeL', 0),
+                'eval/rouge_combined_f1': rouge_combined,
+                'eval/loss': metrics.get('eval_loss', 0),
+                'epoch': state.epoch,
+                'step': state.global_step
+            }
+            
+            # 베스트 메트릭 업데이트
+            if rouge_combined > self.best_metrics.get('rouge_combined_f1', 0):
+                self.best_metrics = {
+                    'rouge1_f1': metrics.get('eval_rouge1', 0),
+                    'rouge2_f1': metrics.get('eval_rouge2', 0),
+                    'rougeL_f1': metrics.get('eval_rougeL', 0),
+                    'rouge_combined_f1': rouge_combined,
+                    'loss': metrics.get('eval_loss', 0)
+                }
+                log_metrics['best/rouge_combined_f1'] = rouge_combined
+            
+            wandb.log(log_metrics)
+            # 실험 추적기에도 로깅
+            if self.trainer_instance.experiment_tracker:
+                self.trainer_instance.experiment_tracker.log_metrics(
+                    metrics, step=state.global_step
+                )
+    
+    def on_train_end(self, args, state: TrainerState, control: TrainerControl, **kwargs):
+        """학습 종료 시 최종 결과 로깅"""
+        if wandb.run is not None:
+            wandb.run.summary.update(self.best_metrics)
+
+
+class DialogueSummarizationTrainer:
+    """
+    대화 요약 모델 학습 트레이너
+    
+    baseline.ipynb의 학습 로직을 모듈화하고 WandB Sweep과 통합하여
+    생산성 높은 실험 환경을 제공합니다.
+    
+    Features:
+        - 다중 모델 아키텍처 지원 (BART, T5, KoBART 등)
+        - 자동 디바이스 감지 및 최적화 (CUDA, MPS, CPU)
+        - 실험 추적 및 모델 등록 시스템
+        - 커스텀 콜백 및 메트릭 계산
+        - 포괄적 에러 처리 및 로깅
+        - WandB 통합 실험 관리
+        
+    Example:
+        >>> config = load_config('configs/bart_base.yaml')
+        >>> trainer = DialogueSummarizationTrainer(config)
+        >>> datasets = trainer.prepare_data()
+        >>> result = trainer.train(datasets)
+    """
+    
+    def __init__(self, config: Dict[str, Any], 
+                 sweep_mode: bool = False,
+                 experiment_name: Optional[str] = None):
+        """
+        트레이너 초기화
+        
+        Args:
+            config: 설정 딕셔너리 (ConfigManager로부터)
+            sweep_mode: WandB Sweep 모드 여부
+            experiment_name: 실험명 (None이면 자동 생성)
+        """
+        self.config = config
+        self.sweep_mode = sweep_mode
+        self.experiment_name = experiment_name or config.get('meta', {}).get('experiment_name', 'dialogue_summarization')
+        
+        # 환경 자동 감지 및 설정 최적화
+        self.env_detector = EnvironmentDetector()
+        self.env_info = self.env_detector.detect_environment()
+        self.auto_config = self.env_detector.get_recommended_config()
+        
+        # 디바이스 설정
+        self.device = self._setup_device()
+        
+        # 모델 및 토크나이저 초기화
+        self.model = None
+        self.tokenizer = None
+        self.data_processor = None
+        self.rouge_calculator = None
+        self.trainer = None
+        
+        # 실험 관리
+        self.experiment_tracker = None
+        self.model_registry = None
+        
+        # 경로 설정 (먼저 실행해야 output_dir이 설정됨)
+        self.setup_paths()
+        
+        # 로깅 설정
+        self._setup_logging()
+        logger.info(f"Trainer initialized with config: {self.experiment_name}")
+        # 환경 정보 출력
+        self._print_environment_info()
+        
+        def setup_wandb_with_korean_time(self, config: Dict[str, Any]) -> bool:
+        """
+        한국 시간 기반 WandB 초기화
+        
+        Args:
+            config: 실험 설정 딕셔너리
+            
+        Returns:
+            WandB 활성화 여부
+        """
+        if os.environ.get("WANDB_MODE") == "disabled":
+            print("⚠️ WandB가 비활성화되어 있습니다.")
+            return False
+            
+        try:
+            from utils.experiment_utils import get_wandb_run_name_with_korean_time
+            korean_time = get_wandb_run_name_with_korean_time()
+            
+            # 기존 wandb 설정을 한국 시간으로 개선
+            wandb_config = config.get('wandb', {})
+            original_name = wandb_config.get('name', self.experiment_name)
+            wandb_config['name'] = f"{original_name}_{korean_time}"
+            
+            # WandB 초기화 (이미 초기화된 경우 스킨)
+            if wandb.run is None:
+                wandb.init(
+                    entity=wandb_config.get('entity', 'lyjune37-juneictlab'),
+                    project=wandb_config.get('project', 'nlp-5'),
+                    name=wandb_config['name'],
+                    config=config,
+                    tags=wandb_config.get('tags', []) + ['rtx3090_optimized', 'korean_time']
+                )
+                print(f"✅ WandB 초기화 완료: {wandb_config['name']}")
+            else:
+                print(f"ℹ️ WandB 이미 초기화됨: {wandb.run.name}")
+            
+            return True
+            
+        except ImportError as e:
+            print(f"⚠️ 한국 시간 유틸리티 import 실패: {e}")
+            return False
+        except Exception as e:
+            print(f"⚠️ WandB 초기화 실패: {e}")
+            return False
+        
+        def save_best_model_as_artifact(self, model_path: str, metrics: Dict[str, float]) -> None:
+        """
+        Best model을 WandB Artifacts로 저장
+        
+        Args:
+            model_path: 모델 저장 경로
+            metrics: 성능 메트릭
+        """
+        if wandb.run is None:
+            print("⚠️ WandB가 초기화되지 않아 Artifacts 저장을 건너뗍니다.")
+            return
+            
+        try:
+            from utils.experiment_utils import get_korean_time_format
+            korean_time = get_korean_time_format('MMDDHHMM')
+            
+            # ROUGE 종합 점수 계산
+            rouge_combined = metrics.get('rouge_combined_f1', 0)
+            if rouge_combined == 0:
+                # 대체 계산 방법
+                rouge1 = metrics.get('eval_rouge1_f1', 0) or metrics.get('rouge1_f1', 0)
+                rouge2 = metrics.get('eval_rouge2_f1', 0) or metrics.get('rouge2_f1', 0)
+                rougeL = metrics.get('eval_rougeL_f1', 0) or metrics.get('rougeL_f1', 0)
+                rouge_combined = (rouge1 + rouge2 + rougeL) / 3
+            
+            # Artifact 생성
+            artifact = wandb.Artifact(
+                name=f"best-model-{korean_time}",
+                type="model",
+                description=f"Best model (ROUGE-F1: {rouge_combined:.4f}) - Korean time: {korean_time}"
+            )
+            
+            # 모델 디렉토리 추가
+            model_path = Path(model_path)
+            if model_path.exists():
+                artifact.add_dir(str(model_path))
+                
+                # 메타데이터 추가
+                artifact.metadata = {
+                    "best_metrics": metrics,
+                    "korean_time": korean_time,
+                    "model_path": str(model_path),
+                    "rouge_combined_f1": rouge_combined
+                }
+                
+                # Artifact 로깅
+                wandb.log_artifact(artifact, aliases=["latest", "best"])
+                print(f"✅ WandB Artifacts 저장 완료: {artifact.name}")
+                print(f"   모델 경로: {model_path}")
+                print(f"   ROUGE-F1: {rouge_combined:.4f}")
+            else:
+                print(f"⚠️ 모델 경로가 존재하지 않습니다: {model_path}")
+                
         except Exception as e:
             print(f"⚠️ WandB Artifacts 저장 실패: {e}")
+        
+        def setup_paths(self) -> None:
+        """경로 설정"""
+        # 경로 관리자를 사용하여 경로 관리
+        experiment_name = self.experiment_name
+        
+        # Sweep 모드일 때는 run ID를 포함
+        if self.sweep_mode and wandb.run:
+            experiment_name = f"sweep_{wandb.run.id}"
+        else:
+            from datetime import datetime
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            experiment_name = f"{self.experiment_name}_{timestamp}"
+        
+        # 경로 관리자를 통한 경로 설정
+        self.output_dir = path_manager.get_output_path(experiment_name)
+        self.model_save_dir = path_manager.get_model_path(experiment_name)
+        self.results_dir = path_manager.ensure_dir(self.output_dir / "results")
+        
+        # 로그 디렉토리 설정
+        self.log_dir = path_manager.get_log_path(experiment_name)
+        
+        # 파일 핸들러 추가 (output_dir이 설정된 후)
+        self._add_file_handler()
+    def initialize_components(self) -> None:
+        """모든 컴포넌트 초기화"""
+        logger.info("Initializing components...")
+        
+        # 실험 추적기 초기화
+        if self.config.get('experiment_tracking', {}).get('enabled', True):
+            self.experiment_tracker = ExperimentTracker(
+                experiments_dir=self.output_dir / "experiments"
+            )
+            self.model_registry = ModelRegistry(
+                registry_dir=self.output_dir / "models"
+            )
+        
+        # 토크나이저 로딩
+        self._load_tokenizer()
+        
+        # 모델 로딩
+        self._load_model()
+        
+        # 데이터 프로세서 초기화
+        self.data_processor = DataProcessor(
+            tokenizer=self.tokenizer,
+            config=self.config
+        )
+        
+        # ROUGE 계산기 초기화
+        self.rouge_calculator = RougeCalculator(
+            use_korean_tokenizer=self.config.get('evaluation', {}).get('rouge_tokenize_korean', True),
+            use_stemmer=self.config.get('evaluation', {}).get('rouge_use_stemmer', True)
+        )
+        
+        logger.info("All components initialized successfully")
+    
+    def prepare_data(self, train_path: Optional[str] = None, 
+                    val_path: Optional[str] = None,
+                    test_path: Optional[str] = None) -> DatasetDict:
+        """
+        데이터 준비
+        
+        Args:
+            train_path: 학습 데이터 경로
+            val_path: 검증 데이터 경로  
+            test_path: 테스트 데이터 경로
+            
+        Returns:
+            처리된 데이터셋 딕셔너리
+        """
+        # 기본 데이터 경로 설정
+        data_path = self.config.get('general', {}).get('data_path', 'data/')
+        
+        # 상대 경로를 프로젝트 루트 기준으로 처리
+        if not Path(data_path).is_absolute():
+            # 프로젝트 루트 찾기 (trainer.py는 code/ 디렉토리에 있음)
+            project_root = Path(__file__).parent.parent
+            base_path = project_root / data_path
+        else:
+            base_path = Path(data_path)
+        
+        # 경로가 없으면 config에서 가져오거나 기본 파일명 사용
+        if train_path is None:
+            train_path = self.config.get('general', {}).get('train_path')
+            if train_path is None:
+                train_path = str(base_path / 'train.csv')
+        if val_path is None:
+            val_path = self.config.get('general', {}).get('val_path')
+            if val_path is None:
+                val_path = str(base_path / 'dev.csv')
+        if test_path is None:
+            test_path = self.config.get('general', {}).get('test_path')
+            if test_path is None and (base_path / 'test.csv').exists():
+                test_path = str(base_path / 'test.csv')
+        
+        logger.info("Loading and processing datasets...")
+        logger.info(f"Project root: {Path(__file__).parent.parent}")
+        logger.info(f"Base data path: {base_path}")
+        logger.info(f"Train path: {train_path}")
+        logger.info(f"Val path: {val_path}")
+        
+        datasets = {}
+        
+        if train_path and Path(train_path).exists():
+            train_data = self.data_processor.load_data(train_path)
+            datasets['train'] = self.data_processor.process_data(
+                train_data, 
+                is_training=True
+            )
+            logger.info(f"Train dataset size: {len(datasets['train'])}")
+        else:
+            logger.warning(f"Train data not found at {train_path}")
+        
+        if val_path and Path(val_path).exists():
+            val_data = self.data_processor.load_data(val_path)
+            datasets['validation'] = self.data_processor.process_data(
+                val_data,
+                is_training=False
+            )
+            logger.info(f"Validation dataset size: {len(datasets['validation'])}")
+        else:
+            logger.warning(f"Validation data not found at {val_path}")
+        
+        if test_path and Path(test_path).exists():
+            test_data = self.data_processor.load_data(test_path, is_test=True)
+            datasets['test'] = self.data_processor.process_data(
+                test_data,
+                is_training=False,
+                is_test=True
+            )
+            logger.info(f"Test dataset size: {len(datasets['test'])}")
+        
+        return DatasetDict(datasets)
+    
+    def train(self, dataset: DatasetDict, 
+             resume_from_checkpoint: Optional[str] = None) -> TrainingResult:
+        """
+        모델 학습
+        
+        Args:
+            dataset: 학습/검증 데이터셋
+            resume_from_checkpoint: 체크포인트 경로 (재개 시)
+            
+        Returns:
+            학습 결과
+        """
+        # 실험 시작
+        if self.experiment_tracker:
+            experiment_id = self.experiment_tracker.start_experiment(
+                name=self.experiment_name,
+                description=f"Training {self._get_model_architecture()} model",
+                config=self.config,
+                model_type=self._get_model_architecture(),
+                dataset_info={
+                    'train_size': len(dataset.get('train', [])),
+                    'val_size': len(dataset.get('validation', []))
+                },
+                wandb_run_id=wandb.run.id if wandb.run else None
+            )
+        else:
+            experiment_id = None
+        
+        # 학습 인자 설정
+        training_args = self._get_training_arguments()
+        
+        # 데이터 콜레이터 - 모델 타입에 따라 SmartDataCollatorForSeq2Seq 사용
+        data_collator = SmartDataCollatorForSeq2Seq(
+            tokenizer=self.tokenizer,
+            model=self.model,
+            padding=True,
+            max_length=self.config['tokenizer']['encoder_max_len']
+        )
+        
+        # 평가 메트릭 함수 - HuggingFace Trainer의 콜백으로 사용됨
+        def compute_metrics(eval_preds: Tuple[np.ndarray, np.ndarray]) -> Dict[str, float]:
+            """
+            학습 중 평가 단계에서 ROUGE 메트릭을 계산하는 중첩 함수
+            
+            Args:
+                eval_preds: (predictions, labels) 튜플
+                
+            Returns:
+                ROUGE 점수들을 포함한 딕셔너리
+            """
+            preds, labels = eval_preds
+            
+            # 토큰 ID를 텍스트로 디코딩 (특수 토큰 제거)
+            # 먼저 predictions 디코딩 (보통 문제없음)
+            try:
+                decoded_preds = self.tokenizer.batch_decode(preds, skip_special_tokens=True)
+            except Exception as e:
+                logger.warning(f"⚠️  Predictions 디코딩 오류: {e}")
+                decoded_preds = ["" for _ in range(len(preds))]
+            
+            # labels 안전 디코딩 (OverflowError 방지)
+            try:
+                # HuggingFace에서 사용하는 -100 패딩 토큰을 정상 토큰으로 변환
+                # -100은 loss 계산에서 무시되는 라벨이지만 디코딩에서는 문제가 됨
+                labels_fixed = np.where(labels != -100, labels, self.tokenizer.pad_token_id)
+                
+                # 토큰 ID 범위 검증 (추가 안전장치)
+                vocab_size = getattr(self.tokenizer, 'vocab_size', 50000)  # 기본값 설정
+                labels_fixed = np.clip(labels_fixed, 0, vocab_size - 1)
+                
+                # 데이터 타입 확인 및 변환
+                if hasattr(labels_fixed, 'astype'):
+                    labels_fixed = labels_fixed.astype(np.int32)
+                
+                decoded_labels = self.tokenizer.batch_decode(labels_fixed, skip_special_tokens=True)
+                
+            except Exception as e:
+                logger.warning(f"⚠️  Labels 디코딩 오류: {e}")
+                # 폴백: 빈 문자열로 처리
+                decoded_labels = ["" for _ in range(len(labels))]
+            
+            # 대화 요약에 특화된 ROUGE 메트릭 계산 (Multi-reference 지원)
+            try:
+                # 디코딩된 텍스트로 직접 ROUGE 계산
+                rouge_scores = []
+                for pred, ref in zip(decoded_preds, decoded_labels):
+                    if pred.strip() and ref.strip():  # 빈 문자열 방지
+                        score = self.rouge_calculator.calculate_single_reference(pred, ref)
+                        rouge_scores.append(score)
+                    else:
+                        # 빈 문자열에 대한 0점 처리
+                        from utils.metrics import RougeScore, EvaluationResult
+                        zero_rouge = RougeScore(precision=0.0, recall=0.0, f1=0.0)
+                        zero_result = EvaluationResult(
+                            rouge1=zero_rouge, rouge2=zero_rouge, rougeL=zero_rouge, rouge_combined_f1=0.0
+                        )
+                        rouge_scores.append(zero_result)
+                
+                if rouge_scores:
+                    # 평균 점수 계산
+                    avg_rouge1_f1 = sum(score.rouge1.f1 for score in rouge_scores) / len(rouge_scores)
+                    avg_rouge2_f1 = sum(score.rouge2.f1 for score in rouge_scores) / len(rouge_scores)
+                    avg_rougeL_f1 = sum(score.rougeL.f1 for score in rouge_scores) / len(rouge_scores)
+                    avg_combined_f1 = avg_rouge1_f1 + avg_rouge2_f1 + avg_rougeL_f1
+                    
+                    result = {
+                        'rouge1_f1': avg_rouge1_f1,
+                        'rouge2_f1': avg_rouge2_f1,
+                        'rougeL_f1': avg_rougeL_f1,
+                        'rouge_combined_f1': avg_combined_f1
+                    }
+                else:
+                    # 모든 샘플이 비어있는 경우
+                    result = {
+                        'rouge1_f1': 0.0,
+                        'rouge2_f1': 0.0,
+                        'rougeL_f1': 0.0,
+                        'rouge_combined_f1': 0.0
+                    }
+                    
+            except Exception as e:
+                logger.warning(f"⚠️  ROUGE 계산 오류: {e}")
+                # 폴백: 0점 반환
+                result = {
+                    'rouge1_f1': 0.0,
+                    'rouge2_f1': 0.0, 
+                    'rougeL_f1': 0.0,
+                    'rouge_combined_f1': 0.0
+                }
+            
+            return result
+        
+        # 콜백 설정
+        callbacks = [WandbCallback(self)]
+        
+        # 조기 종료 설정
+        if self.config['training'].get('early_stopping_patience'):
+            callbacks.append(
+                EarlyStoppingCallback(
+                    early_stopping_patience=self.config['training']['early_stopping_patience'],
+                    early_stopping_threshold=0.001
+                )
+            )
+        
+        # 트레이너 생성
+        self.trainer = Seq2SeqTrainer(
+            model=self.model,
+            args=training_args,
+            data_collator=data_collator,
+            train_dataset=dataset.get('train'),
+            eval_dataset=dataset.get('validation'),
+            tokenizer=self.tokenizer,
+            compute_metrics=compute_metrics,
+            callbacks=callbacks
+        )
+        
+        # 학습 시작
+        logger.info("Starting training...")
+        
+        try:
+            train_result = self.trainer.train(
+                resume_from_checkpoint=resume_from_checkpoint
+            )
+            
+            # 최종 평가
+            logger.info("Running final evaluation...")
+            eval_results = self.trainer.evaluate()
+            
+            # 모델 저장
+            best_model_path = self.model_save_dir / "best_model"
+            self.trainer.save_model(str(best_model_path))
+            self.tokenizer.save_pretrained(str(best_model_path))
+            
+            # 결과 정리
+            wandb_callback = callbacks[0]
+            training_result = TrainingResult(
+                best_metrics=wandb_callback.best_metrics,
+                final_metrics=eval_results,
+                model_path=str(best_model_path),
+                config_used=self.config,
+                training_history=[], # 향후 구현
+                wandb_run_id=wandb.run.id if wandb.run else None,
+                experiment_id=experiment_id
+            )
+            
+            # 실험 종료
+            if self.experiment_tracker:
+                self.experiment_tracker.end_experiment(
+                    experiment_id=experiment_id,
+                    final_metrics=eval_results,
+                    best_metrics=wandb_callback.best_metrics,
+                    status="completed"
+                )
+            
+            # 모델 등록
+            if self.model_registry:
+                model_id = self.model_registry.register_model(
+                    name=f"{self._get_model_architecture()}_{self.experiment_name}",
+                    architecture=self._get_model_architecture(),
+                    checkpoint=self._get_model_checkpoint(),
+                    config=self.config,
+                    performance=wandb_callback.best_metrics,
+                    training_info={
+                        'epochs': self.config['training']['num_train_epochs'],
+                        'batch_size': self.config['training']['per_device_train_batch_size'],
+                        'learning_rate': self.config['training']['learning_rate']
+                    },
+                    file_path=str(best_model_path),
+                    experiment_id=experiment_id
+                )
+                logger.info(f"Model registered with ID: {model_id}")
+            
+            # 결과 저장
+            self._save_results(training_result)
+
+            # 테스트 데이터셋이 있으면 예측 및 CSV 생성
+            if 'test' in dataset:
+                logger.info("🔮 테스트 데이터셋에 대한 예측 생성 중...")
+                try:
+                    # 예측 생성
+                    test_predictions = self.generate_test_predictions(dataset['test'])
+                    
+                    # CSV 파일 생성
+                    submission_path = self._save_submission_csv(test_predictions)
+                    logger.info(f"✅ 제출 파일 생성 완료: {submission_path}")
+                    
+                    # 결과에 추가
+                    training_result.submission_file = str(submission_path)
+                    
+                    # 결과 다시 저장 (제출 파일 경로 포함)
+                    self._save_results(training_result)
+                except Exception as e:
+                    logger.error(f"❌ 테스트 예측 생성 실패: {e}")
+                    import traceback
+                    logger.debug(traceback.format_exc())
+                    # 예측 실패해도 학습은 성공한 것으로 처리
+
+            
+            # WandB Artifacts로 best model 저장
+            try:
+                if training_result.best_metrics and training_result.model_path:
+                    self.save_best_model_as_artifact(
+                        model_path=training_result.model_path,
+                        metrics=training_result.best_metrics
+                    )
+            except Exception as e:
+                logger.warning(f"⚠️ WandB Artifacts 저장 실패: {e}")
+                # Artifacts 저장 실패는 전체 학습을 중단하지 않음
+            
+            return training_result
+            
+        except Exception as e:
+            logger.error(f"Training failed with error: {type(e).__name__}: {str(e)}")
+            logger.error(f"Current config: {self.config.get('model', {}).get('checkpoint', 'Unknown')}")
+            logger.error(f"Device: {self.device}")
+            import traceback
+            logger.debug(f"Full traceback: {traceback.format_exc()}")
+            logger.error(f"Training failed: {str(e)}")
+            if self.experiment_tracker and experiment_id:
+                self.experiment_tracker.end_experiment(
+                    experiment_id=experiment_id,
+                    status="failed",
+                    notes=str(e)
+                )
+            raise
     
     def evaluate(self, dataset: Dataset, 
                 metric_key_prefix: str = "eval") -> Dict[str, float]:
@@ -132,9 +887,7 @@
         )
         
         # output_dir이 설정된 후에 파일 핸들러 추가
-        # setup_paths() 메서드에서 호출됨
-        if hasattr(self, 'output_dir') and self.output_dir:
-            self._add_file_handler()
+        # train() 메서드에서 호출됨
     
     def _add_file_handler(self) -> None:
         """로깅에 파일 핸들러 추가 (output_dir 설정 후 호출)"""
@@ -202,7 +955,6 @@
             # GPT 계열은 pad_token이 없을 수 있음
             if self.tokenizer.pad_token is None:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
-    
     def _get_model_architecture(self) -> str:
         """모델 아키텍처 가져오기"""
         if 'model' in self.config:
@@ -228,7 +980,6 @@
             if not model_checkpoint:
                 raise ValueError("Model checkpoint not found in config")
             return model_checkpoint
-    
     def _load_model(self) -> None:
         """모델 로딩 (unsloth 및 QLoRA 지원)"""
         # model 섹션이 없으면 general에서 model_name 사용
@@ -591,6 +1342,8 @@
                 f.write(f"\nSubmission File: {result.submission_file}\n")
         
         logger.info(f"Results saved to {self.results_dir}")
+
+
 
     def generate_test_predictions(self, test_dataset: Dataset) -> pd.DataFrame:
         """
