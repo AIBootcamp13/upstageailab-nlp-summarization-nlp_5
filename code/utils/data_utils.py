@@ -226,67 +226,14 @@ class DataProcessor:
         # 특수 토큰 추가
         self._add_special_tokens()
         
-        def _add_special_tokens(self):
-        """특수 토큰을 토크나이저에 추가"""
-        special_tokens = self.text_preprocessor.special_tokens
-        
-        # 모델 이름 확인
-        model_name = self.config.get('general', {}).get('model_name', '')
-        
-        # KoBART 모델의 경우 특별 처리
-        if "kobart" in model_name.lower() or "bart" in model_name.lower():
-            logger.info("🔍 KoBART/BART 모델 감지: 특수 토큰 처리를 조정합니다.")
-            
-            # 모델이 있으면 안전한 토큰 추가 사용
-            if self.model is not None:
-                try:
-                    from utils.model_utils import safe_add_special_tokens
-                    self.tokenizer, self.model = safe_add_special_tokens(
-                        self.tokenizer, self.model, special_tokens, model_name
-                    )
-                    return
-                except ImportError:
-                    logger.warning("⚠️ model_utils를 찾을 수 없습니다. 기본 처리를 사용합니다.")
-            else:
-                # 모델이 없으면 최소한의 토큰만 추가
-                logger.warning("모델 객체가 없어 안전 모드로 특수 토큰을 추가합니다.")
-                # 기본 PII 토큰만 추가
-                safe_tokens = ['#PhoneNumber#', '#Address#', '#PassportNumber#']
-                new_tokens = [token for token in safe_tokens if token not in self.tokenizer.get_vocab()]
-                if new_tokens:
-                    self.tokenizer.add_tokens(new_tokens)
-                    logger.info(f"🔒 {len(new_tokens)}개의 기본 PII 토큰만 추가했습니다.")
-                return
-        
-        # eenzeenee 모델의 경우 특별 처리
-        if "eenzeenee" in model_name.lower():
-            try:
-                from utils.eenzeenee_utils import check_and_fix_special_tokens
-                self.tokenizer = check_and_fix_special_tokens(
-                    self.tokenizer, special_tokens, model_name
-                )
-                return
-            except ImportError:
-                logger.warning("⚠️ eenzeenee_utils를 찾을 수 없습니다. 기본 처리를 사용합니다.")
-        
-        # 기존에 없는 토큰만 추가
-        new_tokens = [token for token in special_tokens 
-                     if token not in self.tokenizer.get_vocab()]
-        
-        if new_tokens:
-            self.tokenizer.add_tokens(new_tokens)
-            logger.info(f"Added {len(new_tokens)} special tokens to tokenizer")
-            logger.info(f"Added {len(new_tokens)} special tokens to tokenizer")
-    
-    def load_data(self, file_path: Union[str, Path], is_test: bool = False) -> pd.DataFrame:
+        def load_data(self, file_path: Union[str, Path], is_test: bool = False) -> pd.DataFrame:
         """
         데이터 파일 로딩 (CSV 또는 JSON 지원)
-        # 토크나이징
-        dataset = dataset.map(
-            self._tokenize_function,
-            batched=True,
-            remove_columns=['input', 'target', 'fname']  # fname도 제거하여 DataCollator 에러 방지
-        )
+        
+        Args:
+            file_path: 데이터 파일 경로
+            is_test: 테스트 데이터 여부
+            
         Returns:
             로딩된 데이터프레임
         """
@@ -320,7 +267,7 @@ class DataProcessor:
         except Exception as e:
             logger.error(f"Failed to load data: {e}")
             raise
-    
+        
     def process_data(self, df: pd.DataFrame, is_training: bool = True, is_test: bool = False) -> HFDataset:
         """
         데이터프레임을 HuggingFace Dataset으로 변환
