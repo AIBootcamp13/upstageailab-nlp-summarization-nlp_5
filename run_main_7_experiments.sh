@@ -5,6 +5,15 @@
 
 set -e
 
+# Conda 환경 활성화
+if [ -f "/opt/conda/etc/profile.d/conda.sh" ]; then
+    source /opt/conda/etc/profile.d/conda.sh
+    conda activate base
+    echo "🐍 Conda base 환경 활성화 완료"
+else
+    echo "⚠️  Conda가 설치되지 않음"
+fi
+
 # -1 옵션 처리 (1에포크 모드)
 ONE_EPOCH_MODE=false
 if [[ "$1" == "-1" ]]; then
