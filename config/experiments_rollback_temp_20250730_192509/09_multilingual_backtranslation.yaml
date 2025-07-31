@@ -1,0 +1,198 @@
+experiment_name: multilingual_backtranslation
+description: 다중 언어를 활용한 백트랜슬레이션 증강 - 더 다양한 의역 생성
+
+# 모델 구성
+model:
+  name: digit82/kobart-summarization
+  architecture: kobart
+
+# 토크나이저 구성  
+tokenizer:
+  encoder_max_len: 512
+  decoder_max_len: 200
+  bos_token: "<s>"
+  eos_token: "</s>"
+  special_tokens:
+    - '#Person1#'
+    - '#Person2#'
+    - '#Person3#'
+    - '#PhoneNumber#'
+    - '#Address#'
+    - '#DateOfBirth#'
+    - '#PassportNumber#'
+    - '#SSN#'
+    - '#CardNumber#'
+    - '#CarNumber#'
+    - '#Email#'
+
+# 학습 구성
+training:
+  num_train_epochs: 20
+  learning_rate: 2.0e-05
+  per_device_train_batch_size: 16
+  per_device_eval_batch_size: 16
+  gradient_accumulation_steps: 4
+  warmup_steps: 500
+  weight_decay: 0.01
+  seed: 42
+  evaluation_strategy: epoch
+  save_strategy: epoch
+  save_total_limit: 3
+  logging_steps: 50
+  load_best_model_at_end: true
+  metric_for_best_model: "eval_rouge_combined_f1"
+  greater_is_better: true
+  fp16: true
+  gradient_checkpointing: true
+  
+  # 조기 종료
+  early_stopping_patience: 3
+  early_stopping_threshold: 0.001
+
+# 다중 언어 백트랜슬레이션 설정
+data_augmentation:
+  enabled: true
+  augmentation_type: "backtranslation"
+  
+  backtranslation:
+    # 다중 언어 사용
+    augmenter_type: "multilingual"
+    method: "google"
+    
+    # 중간 언어들 (각 언어의 특성을 활용)
+    intermediate_langs: 
+      - "en"     # 영어: 가장 일반적
+      - "ja"     # 일본어: 한국어와 유사한 문법
+      - "zh-cn"  # 중국어: 간결한 표현
+      - "es"     # 스페인어: 다른 어족
+      - "fr"     # 프랑스어: 로망스어 계열
+    
+    # 품질 설정 (다중 언어는 더 넓은 범위 허용)
+    quality_threshold: 0.25     # 약간 낮춤
+    max_similarity: 0.92        # 약간 높임
+    
+    # 증강 설정
+    augmentation_ratio: 0.7     # 더 많은 증강 (70%)
+    num_augmentations_per_sample: 3  # 샘플당 3개
+    
+    # 언어별 가중치 (선택적)
+    language_weights:
+      en: 0.3
+      ja: 0.25
+      zh-cn: 0.2
+      es: 0.15
+      fr: 0.1
+    
+    # 캐싱 및 성능
+    cache_dir: "./cache/multilingual_backtranslation"
+    batch_size: 16  # 다중 언어는 더 작은 배치
+    rate_limit_delay: 0.15  # 더 긴 지연
+    
+    # 고급 필터링
+    filter_settings:
+      min_length_ratio: 0.6
+      max_length_ratio: 1.8
+      preserve_special_tokens: true
+      check_token_consistency: true
+      semantic_similarity_threshold: 0.7  # 의미 유사도 체크
+
+# 다양성 향상 전략
+diversity_enhancement:
+  enabled: true
+  strategies:
+    - name: "temperature_variation"
+      params:
+        temperatures: [0.8, 1.0, 1.2]
+    
+    - name: "synonym_injection"
+      params:
+        inject_before_translation: true
+        injection_rate: 0.05
+    
+    - name: "paraphrase_chaining"
+      params:
+        chain_length: 2  # 번역을 두 번 연속
+
+# 품질 검증
+quality_validation:
+  enabled: true
+  
+  # 자동 품질 평가
+  automatic_metrics:
+    - perplexity_check: true
+    - grammar_check: true
+    - special_token_integrity: true
+    
+  # 샘플링 검증
+  sampling_validation:
+    validate_percentage: 0.1  # 10% 샘플 검증
+    min_semantic_similarity: 0.65
+    max_semantic_similarity: 0.95
+
+# 앙상블 증강 (선택적)
+ensemble_augmentation:
+  enabled: true
+  methods:
+    - backtranslation: 0.7
+    - simple_augmentation: 0.2
+    - noise_injection: 0.1
+
+# 생성 구성
+generation:
+  max_length: 200
+  min_length: 30
+  num_beams: 4
+  no_repeat_ngram_size: 3
+  early_stopping: true
+  length_penalty: 1.2
+
+# WandB 구성
+wandb:
+  name: "09_multilingual_backtranslation"
+  notes: "다중 언어 백트랜슬레이션 - 5개 언어를 통한 다양한 의역 생성"
+  tags: ["data_augmentation", "backtranslation", "multilingual", "advanced", "kobart"]
+  
+  # 상세 로깅
+  log_language_distribution: true
+  log_diversity_analysis: true
+  log_quality_metrics: true
+
+# 데이터 구성
+data:
+  train_file: "train.csv"
+  dev_file: "dev.csv"
+  test_file: "test.csv"
+  
+  # 증강 데이터 저장
+  save_augmented_data: true
+  augmented_train_file: "train_multilingual_bt.csv"
+  
+  # 증강 통계 저장
+  save_augmentation_stats: true
+  stats_file: "augmentation_stats.json"
+
+# 모니터링 설정
+monitoring:
+  log_memory_usage: true
+  log_training_speed: true
+  
+  # 언어별 통계
+  track_per_language_stats: true
+  language_metrics:
+    - success_rate
+    - quality_score
+    - diversity_contribution
+    
+  # API 모니터링
+  api_monitoring:
+    track_usage: true
+    alert_on_quota: true
+    fallback_on_limit: true
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

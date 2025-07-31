@@ -1,0 +1,127 @@
+# KoBART RTX 3090 극한 최적화 실험
+experiment_name: kobart_extreme_rtx3090
+description: "KoBART 베이스라인  RTX 3090 + Unsloth 극한 최적화 - 배치 16 + 시퀀스 1280"
+
+general:
+  model_name: digit82/kobart-summarization
+  data_path: data/
+  train_path: data/train.csv
+  val_path: data/dev.csv
+  model_type: seq2seq
+  name: kobart_extreme_rtx3090
+
+model:
+  architecture: bart
+  checkpoint: digit82/kobart-summarization
+
+# 🎯 KoBART용 prefix (빈 문자열)
+input_prefix: ""
+
+tokenizer:
+  bos_token: <s>
+  eos_token: </s>
+  encoder_max_len: 1280              # KoBART 극한 최적화 768→1280
+  decoder_max_len: 200               # 충분한 요약 길이 150→200
+  special_tokens:
+    - '#Person1#'
+    - '#Person2#'
+    - '#Person3#'
+    - '#PhoneNumber#'
+    - '#Address#'
+    - '#PassportNumber#'
+    - '#DateOfBirth#'
+    - '#SSN#'
+    - '#CardNumber#'
+    - '#CarNumber#'
+    - '#Email#'
+    - '<summary>'
+    - '</summary>'
+    - '<dialogue>'
+    - '</dialogue>'
+
+# 🔥 RTX 3090 + Unsloth KoBART 극한 최적화
+training:
+  do_eval: true
+  do_train: true
+  evaluation_strategy: steps
+  eval_steps: 150                     # 더 자주 평가
+  
+  # 🔥 RTX 3090 KoBART 극한 최적화 배치 (BART는 작아 큰 배치 가능)
+  per_device_train_batch_size: 16     # KoBART 극한 최적화 8→16
+  per_device_eval_batch_size: 24      # 평가시 더 큰 배치 16→24
+  gradient_accumulation_steps: 3      # 유효 배치 48
+  
+  # 🎯 KoBART 극한 최적화 학습 파라미터
+  num_train_epochs: 5                 # 충분한 학습
+  learning_rate: 6.0e-05              # KoBART 극한 최적화 학습률 3.0e-05→6.0e-05
+  lr_scheduler_type: cosine_with_restarts
+  warmup_ratio: 0.03
+  weight_decay: 0.001
+  
+  # 🔥 RTX 3090 + CUDA 12.2 + Unsloth 극한 최적화
+  fp16: false                         # bf16 사용으로 변경
+  bf16: true                          # RTX 3090 + CUDA 12.2 최적
+  tf32: true                          # Ampere 아키텍처 최적화
+  gradient_checkpointing: false       # Unsloth 자체 최적화
+  dataloader_num_workers: 36          # RTX 3090 극한 최적화
+  dataloader_pin_memory: true
+  dataloader_persistent_workers: true
+  group_by_length: true
+  remove_unused_columns: false
+  
+  # 🔥 Unsloth 특화 옵티마이저 설정
+  optim: adamw_8bit
+  adam_beta1: 0.9
+  adam_beta2: 0.95
+  max_grad_norm: 0.3
+  
+  # 📊 모니터링
+  logging_steps: 50
+  save_strategy: steps
+  save_steps: 150
+  save_total_limit: 8
+  load_best_model_at_end: true
+  early_stopping_patience: 8
+  
+  # 🏆 KoBART 극한 최적화 생성
+  predict_with_generate: true
+  generation_num_beams: 12
+  generation_max_length: 200
+  generation_min_length: 25
+  generation_length_penalty: 0.75
+  generation_no_repeat_ngram_size: 3
+  generation_do_sample: false
+  generation_early_stopping: true
+  
+  report_to: wandb
+  seed: 42
+
+# 🔥 KoBART + Unsloth 극한 최적화 QLoRA
+qlora:
+  use_unsloth: true
+  use_qlora: true
+  lora_rank: 192
+  lora_alpha: 384
+  lora_dropout: 0.05
+  target_modules: ["q", "k", "v", "o", "fc1", "fc2", "lm_head", "embed_tokens"]
+  load_in_4bit: true
+  bnb_4bit_compute_dtype: "bfloat16"
+  bnb_4bit_quant_type: "nf4"
+  bnb_4bit_use_double_quant: true
+
+wandb:
+  entity: lyjune37-juneictlab
+  project: nlp-5
+  name: kobart_extreme_rtx3090
+  tags: [KoBART, RTX3090, extreme, korean, Unsloth, batch16, seq1280]
+  notes: "KoBART RTX 3090 + Unsloth 극한 최적화 - 배치 16, 시퀀스 1280, LoRA 192"
+
+# 🏆 KoBART 극한 최적화 생성 설정
+generation:
+  max_length: 200
+  min_length: 25
+  num_beams: 12
+  length_penalty: 0.75
+  no_repeat_ngram_size: 3
+  early_stopping: true
+  do_sample: false
