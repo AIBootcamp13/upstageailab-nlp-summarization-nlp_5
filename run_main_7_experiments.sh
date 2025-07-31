@@ -5,15 +5,6 @@
 
 set -e
 
-# Conda 환경 활성화
-if [ -f "/opt/conda/etc/profile.d/conda.sh" ]; then
-    source /opt/conda/etc/profile.d/conda.sh
-    conda activate base
-    echo "🐍 Conda base 환경 활성화 완료"
-else
-    echo "⚠️  Conda가 설치되지 않음"
-fi
-
 # -1 옵션 처리 (1에포크 모드)
 ONE_EPOCH_MODE=false
 if [[ "$1" == "-1" ]]; then
@@ -232,10 +223,7 @@ cleanup_gpu() {
 
     # GPU 상태 확인
     echo -e "${BLUE}📊 정리 전 GPU 상태:${NC}"
-    nvidia-smi --query-gpu=memory.used,memory.total,utilization.gpu --format=csv,noheader,nounits | while IFS=',' read -r used total util; do
-        used=$(echo "$used" | tr -d ' ,')
-        total=$(echo "$total" | tr -d ' ,')
-        util=$(echo "$util" | tr -d ' ,')
+    nvidia-smi --query-gpu=memory.used,memory.total,utilization.gpu --format=csv,noheader,nounits | while read -r used total util; do
         echo "GPU 메모리: ${used}MB/${total}MB (사용률: ${util}%)"
         if [ "$used" -gt 22000 ]; then
             echo -e "${RED}⚠️  임계 상태: GPU 메모리가 22GB 초과 (${used}MB)${NC}"
@@ -280,10 +268,7 @@ gc.collect()
 
     # 정리 후 GPU 상태 재확인
     echo -e "${BLUE}📊 정리 후 GPU 상태:${NC}"
-    nvidia-smi --query-gpu=memory.used,memory.total,utilization.gpu --format=csv,noheader,nounits | while IFS=',' read -r used total util; do
-        used=$(echo "$used" | tr -d ' ,')
-        total=$(echo "$total" | tr -d ' ,')
-        util=$(echo "$util" | tr -d ' ,')
+    nvidia-smi --query-gpu=memory.used,memory.total,utilization.gpu --format=csv,noheader,nounits | while read -r used total util; do
         echo "GPU 메모리: ${used}MB/${total}MB (사용률: ${util}%)"
         if [ "$used" -lt 5000 ]; then
             echo -e "${GREEN}✅ GPU 메모리가 안전한 수준으로 정리됨${NC}"
@@ -332,8 +317,8 @@ for i in "${!experiments[@]}"; do
 
     # 1에포크 모드일 때 --one-epoch 옵션 추가
     if [[ "$ONE_EPOCH_MODE" == "true" ]]; then
-        EXPERIMENT_CMD="$EXPERIMENT_CMD --one-epoch --disable-eval"
-        echo -e "${YELLOW}1에포크 모드로 실행 중... (평가 비활성화)${NC}"
+        EXPERIMENT_CMD="$EXPERIMENT_CMD --one-epoch"
+        echo -e "${YELLOW}1에포크 모드로 실행 중...${NC}"
     fi
 
     if eval "$EXPERIMENT_CMD > ${LOG_FILE} 2>&1"; then
@@ -412,7 +397,7 @@ enhanced_gpu_monitor "모든 실험 완료 후"
 echo
 echo -e "${CYAN}📈 RTX 3090 극한 최적화 성과:${NC}"
 echo -e "${WHITE}──────────────────────────────────────${NC}"
-printf "🗜 총 메모리 절약: %.2fGB\n" $TOTAL_MEMORY_SAVED
+echo -e "🗜 총 메모리 절약: ${TOTAL_MEMORY_SAVED:.2f}GB"
 echo -e "⏱️  총 시간 절약: ${TOTAL_TIME_SAVED}초 (${TOTAL_TIME_SAVED} / 60 = $((TOTAL_TIME_SAVED / 60))분)"
 echo -e "🏆 성공률: ${COMPLETED}/${TOTAL_EXPERIMENTS} ($((COMPLETED * 100 / TOTAL_EXPERIMENTS))%)"
 echo
@@ -431,7 +416,7 @@ SUMMARY_FILE="${LOG_DIR}/experiment_summary.txt"
     done
     echo
     echo "RTX 3090 극한 최적화 성과:"
-    printf "  총 메모리 절약: %.2fGB\n" $TOTAL_MEMORY_SAVED
+    echo "  총 메모리 절약: ${TOTAL_MEMORY_SAVED:.2f}GB"
     echo "  총 시간 절약: ${TOTAL_TIME_SAVED}초 ($((TOTAL_TIME_SAVED / 60))분)"
     echo "  성공률: ${COMPLETED}/${TOTAL_EXPERIMENTS} ($((COMPLETED * 100 / TOTAL_EXPERIMENTS))%)"
     echo
@@ -443,6 +428,6 @@ echo -e "${WHITE}📝 실험 요약 파일 저장: ${SUMMARY_FILE}${NC}"
 echo
 echo -e "${CYAN}✨ 7개 주요 모델 실험 완료! (RTX 3090 극한 최적화)${NC}"
 echo -e "   ${COMPLETED}/${TOTAL_EXPERIMENTS} 실험 성공 (성공률: $((COMPLETED * 100 / TOTAL_EXPERIMENTS))%)"
-printf "   📈 메모리 절약: %.2fGB, 시간 절약: %d분\n" $TOTAL_MEMORY_SAVED $((TOTAL_TIME_SAVED / 60))
+echo -e "   📈 메모리 절약: ${TOTAL_MEMORY_SAVED:.2f}GB, 시간 절약: $((TOTAL_TIME_SAVED / 60))분"
 echo -e "   🏆 최적화 성과를 WandB에서 상세 결과를 확인하세요."
 echo -e "   📄 벤치마크 상세: $BENCHMARK_LOG"

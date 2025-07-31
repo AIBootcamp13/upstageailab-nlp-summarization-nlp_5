@@ -231,98 +231,98 @@ class DataProcessor:
             pass  # 임시 비활성화
             
             def load_data(self, file_path: Union[str, Path], is_test: bool = False) -> pd.DataFrame:
-                """
-                데이터 로딩
-                
-                Args:
-                    file_path: 데이터 파일 경로
-                    is_test: 테스트 데이터 여부
-                    
-                Returns:
-                    로딩된 데이터프레임
-                """
-                file_path = Path(file_path)
-                
-                if not file_path.exists():
-                    raise FileNotFoundError(f"Data file not found: {file_path}")
-                
-                try:
-                    if file_path.suffix == '.csv':
-                        df = pd.read_csv(file_path)
-                    elif file_path.suffix == '.json':
-                        df = pd.read_json(file_path)
-                    else:
-                        raise ValueError(f"Unsupported file format: {file_path.suffix}")
-                    
-                    logger.info(f"Loaded {len(df)} samples from {file_path}")
-                    
-                    # 기본 전처리
-                    if not is_test:
-                        df = self._basic_preprocessing(df)
-                    
-                    return df
-                    
-                except Exception as e:
-                    logger.error(f"Error loading data from {file_path}: {e}")
-                    raise
+            """
+        데이터 로딩
         
-        def process_data(self, df: pd.DataFrame, is_training: bool = True, is_test: bool = False) -> HFDataset:
-            """
-            데이터프레임을 HuggingFace Dataset으로 변환
+        Args:
+            file_path: 데이터 파일 경로
+            is_test: 테스트 데이터 여부
             
-            Args:
-                df: 원본 데이터프레임
-                is_training: 학습 데이터 여부
-                is_test: 테스트 데이터 여부 (summary 없음)
-                
-            Returns:
-                HuggingFace Dataset 객체
-            """
-            # 텍스트 정제
-            df = df.copy()
-            df['dialogue'] = df['dialogue'].apply(self.text_preprocessor.clean_dialogue)
-            
-            # test 데이터가 아닌 경우에만 summary 처리
-            if not is_test:
-                df['summary'] = df['summary'].apply(self.text_preprocessor.clean_summary)
-            
-            
-            # 길이 필터링 (학습 데이터만)
-            if is_training:
-                df = self._filter_by_length(df)
-            
-            # 데이터 딕셔너리 생성
-            data_dict = {
-                'input': df['dialogue'].tolist(),
-                'fname': df['fname'].tolist()
-            }
-            
-            # test 데이터가 아닌 경우에만 target 추가
-            if not is_test:
-                data_dict['target'] = df['summary'].tolist()
+        Returns:
+            로딩된 데이터프레임
+        """
+        file_path = Path(file_path)
+        
+        if not file_path.exists():
+            raise FileNotFoundError(f"Data file not found: {file_path}")
+        
+        try:
+            if file_path.suffix == '.csv':
+                df = pd.read_csv(file_path)
+            elif file_path.suffix == '.json':
+                df = pd.read_json(file_path)
             else:
-                # test 데이터의 경우 빈 target 생성
-                data_dict['target'] = [''] * len(df)
+                raise ValueError(f"Unsupported file format: {file_path.suffix}")
             
-            # 모델별 전처리 적용
-            if self.model_preprocessor:
-                data_dict = self.model_preprocessor(data_dict)
+            logger.info(f"Loaded {len(df)} samples from {file_path}")
             
-            # HuggingFace Dataset으로 변환
-            dataset = HFDataset.from_dict(data_dict)
-            logger.info(f"Processed {len(dataset)} samples for {'training' if is_training else 'validation/test'}")
+            # 필수 컬럼 확인
+            if is_test:
+                required_columns = ['fname', 'dialogue']
+            else:
+                required_columns = ['fname', 'dialogue', 'summary']
+            missing_columns = [col for col in required_columns if col not in df.columns]
             
-            # 토크나이징
-            dataset = dataset.map(
-                self._tokenize_function,
-                batched=True,
-                remove_columns=['input', 'target', 'fname']  # fname도 제거하여 DataCollator 에러 방지
-            )
+            if missing_columns:
+                raise ValueError(f"Missing required columns: {missing_columns}")
             
-            logger.info(f"Tokenized {len(dataset)} samples")
+            return df
             
+        except Exception as e:
+            logger.error(f"Failed to load data: {e}")
+            raise
             
-            return dataset
+        def process_data(self, df: pd.DataFrame, is_training: bool = True, is_test: bool = False) -> HFDataset:
+        """
+        데이터프레임을 HuggingFace Dataset으로 변환
+        
+        Args:
+            df: 원본 데이터프레임
+            is_training: 학습 데이터 여부
+            is_test: 테스트 데이터 여부 (summary 없음)
+            
+        Returns:
+            HuggingFace Dataset 객체
+        """
+        # 텍스트 정제
+        df = df.copy()
+        df['dialogue'] = df['dialogue'].apply(self.text_preprocessor.clean_dialogue)
+        
+        # test 데이터가 아닌 경우에만 summary 처리
+        if not is_test:
+            df['summary'] = df['summary'].apply(self.text_preprocessor.clean_summary)
+        
+        # 길이 필터링 (학습 데이터만)
+        if is_training:
+            df = self._filter_by_length(df)
+        
+        # 데이터 딕셔너리 생성
+        data_dict = {
+            'input': df['dialogue'].tolist(),
+            'fname': df['fname'].tolist()
+        }
+        # test 데이터가 아닌 경우에만 target 추가
+        if not is_test:
+            data_dict['target'] = df['summary'].tolist()
+        else:
+            # test 데이터의 경우 빈 target 생성
+            data_dict['target'] = [''] * len(df)
+        
+        # 모델별 전처리 적용
+        if self.model_preprocessor:
+            data_dict = self.model_preprocessor(data_dict)
+        
+        # HuggingFace Dataset 생성
+        dataset = HFDataset.from_dict(data_dict)
+        
+        # 토크나이징
+        dataset = dataset.map(
+            self._tokenize_function,
+            batched=True,
+            remove_columns=['input', 'target', 'fname']  # fname도 제거하여 DataCollator 에러 방지
+        )
+        
+        return dataset
     
     def _filter_by_length(self, df: pd.DataFrame) -> pd.DataFrame:
         """

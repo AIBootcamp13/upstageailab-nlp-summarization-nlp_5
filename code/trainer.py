@@ -60,32 +60,29 @@ try:
     from utils.experiment_utils import ExperimentTracker, ModelRegistry
     from utils.environment_detector import EnvironmentDetector, get_auto_config, should_use_unsloth
     from utils.path_utils import PathManager, path_manager
-    from utils.wandb_utils import setup_wandb_for_experiment, log_model_to_wandb
 except ImportError:
     # code 디렉토리에서 실행되는 경우
     import sys
-    from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).parent.parent))
+    sys.path.append('..')
     from utils import load_config
     from utils.data_utils import DataProcessor
     from utils.metrics import RougeCalculator
     from utils.experiment_utils import ExperimentTracker, ModelRegistry
     from utils.environment_detector import EnvironmentDetector, get_auto_config, should_use_unsloth
     from utils.path_utils import PathManager, path_manager
-    from utils.wandb_utils import setup_wandb_for_experiment, log_model_to_wandb
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class TrainingResult:
     """학습 결과 데이터 클래스"""
-    model_path: str
     best_metrics: Dict[str, float]
     final_metrics: Dict[str, float]
+    model_path: str
+    config_used: Dict[str, Any]
+    training_history: List[Dict[str, Any]] = field(default_factory=list)
     wandb_run_id: Optional[str] = None
     experiment_id: Optional[str] = None
-    config_used: Optional[Dict[str, Any]] = None
-    submission_path: Optional[str] = None  # 제출 파일 경로 추가
 
 
 class WandbCallback(TrainerCallback):
@@ -308,7 +305,7 @@ class DialogueSummarizationTrainer:
     def train(self, dataset: DatasetDict, 
              resume_from_checkpoint: Optional[str] = None) -> TrainingResult:
         """
-        학습 실행
+        모델 학습
         
         Args:
             dataset: 학습/검증 데이터셋
@@ -317,18 +314,7 @@ class DialogueSummarizationTrainer:
         Returns:
             학습 결과
         """
-        # WandB 초기화 (sweep 모드가 아니고 이미 초기화되지 않은 경우)
-        if not self.sweep_mode and wandb.run is None:
-            wandb_config = setup_wandb_for_experiment(
-                config=self.config,
-                experiment_name=self.experiment_name,
-                sweep_mode=self.sweep_mode
-            )
-            wandb.init(**wandb_config)
-            logger.info(f"WandB run initialized: {wandb.run.name}")
-        
-        # 실험 추적 시작
-        experiment_id = None
+        # 실험 시작
         if self.experiment_tracker:
             experiment_id = self.experiment_tracker.start_experiment(
                 name=self.experiment_name,
@@ -415,15 +401,8 @@ class DialogueSummarizationTrainer:
             )
             
             # 최종 평가
-            # 최종 평가
             logger.info("Running final evaluation...")
             eval_results = self.trainer.evaluate()
-            
-            # 평가 결과를 eval_results.json으로 저장
-            eval_results_file = self.model_save_dir / 'eval_results.json'
-            with open(eval_results_file, 'w', encoding='utf-8') as f:
-                json.dump(eval_results, f, ensure_ascii=False, indent=2)
-            logger.info(f"Evaluation results saved to {eval_results_file}")
             
             # 모델 저장
             best_model_path = self.model_save_dir / "best_model"
@@ -468,38 +447,9 @@ class DialogueSummarizationTrainer:
                     experiment_id=experiment_id
                 )
                 logger.info(f"Model registered with ID: {model_id}")
-                
-                # WandB Model Registry에 모델 등록
-                if wandb.run is not None:
-                    log_model_to_wandb(
-                        model_path=str(best_model_path),
-                        model_name=f"{self.config['model']['architecture']}_{self.experiment_name}",
-                        metrics=wandb_callback.best_metrics,
-                        config=self.config,
-                        aliases=["latest", "best"] if wandb_callback.best_metrics.get('rouge_combined_f1', 0) > 0.3 else ["latest"]
-                    )
-                
-                # 결과 저장
-            self._save_results(training_result)
             
-            # test.csv에 대한 자동 추론 수행
-            if self.config.get('inference', {}).get('run_test_inference', True):
-                try:
-                    logger.info("Running inference on test.csv...")
-                    from post_training_inference import generate_submission_after_training
-                    
-                    submission_path = generate_submission_after_training(
-                        experiment_name=self.experiment_name,
-                        model_path=str(best_model_path),
-                        config_dict=self.config
-                    )
-                    
-                    training_result.submission_path = submission_path
-                    logger.info(f"Test inference completed. Submission file: {submission_path}")
-                    
-                except Exception as e:
-                    logger.warning(f"Failed to run test inference: {e}")
-                    # Test inference 실패는 전체 학습을 실패로 처리하지 않음
+            # 결과 저장
+            self._save_results(training_result)
             
             return training_result
             
@@ -611,8 +561,7 @@ class DialogueSummarizationTrainer:
             
             # 디바이스별 최적화 설정 가져오기
             model_size = self.config.get('model', {}).get('size', 'base')
-            use_qlora = self.config.get('qlora', {}).get('use_qlora', False)
-            optimization_config = setup_device_config(device_info, model_size, use_qlora)
+            optimization_config = setup_device_config(device_info, model_size)
             
             # 최적화 설정을 config에 병합
             if 'training' not in self.config:
@@ -909,8 +858,8 @@ class DialogueSummarizationTrainer:
             'output_dir': str(self.output_dir / 'checkpoints'),
             'overwrite_output_dir': True,
             'do_train': True,
-            'do_eval': train_config.get('do_eval', True),
-            'eval_strategy': train_config.get('evaluation_strategy', 'steps'),
+            'do_eval': True,
+            'eval_strategy': train_config.get('eval_strategy', 'steps'),
             'eval_steps': train_config.get('eval_steps', 500),
             'save_strategy': train_config.get('save_strategy', 'steps'),
             'save_steps': train_config.get('save_steps', 500),
@@ -931,8 +880,8 @@ class DialogueSummarizationTrainer:
             'warmup_steps': train_config.get('warmup_steps', 0),
             'logging_dir': str(self.output_dir / 'logs'),
             'logging_steps': train_config.get('logging_steps', 50),
-            'load_best_model_at_end': train_config.get('load_best_model_at_end', True),
-            'metric_for_best_model': train_config.get('metric_for_best_model', 'eval_rouge_combined_f1'),
+            'load_best_model_at_end': True,
+            'metric_for_best_model': 'eval_rouge_combined_f1',
             'greater_is_better': True,
             'fp16': train_config.get('fp16', False),
             'fp16_opt_level': train_config.get('fp16_opt_level', 'O1'),
@@ -967,9 +916,9 @@ class DialogueSummarizationTrainer:
             'wandb_run_id': result.wandb_run_id,
             'experiment_id': result.experiment_id,
             'config': result.config_used,
-            'timestamp': str(Path(result.model_path).parent.parent.name),
-            'submission_path': result.submission_path  # 제출 파일 경로 추가
+            'timestamp': str(Path(result.model_path).parent.parent.name)
         }
+        
         # JSON 저장
         results_file = self.results_dir / 'training_results.json'
         with open(results_file, 'w', encoding='utf-8') as f:
@@ -995,15 +944,13 @@ class DialogueSummarizationTrainer:
 
 
 def create_trainer(config: Union[str, Dict[str, Any]], 
-                  sweep_mode: bool = False,
-                  disable_eval: bool = False) -> DialogueSummarizationTrainer:
+                  sweep_mode: bool = False) -> DialogueSummarizationTrainer:
     """
     트레이너 생성 편의 함수
     
     Args:
         config: 설정 파일 경로 또는 설정 딕셔너리
         sweep_mode: WandB Sweep 모드 여부
-        disable_eval: 평가 비활성화 여부
         
     Returns:
         초기화된 트레이너 인스턴스
@@ -1013,16 +960,6 @@ def create_trainer(config: Union[str, Dict[str, Any]],
         config_dict = load_config(config)
     else:
         config_dict = config
-    
-    # 평가 비활성화 옵션 처리
-    if disable_eval:
-        if 'training' not in config_dict:
-            config_dict['training'] = {}
-        config_dict['training']['do_eval'] = False
-        config_dict['training']['evaluation_strategy'] = 'no'
-        config_dict['training']['load_best_model_at_end'] = False  # best model 로드 비활성화
-        config_dict['training']['metric_for_best_model'] = None  # best model 메트릭 비활성화
-        print("⚠️  평가 비활성화: evaluation_strategy=no, do_eval=False, load_best_model_at_end=False")
     
     # 트레이너 생성
     trainer = DialogueSummarizationTrainer(
@@ -1046,8 +983,6 @@ if __name__ == "__main__":
     parser.add_argument("--val-data", type=str, help="Validation data path")
     parser.add_argument("--test-data", type=str, help="Test data path")
     parser.add_argument("--sweep", action="store_true", help="Run in sweep mode")
-    parser.add_argument("--disable-eval", action="store_true", help="Disable evaluation (for 1-epoch mode)")
-    parser.add_argument("--one-epoch", action="store_true", help="Run training for only 1 epoch (for testing)")
     
     args = parser.parse_args()
     
@@ -1060,24 +995,13 @@ if __name__ == "__main__":
         )
     
     # 트레이너 생성 및 학습
-    trainer = create_trainer(args.config, sweep_mode=args.sweep, disable_eval=args.disable_eval)
-    
-    # 1에포크 모드 처리
-    if args.one_epoch:
-        logger.info("1에포크 모드 활성화: 학습 에포크를 1로 설정")
-        trainer.config['training']['num_epochs'] = 1
-        trainer.config['training']['max_steps'] = None  # max_steps 비활성화
-        trainer.config['training']['evaluation_strategy'] = "no"  # 평가 비활성화
-        trainer.config['training']['save_strategy'] = "epoch"  # 에포크마다 저장
-        trainer.config['training']['logging_steps'] = 10  # 로깅 빈도 증가
-        trainer.config['training']['load_best_model_at_end'] = False  # best model 로드 비활성화
-        trainer.config['training']['metric_for_best_model'] = None  # best model 메트릭 비활성화
+    trainer = create_trainer(args.config, sweep_mode=args.sweep)
     
     # 데이터 준비
     datasets = trainer.prepare_data(
-        train_path=args.train_data or trainer.config['general'].get('train_path'),
-        val_path=args.val_data or trainer.config['general'].get('val_path'),
-        test_path=args.test_data or trainer.config['general'].get('test_path')
+        train_path=args.train_data,
+        val_path=args.val_data,
+        test_path=args.test_data
     )
     
     # 학습 실행
