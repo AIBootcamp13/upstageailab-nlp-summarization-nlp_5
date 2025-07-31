@@ -4,9 +4,9 @@ description: "mT5 XL-Sum RTX 3090 + Unsloth 극한 최적화 1단계 - 배치 8 
 
 general:
   model_name: csebuetnlp/mT5_multilingual_XLSum
-  data_path: data/
-  train_path: data/train.csv
-  val_path: data/dev.csv
+  data_path: ./data/
+  train_path: ./data/train.csv
+  val_path: ./data/dev.csv
   model_type: seq2seq
   name: mt5_xlsum_extreme_stage1_rtx3090
 
@@ -47,9 +47,9 @@ training:
   eval_steps: 100                     # 더 자주 평가
   
   # 🔥 1단계 극한 최적화 배치 설정
-  per_device_train_batch_size: 8      # 6→8 점진적 증가
+  per_device_train_batch_size: 24      # 6→8 점진적 증가
   per_device_eval_batch_size: 16      # 12→16 증가
-  gradient_accumulation_steps: 6      # 유효 배치 48 유지
+  gradient_accumulation_steps: 2      # 유효 배치 48 유지
   
   # ⚡ 1단계 학습 파라미터
   num_train_epochs: 6                 # 최적화로 더 긴 학습
@@ -70,7 +70,7 @@ training:
   remove_unused_columns: false        # 전체 정보 활용
   
   # 🔥 Unsloth 특화 옵티마이저 설정
-  optim: adamw_8bit                   # Unsloth 호환 옵티마이저
+  optim: adamw_torch                   # Unsloth 호환 옵티마이저
   adam_beta1: 0.9
   adam_beta2: 0.95                    # Unsloth 추천값
   max_grad_norm: 0.3                  # Unsloth와 함께 낮은 값
@@ -98,7 +98,7 @@ training:
 
 # 🔥 RTX 3090 + Unsloth 극한 최적화 1단계 QLoRA
 qlora:
-  use_unsloth: true
+  use_unsloth: false
   use_qlora: true
   lora_rank: 128                      # 48→128 배 이상 증가
   lora_alpha: 256                     # 96→256 배 이상 증가

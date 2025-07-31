@@ -70,7 +70,7 @@ training:
   remove_unused_columns: false
   
   # 🔥 Unsloth 특화 옵티마이저 설정
-  optim: adamw_8bit
+  optim: adamw_torch
   adam_beta1: 0.9
   adam_beta2: 0.95
   max_grad_norm: 0.3

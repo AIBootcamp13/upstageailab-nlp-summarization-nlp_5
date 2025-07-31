@@ -74,6 +74,9 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+import pandas as pd
+from datasets import Dataset, DatasetDict
+
 class TrainingResult:
     """학습 결과 데이터 클래스"""
     best_metrics: Dict[str, float]
@@ -256,52 +259,175 @@ class DialogueSummarizationTrainer:
                     val_path: Optional[str] = None,
                     test_path: Optional[str] = None) -> DatasetDict:
         """
-        데이터 준비
-        
-        Args:
-            train_path: 학습 데이터 경로
-            val_path: 검증 데이터 경로  
-            test_path: 테스트 데이터 경로
-            
-        Returns:
-            처리된 데이터셋 딕셔너리
+        데이터 준비 - baseline.py 방식으로 수정
         """
-        data_paths = self.config.get('data', {})
-        
+        # 경로 결정
+        data_paths = self.config.get('data', self.config.get('general', {}))
         train_path = train_path or data_paths.get('train_path')
         val_path = val_path or data_paths.get('val_path')
         test_path = test_path or data_paths.get('test_path')
         
-        logger.info("Loading and processing datasets...")
+        logger.info("Loading and processing datasets (baseline style)...")
         
         datasets = {}
         
+        # Train 데이터 처리
         if train_path:
-            train_data = self.data_processor.load_data(train_path)
-            datasets['train'] = self.data_processor.process_data(
-                train_data, 
-                is_training=True
+            logger.info(f"Loading train data from: {train_path}")
+            
+            # pandas로 CSV 읽기
+            train_df = pd.read_csv(train_path)
+            train_df = train_df[['fname', 'dialogue', 'summary']]
+            
+            # baseline의 make_input 로직
+            encoder_inputs = []
+            decoder_inputs = []
+            decoder_outputs = []
+            
+            bos_token = self.tokenizer.bos_token
+            eos_token = self.tokenizer.eos_token
+            
+            for dialogue, summary in zip(train_df['dialogue'], train_df['summary']):
+                encoder_input = dialogue
+                decoder_input = f"{bos_token} {summary}"
+                decoder_output = f"{summary} {eos_token}"
+                
+                encoder_inputs.append(encoder_input)
+                decoder_inputs.append(decoder_input)
+                decoder_outputs.append(decoder_output)
+            
+            # 토크나이징
+            tokenized_encoder = self.tokenizer(
+                encoder_inputs, 
+                return_tensors="pt", 
+                padding=True,
+                truncation=True, 
+                max_length=self.config['tokenizer']['encoder_max_len'],
+                return_token_type_ids=False
             )
-            logger.info(f"Train dataset size: {len(datasets['train'])}")
+            
+            tokenized_decoder_inputs = self.tokenizer(
+                decoder_inputs,
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=self.config['tokenizer']['decoder_max_len'],
+                return_token_type_ids=False
+            )
+            
+            tokenized_decoder_outputs = self.tokenizer(
+                decoder_outputs,
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=self.config['tokenizer']['decoder_max_len'],
+                return_token_type_ids=False
+            )
+            
+            # HuggingFace Dataset 형식으로 변환
+            train_dataset = Dataset.from_dict({
+                'input_ids': tokenized_encoder['input_ids'],
+                'attention_mask': tokenized_encoder['attention_mask'],
+                'decoder_input_ids': tokenized_decoder_inputs['input_ids'],
+                'labels': tokenized_decoder_outputs['input_ids']
+            })
+            
+            datasets['train'] = train_dataset
+            logger.info(f"Train dataset size: {len(train_dataset)}")
         
+        # Validation 데이터 처리
         if val_path:
-            val_data = self.data_processor.load_data(val_path)
-            datasets['validation'] = self.data_processor.process_data(
-                val_data,
-                is_training=False
+            logger.info(f"Loading validation data from: {val_path}")
+            
+            # pandas로 CSV 읽기
+            val_df = pd.read_csv(val_path)
+            val_df = val_df[['fname', 'dialogue', 'summary']]
+            
+            # baseline의 make_input 로직
+            encoder_inputs = []
+            decoder_inputs = []
+            decoder_outputs = []
+            
+            bos_token = self.tokenizer.bos_token
+            eos_token = self.tokenizer.eos_token
+            
+            for dialogue, summary in zip(val_df['dialogue'], val_df['summary']):
+                encoder_input = dialogue
+                decoder_input = f"{bos_token} {summary}"
+                decoder_output = f"{summary} {eos_token}"
+                
+                encoder_inputs.append(encoder_input)
+                decoder_inputs.append(decoder_input)
+                decoder_outputs.append(decoder_output)
+            
+            # 토크나이징
+            tokenized_encoder = self.tokenizer(
+                encoder_inputs, 
+                return_tensors="pt", 
+                padding=True,
+                truncation=True, 
+                max_length=self.config['tokenizer']['encoder_max_len'],
+                return_token_type_ids=False
             )
-            logger.info(f"Validation dataset size: {len(datasets['validation'])}")
+            
+            tokenized_decoder_inputs = self.tokenizer(
+                decoder_inputs,
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=self.config['tokenizer']['decoder_max_len'],
+                return_token_type_ids=False
+            )
+            
+            tokenized_decoder_outputs = self.tokenizer(
+                decoder_outputs,
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=self.config['tokenizer']['decoder_max_len'],
+                return_token_type_ids=False
+            )
+            
+            # HuggingFace Dataset 형식으로 변환
+            val_dataset = Dataset.from_dict({
+                'input_ids': tokenized_encoder['input_ids'],
+                'attention_mask': tokenized_encoder['attention_mask'],
+                'decoder_input_ids': tokenized_decoder_inputs['input_ids'],
+                'labels': tokenized_decoder_outputs['input_ids']
+            })
+            
+            datasets['validation'] = val_dataset
+            logger.info(f"Validation dataset size: {len(val_dataset)}")
         
+        # Test 데이터 처리
         if test_path:
-            test_data = self.data_processor.load_data(test_path)
-            datasets['test'] = self.data_processor.process_data(
-                test_data,
-                is_training=False
+            logger.info(f"Loading test data from: {test_path}")
+            
+            # pandas로 CSV 읽기
+            test_df = pd.read_csv(test_path)
+            test_df = test_df[['fname', 'dialogue']]  # test는 summary 없음
+            
+            # 토크나이징 (encoder만)
+            tokenized_encoder = self.tokenizer(
+                test_df['dialogue'].tolist(), 
+                return_tensors="pt", 
+                padding=True,
+                truncation=True, 
+                max_length=self.config['tokenizer']['encoder_max_len'],
+                return_token_type_ids=False
             )
-            logger.info(f"Test dataset size: {len(datasets['test'])}")
+            
+            # HuggingFace Dataset 형식으로 변환
+            test_dataset = Dataset.from_dict({
+                'input_ids': tokenized_encoder['input_ids'],
+                'attention_mask': tokenized_encoder['attention_mask']
+            })
+            
+            datasets['test'] = test_dataset
+            logger.info(f"Test dataset size: {len(test_dataset)}")
         
         return DatasetDict(datasets)
-    
+
     def train(self, dataset: DatasetDict, 
              resume_from_checkpoint: Optional[str] = None) -> TrainingResult:
         """
@@ -902,8 +1028,6 @@ class DialogueSummarizationTrainer:
             'fp16_opt_level': train_config.get('fp16_opt_level', 'O1'),
             'dataloader_num_workers': train_config.get('dataloader_num_workers', 4),
             'remove_unused_columns': False,
-            'label_smoothing_factor': train_config.get('label_smoothing', 0.0),
-            'optim': train_config.get('optim', 'adamw_torch'),
             'seed': self.config['general'].get('seed', 42),
             'report_to': ['wandb'] if wandb.run else ['none'],
             'run_name': self.experiment_name if wandb.run else None,
