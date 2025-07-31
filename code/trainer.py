@@ -318,9 +318,9 @@ class DialogueSummarizationTrainer:
         if self.experiment_tracker:
             experiment_id = self.experiment_tracker.start_experiment(
                 name=self.experiment_name,
-                description=f"Training {self.config['model']['architecture']} model",
+                description=f"Training {self.config.get('model', {}).get('architecture', 'unknown')} model",
                 config=self.config,
-                model_type=self.config['model']['architecture'],
+                model_type=self.config.get('model', {}).get('architecture', 'unknown'),
                 dataset_info={
                     'train_size': len(dataset.get('train', [])),
                     'val_size': len(dataset.get('validation', []))
@@ -433,9 +433,9 @@ class DialogueSummarizationTrainer:
             # 모델 등록
             if self.model_registry:
                 model_id = self.model_registry.register_model(
-                    name=f"{self.config['model']['architecture']}_{self.experiment_name}",
-                    architecture=self.config['model']['architecture'],
-                    checkpoint=self.config['model']['checkpoint'],
+                    name=f"{self.config.get('model', {}).get('architecture', 'unknown')}_{self.experiment_name}",
+                    architecture=self.config.get('model', {}).get('architecture', 'unknown'),
+                    checkpoint=self.config.get('model', {}).get('checkpoint', self.config.get('general', {}).get('model_name', '')),
                     config=self.config,
                     performance=wandb_callback.best_metrics,
                     training_info={
@@ -620,7 +620,7 @@ class DialogueSummarizationTrainer:
         """토크나이저 로딩"""
         # model 섹션이 없으면 general에서 model_name 사용
         if 'model' in self.config:
-            model_checkpoint = self.config['model']['checkpoint']
+            model_checkpoint = self.config.get('model', {}).get('checkpoint', self.config.get('general', {}).get('model_name', ''))
         else:
             model_checkpoint = self.config.get('general', {}).get('model_name')
             if not model_checkpoint:
@@ -644,6 +644,21 @@ class DialogueSummarizationTrainer:
             # GPT 계열은 pad_token이 없을 수 있음
             if self.tokenizer.pad_token is None:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
+    def _get_architecture_from_model_name(self) -> str:
+        """모델 이름으로부터 아키텍처 추론"""
+        model_name = self.config.get('general', {}).get('model_name', '').lower()
+        
+        if 'bart' in model_name or 'kobart' in model_name:
+            return 'bart'
+        elif 'mt5' in model_name:
+            return 'mt5'
+        elif 't5' in model_name:
+            return 't5'
+        elif 'gpt' in model_name:
+            return 'gpt2'
+        else:
+            return 'bart'  # 기본값
+    
     def _load_model(self) -> None:
         """모델 로딩 (unsloth 및 QLoRA 지원)"""
         model_checkpoint = self.config.get('model', {}).get('checkpoint', self.config.get('general', {}).get('model_name', ''))
@@ -834,7 +849,7 @@ class DialogueSummarizationTrainer:
     
     def _preprocess_for_model(self, examples: Dict[str, Any]) -> Dict[str, Any]:
         """모델별 데이터 전처리"""
-        architecture = self.config['model']['architecture']
+        architecture = self.config.get('model', {}).get('architecture', self._get_architecture_from_model_name())
         
         if architecture in ['t5', 'mt5', 'flan-t5']:
             # T5는 prefix 추가
@@ -908,8 +923,8 @@ class DialogueSummarizationTrainer:
         # 결과 딕셔너리 생성
         results_dict = {
             'experiment_name': self.experiment_name,
-            'model_architecture': self.config['model']['architecture'],
-            'model_checkpoint': self.config['model']['checkpoint'],
+            'model_architecture': self.config.get('model', {}).get('architecture', 'unknown'),
+            'model_checkpoint': self.config.get('model', {}).get('checkpoint', self.config.get('general', {}).get('model_name', '')),
             'best_metrics': result.best_metrics,
             'final_metrics': result.final_metrics,
             'model_path': result.model_path,
