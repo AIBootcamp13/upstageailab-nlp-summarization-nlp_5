@@ -639,15 +639,15 @@ class DialogueSummarizationTrainer:
         )
         
         # 특수 토큰 설정 (필요시)
-        if self.config['model']['architecture'] in ['kogpt2', 'gpt2']:
+        model_architecture = self.config.get('model', {}).get('architecture', '')
+        if model_architecture in ['kogpt2', 'gpt2']:
             # GPT 계열은 pad_token이 없을 수 있음
             if self.tokenizer.pad_token is None:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
-    
     def _load_model(self) -> None:
         """모델 로딩 (unsloth 및 QLoRA 지원)"""
-        model_checkpoint = self.config['model']['checkpoint']
-        architecture = self.config['model']['architecture']
+        model_checkpoint = self.config.get('model', {}).get('checkpoint', self.config.get('general', {}).get('model_name', ''))
+        architecture = self.config.get('model', {}).get('architecture', 'bart')
         
         # QLoRA 설정 확인
         qlora_config = self.config.get('qlora', {})
