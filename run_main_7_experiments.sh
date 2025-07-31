@@ -34,10 +34,10 @@ enhanced_gpu_monitor() {
     
     if [ -n "$gpu_data" ]; then
         IFS=',' read -r memory_used memory_total gpu_util temperature <<< "$gpu_data"
-        memory_used=$(echo $memory_used | xargs)  # trim whitespace
-        memory_total=$(echo $memory_total | xargs)
-        gpu_util=$(echo $gpu_util | xargs)
-        temperature=$(echo $temperature | xargs)
+        memory_used=$(echo "$memory_used" | xargs)  # trim whitespace
+        memory_total=$(echo "$memory_total" | xargs)
+        gpu_util=$(echo "$gpu_util" | xargs)
+        temperature=$(echo "$temperature" | xargs)
         
         local memory_percent=$((memory_used * 100 / memory_total))
         local memory_free=$((memory_total - memory_used))
@@ -327,7 +327,7 @@ for i in "${!experiments[@]}"; do
         
         # 향상된 실험 시간 추적
         track_experiment_time "$exp_name" "$EXP_START_TIME"
-        local actual_duration=$?
+        actual_duration=$?
         
         EXP_DURATION_MIN=$((EXP_DURATION / 60))
         EXP_DURATION_SEC=$((EXP_DURATION % 60))

@@ -657,8 +657,7 @@ def test_rtx3090_extreme_config():
         else:
             print("⚠️  RTX 3090이 아니므로 극한 최적화 비활성화")
     else:
-        print("
-❌ CUDA를 사용할 수 없습니다")
+        print("❌ CUDA를 사용할 수 없습니다")
     
     print("\n" + "="*50)
 

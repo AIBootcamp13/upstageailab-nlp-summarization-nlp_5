@@ -217,6 +217,7 @@ class DataProcessor:
         # 토크나이저 설정
         self.encoder_max_len = self.config.get('tokenizer', {}).get('encoder_max_len', 512)
         self.decoder_max_len = self.config.get('tokenizer', {}).get('decoder_max_len', 128)
+        
         # 데이터 필터 설정
         self.min_dialogue_length = self.config.get('data', {}).get('min_source_length', 10)
         self.max_dialogue_length = self.config.get('data', {}).get('max_source_length', 1024)
@@ -225,13 +226,30 @@ class DataProcessor:
         
         # 특수 토큰 추가 (임시 비활성화)
         # self._add_special_tokens()
+    
+    def _add_special_tokens(self):
+        """특수 토큰을 토크나이저에 추가"""
+        special_tokens = [
+            '#Person1#', '#Person2#', '#Person3#', '#Person4#',
+            '#Person5#', '#Person6#', '#Person7#',
+            '#PhoneNumber#', '#Address#', '#PassportNumber#'
+        ]
         
-        def _add_special_tokens(self):
-            """특수 토큰을 토크나이저에 추가"""
-            pass  # 임시 비활성화
+        # 기존에 없는 토큰만 추가
+        new_tokens = [token for token in special_tokens 
+                      if token not in self.tokenizer.get_vocab()]
+        
+        if new_tokens:
+            num_added = self.tokenizer.add_tokens(new_tokens)
+            self.logger.info(f"Added {num_added} special tokens to tokenizer")
             
-            def load_data(self, file_path: Union[str, Path], is_test: bool = False) -> pd.DataFrame:
-            """
+            # 모델의 임베딩 크기 조정 (필요한 경우)
+            if self.model is not None and hasattr(self.model, 'resize_token_embeddings'):
+                self.model.resize_token_embeddings(len(self.tokenizer))
+                self.logger.info(f"Resized model embeddings to {len(self.tokenizer)}")
+    
+    def load_data(self, file_path: Union[str, Path], is_test: bool = False) -> pd.DataFrame:
+        """
         데이터 로딩
         
         Args:
@@ -254,13 +272,14 @@ class DataProcessor:
             else:
                 raise ValueError(f"Unsupported file format: {file_path.suffix}")
             
-            logger.info(f"Loaded {len(df)} samples from {file_path}")
+            self.logger.info(f"Loaded {len(df)} samples from {file_path}")
             
             # 필수 컬럼 확인
             if is_test:
                 required_columns = ['fname', 'dialogue']
             else:
                 required_columns = ['fname', 'dialogue', 'summary']
+            
             missing_columns = [col for col in required_columns if col not in df.columns]
             
             if missing_columns:
@@ -269,10 +288,10 @@ class DataProcessor:
             return df
             
         except Exception as e:
-            logger.error(f"Failed to load data: {e}")
+            self.logger.error(f"Failed to load data: {e}")
             raise
-            
-        def process_data(self, df: pd.DataFrame, is_training: bool = True, is_test: bool = False) -> HFDataset:
+    
+    def process_data(self, df: pd.DataFrame, is_training: bool = True, is_test: bool = False) -> HFDataset:
         """
         데이터프레임을 HuggingFace Dataset으로 변환
         
@@ -293,7 +312,7 @@ class DataProcessor:
             df['summary'] = df['summary'].apply(self.text_preprocessor.clean_summary)
         
         # 길이 필터링 (학습 데이터만)
-        if is_training:
+        if is_training and not is_test:
             df = self._filter_by_length(df)
         
         # 데이터 딕셔너리 생성
@@ -301,6 +320,7 @@ class DataProcessor:
             'input': df['dialogue'].tolist(),
             'fname': df['fname'].tolist()
         }
+        
         # test 데이터가 아닌 경우에만 target 추가
         if not is_test:
             data_dict['target'] = df['summary'].tolist()
@@ -343,16 +363,17 @@ class DataProcessor:
             (df['dialogue_length'] <= self.max_dialogue_length)
         ]
         
-        # 요약문 길이 필터링
-        df['summary_length'] = df['summary'].str.len()
-        df = df[
-            (df['summary_length'] >= self.min_summary_length) &
-            (df['summary_length'] <= self.max_summary_length)
-        ]
+        # 요약문 길이 필터링 (summary 컬럼이 있는 경우만)
+        if 'summary' in df.columns:
+            df['summary_length'] = df['summary'].str.len()
+            df = df[
+                (df['summary_length'] >= self.min_summary_length) &
+                (df['summary_length'] <= self.max_summary_length)
+            ]
         
         final_count = len(df)
         if initial_count > final_count:
-            logger.info(f"Filtered {initial_count - final_count} samples by length")
+            self.logger.info(f"Filtered {initial_count - final_count} samples by length")
         
         return df
     
@@ -473,10 +494,10 @@ class DataProcessor:
         for _, row in df.iterrows():
             sample = DataSample(
                 dialogue=row['dialogue'],
-                summary=row['summary'],
+                summary=row.get('summary', ''),  # test 데이터의 경우 summary가 없을 수 있음
                 fname=row['fname'],
                 dialogue_length=row.get('dialogue_length', len(row['dialogue'])),
-                summary_length=row.get('summary_length', len(row['summary']))
+                summary_length=row.get('summary_length', len(row.get('summary', '')))
             )
             samples.append(sample)
         
@@ -593,12 +614,10 @@ def collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
     attention_mask = torch.stack([item['attention_mask'] for item in batch])
     labels = torch.stack([item['labels'] for item in batch])
     
-    # 문자열 데이터들 리스트로 유지
-    fnames = [item['fname'] for item in batch]
+    # fnames는 더 이상 포함하지 않음 (DataCollator 에러 방지)
     
     return {
         'input_ids': input_ids,
         'attention_mask': attention_mask,
-        'labels': labels,
-        'fnames': fnames
+        'labels': labels
     }
