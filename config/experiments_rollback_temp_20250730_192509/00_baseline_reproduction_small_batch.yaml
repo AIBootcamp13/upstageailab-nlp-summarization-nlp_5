@@ -1,0 +1,97 @@
+experiment_name: baseline_reproduction_small_batch
+description: Baseline reproduction with smaller batch size for memory constraints
+
+# Model configuration
+model:
+  name: digit82/kobart-summarization
+  architecture: kobart
+
+# Tokenizer configuration  
+tokenizer:
+  encoder_max_len: 512
+  decoder_max_len: 200
+  bos_token: "<s>"
+  eos_token: "</s>"
+  special_tokens:
+    - '#Person1#'
+    - '#Person2#'
+    - '#Person3#'
+    - '#PhoneNumber#'
+    - '#Address#'
+    - '#DateOfBirth#'
+    - '#PassportNumber#'
+    - '#SSN#'
+    - '#CardNumber#'
+    - '#CarNumber#'
+    - '#Email#'
+
+# Training configuration - Adjusted for memory constraints
+training:
+  num_train_epochs: 20
+  learning_rate: 1.0e-05
+  per_device_train_batch_size: 16  # Reduced from 64
+  per_device_eval_batch_size: 16   # Reduced from 48
+  gradient_accumulation_steps: 4    # Increased to maintain effective batch size
+  gradient_checkpointing: true
+  fp16: true
+  warmup_steps: 10
+  weight_decay: 0.01
+  seed: 42
+  
+  # Evaluation settings
+  evaluation_strategy: steps
+  eval_steps: 400
+  save_steps: 400
+  save_total_limit: 1
+  logging_steps: 100
+  
+  # Early stopping
+  early_stopping_patience: 3  # Increased patience
+  early_stopping_threshold: 0.001
+  load_best_model_at_end: true
+  
+  # Other training settings
+  dataloader_num_workers: 4  # Reduced for stability
+  dataloader_drop_last: false
+  group_by_length: true
+  predict_with_generate: true
+  remove_unused_columns: true
+  torch_empty_cache_steps: 10
+
+# Generation configuration
+generation:
+  max_length: 200
+  num_beams: 4
+  no_repeat_ngram_size: 2
+  early_stopping: true
+  length_penalty: 1.0
+
+# Inference configuration
+inference:
+  batch_size: 16  # Reduced for memory
+  generate_max_length: 200
+  remove_tokens:
+    - '<usr>'
+    - '<s>'
+    - '</s>'
+    - '<pad>'
+
+# WandB configuration
+wandb:
+  name: "00_baseline_reproduction_small_batch"
+  notes: "Baseline with reduced batch size for memory efficiency"
+  tags: ["baseline", "reproduction", "benchmark", "kobart", "small_batch"]
+  
+# Data configuration override
+data:
+  train_file: "train.csv"
+  dev_file: "dev.csv"
+  test_file: "test.csv"
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

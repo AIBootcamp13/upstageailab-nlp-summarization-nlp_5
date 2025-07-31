@@ -1,0 +1,116 @@
+experiment_name: simple_augmentation
+description: Baseline with simple data augmentation (synonym replacement + sentence reorder)
+
+# Inherit most settings from baseline
+model:
+  name: digit82/kobart-summarization
+  architecture: kobart
+
+# Tokenizer configuration  
+tokenizer:
+  encoder_max_len: 512
+  decoder_max_len: 200
+  bos_token: "<s>"
+  eos_token: "</s>"
+  special_tokens:
+    - '#Person1#'
+    - '#Person2#'
+    - '#Person3#'
+    - '#PhoneNumber#'
+    - '#Address#'
+    - '#DateOfBirth#'
+    - '#PassportNumber#'
+    - '#SSN#'
+    - '#CardNumber#'
+    - '#CarNumber#'
+    - '#Email#'
+
+# Data augmentation configuration
+data_augmentation:
+  enabled: true
+  augmentation_ratio: 0.2  # Augment 20% of the data
+  seed: 42
+  
+  # Synonym replacement settings
+  synonym_replacement:
+    enabled: true
+    num_replacements: 3  # Replace up to 3 words per dialogue
+  
+  # Sentence reorder settings
+  sentence_reorder:
+    enabled: true
+    max_distance: 2  # Maximum distance for reordering
+  
+  # Cache settings
+  use_cache: true
+  cache_dir: "outputs/augmented_data_cache"
+
+# Training configuration - Same as baseline but with augmented data
+training:
+  num_train_epochs: 20
+  learning_rate: 1.0e-05
+  per_device_train_batch_size: 16  # Reduced for memory
+  per_device_eval_batch_size: 16
+  gradient_accumulation_steps: 4   # Effective batch size = 64
+  gradient_checkpointing: true
+  fp16: true
+  warmup_steps: 10
+  weight_decay: 0.01
+  seed: 42
+  
+  # Evaluation settings
+  evaluation_strategy: steps
+  eval_steps: 400
+  save_steps: 400
+  save_total_limit: 1
+  logging_steps: 100
+  
+  # Early stopping
+  early_stopping_patience: 3
+  early_stopping_threshold: 0.001
+  load_best_model_at_end: true
+  
+  # Other training settings
+  dataloader_num_workers: 4
+  dataloader_drop_last: false
+  group_by_length: true
+  predict_with_generate: true
+  remove_unused_columns: true
+
+# Generation configuration
+generation:
+  max_length: 200
+  num_beams: 4
+  no_repeat_ngram_size: 2
+  early_stopping: true
+  length_penalty: 1.0
+
+# Inference configuration
+inference:
+  batch_size: 16
+  generate_max_length: 200
+  remove_tokens:
+    - '<usr>'
+    - '<s>'
+    - '</s>'
+    - '<pad>'
+
+# WandB configuration
+wandb:
+  name: "01_simple_augmentation"
+  notes: "Baseline + simple data augmentation (20% augmentation ratio)"
+  tags: ["augmentation", "synonym", "reorder", "kobart"]
+  
+# Data configuration
+data:
+  train_file: "train.csv"
+  dev_file: "dev.csv"
+  test_file: "test.csv"
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

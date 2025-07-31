@@ -1,0 +1,194 @@
+experiment_name: solar_api_ensemble
+description: 최고 성능 모델과 Solar API를 결합한 앙상블 시스템
+
+# 앙상블 유형
+ensemble_type: weighted_average
+
+# 기본 모델 설정
+base_model:
+  # 2차 실험 중 최고 성능 모델 사용 (실제 실행 시 경로 업데이트 필요)
+  model_path: "outputs/phase2_results/10c_all_optimizations/best_model"
+  device: "auto"  # auto, cuda, cpu, mps
+
+# Solar API 설정
+solar_api:
+  api_key_env: "UPSTAGE_API_KEY"  # 환경 변수에서 읽기
+  model: "solar-1-mini-chat"
+  base_url: "https://api.upstage.ai/v1/solar"
+  
+  # 생성 파라미터
+  temperature: 0.3
+  top_p: 0.9
+  max_tokens: 200
+  
+  # API 관리
+  rate_limit_per_minute: 100
+  max_retries: 3
+  retry_delay: 5
+  timeout: 30
+
+# 앙상블 가중치
+ensemble_weights:
+  # 정적 가중치
+  static:
+    fine_tuned: 0.7
+    solar: 0.3
+  
+  # 동적 가중치 설정
+  dynamic:
+    enabled: true
+    features:
+      - special_token_preservation
+      - summary_length_balance
+      - confidence_score
+    adjustment_range: 0.2  # 최대 ±0.2 조정
+
+# Few-shot 설정
+few_shot:
+  enabled: true
+  num_examples: 3
+  selection_strategy: "quality"  # quality, diversity, random
+  source_file: "train.csv"
+
+# 배치 처리 설정
+batch_processing:
+  batch_size: 8
+  use_async: true
+  num_workers: 4
+
+# 캐싱 설정
+caching:
+  enabled: true
+  cache_dir: "cache/solar_ensemble"
+  cache_ttl: 86400  # 24시간
+
+# 후처리 설정 (앙상블 후)
+postprocessing:
+  enabled: true
+  processors:
+    - type: "SpecialTokenValidator"
+      params:
+        ensure_all_tokens: true
+        merge_from_both: true  # 두 요약에서 누락된 토큰 병합
+    - type: "LengthOptimizer"
+      params:
+        target_length_ratio: 0.9
+        min_length: 30
+        max_length: 180
+
+# 평가 설정
+evaluation:
+  metrics:
+    - rouge1
+    - rouge2
+    - rougeL
+    - special_token_recall
+    - ensemble_improvement
+  
+  # 개별 모델 평가
+  evaluate_components: true
+  
+  # 신뢰도 임계값
+  confidence_threshold: 0.7
+
+# 실험 설정
+experiment:
+  # 실험 모드
+  modes:
+    - name: "static_weights"
+      description: "고정 가중치 0.7:0.3"
+      dynamic_weights: false
+      weights: [0.7, 0.3]
+    
+    - name: "dynamic_weights"
+      description: "동적 가중치 조정"
+      dynamic_weights: true
+      base_weights: [0.7, 0.3]
+    
+    - name: "equal_weights"
+      description: "동일 가중치 0.5:0.5"
+      dynamic_weights: false
+      weights: [0.5, 0.5]
+    
+    - name: "solar_dominant"
+      description: "Solar API 위주 0.3:0.7"
+      dynamic_weights: false
+      weights: [0.3, 0.7]
+
+# 실행 설정
+execution:
+  # 데이터
+  train_file: "train.csv"
+  dev_file: "dev.csv"
+  test_file: "test.csv"
+  
+  # 샘플링 (개발용)
+  sample_size: null  # null이면 전체 데이터
+  
+  # 출력
+  output_dir: "outputs/solar_ensemble"
+  save_all_summaries: true  # 모든 요약 저장 (분석용)
+
+# 비용 관리
+cost_management:
+  # API 호출 추적
+  track_api_calls: true
+  log_costs: true
+  
+  # 비용 제한
+  max_api_calls: 10000
+  cost_per_call: 0.001  # 예시 비용
+  
+  # 알림
+  alert_threshold: 100  # $100 초과 시 경고
+
+# 로깅 설정
+logging:
+  level: "INFO"
+  log_file: "logs/solar_ensemble.log"
+  log_api_calls: true
+  log_weights: true
+  log_confidence_scores: true
+
+# WandB 설정
+wandb:
+  enabled: true
+  project: "nlp-summarization"
+  name: "solar_ensemble"
+  tags: ["ensemble", "solar_api", "final"]
+  notes: "Fine-tuned model + Solar API ensemble for maximum performance"
+  
+  # 추가 로깅
+  log_examples: 10  # 예시 로깅 수
+  log_weight_distribution: true
+  log_api_statistics: true
+
+# 최종 제출 설정
+submission:
+  create_submission_file: true
+  submission_format: "standard"  # 대회 형식
+  include_confidence_scores: false  # 제출 파일에는 포함 안 함
+  
+  # 백업
+  create_backup: true
+  backup_all_components: true  # 모든 구성요소 요약 백업
+
+# 폴백 전략
+fallback:
+  # Solar API 실패 시
+  on_api_failure: "use_fine_tuned_only"
+  
+  # 신뢰도 낮을 시
+  on_low_confidence: "use_fine_tuned_only"
+  confidence_threshold: 0.5
+  
+  # 비용 초과 시
+  on_cost_exceed: "stop_using_api"
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no

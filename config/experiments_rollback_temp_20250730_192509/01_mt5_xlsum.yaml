@@ -1,0 +1,102 @@
+# mT5 XL-Sum 모델 실험 (RTX 3090 24GB 최적화)
+experiment_name: mt5_xlsum_optimized
+description: "mT5 XL-Sum 대형 모델 실험 - RTX 3090 최적화"
+
+general:
+  model_name: csebuetnlp/mT5_multilingual_XLSum
+  data_path: data/
+  train_path: data/train.csv
+  val_path: data/dev.csv
+  model_type: seq2seq
+  name: mt5_xlsum_optimized
+
+model:
+  architecture: mt5
+  checkpoint: csebuetnlp/mT5_multilingual_XLSum
+
+input_prefix: "summarize: "  # mT5도 prefix 사용으로 변경 (빈 요약 방지)
+
+tokenizer:
+  bos_token: <pad>
+  eos_token: </s>
+  encoder_max_len: 512
+  decoder_max_len: 84
+  special_tokens:
+    - '#Person1#'
+    - '#Person2#'
+    - '#Person3#'
+    - '#PhoneNumber#'
+    - '#Address#'
+    - '#PassportNumber#'
+    - '#DateOfBirth#'
+    - '#SSN#'
+    - '#CardNumber#'
+    - '#CarNumber#'
+    - '#Email#'
+
+# RTX 3090 24GB 대형 모델 최적화 학습 설정
+training:
+  do_eval: true
+  do_train: true
+  evaluation_strategy: steps
+  eval_steps: 300
+  
+  # 대형 모델 안전 배치 설정
+  per_device_train_batch_size: 2      # mT5 1.2B 안전 배치
+  per_device_eval_batch_size: 4       # 평가도 안전하게
+  gradient_accumulation_steps: 8      # 유효 배치 크기 16
+  # 학습 파라미터
+  num_train_epochs: 3                 # 대형 모델은 적은 epoch
+  learning_rate: 3.0e-05
+  lr_scheduler_type: cosine
+  warmup_ratio: 0.1
+  weight_decay: 0.01
+  
+  # 최적화 설정
+  fp16: true                          # 필수
+  gradient_checkpointing: false       # mT5에서 grad_fn 에러 방지
+  dataloader_num_workers: 4           # 안정성을 위해 감소
+  dataloader_pin_memory: false        # 메모리 안정성 우선
+  group_by_length: true
+  # 저장 및 로깅
+  logging_steps: 100
+  save_strategy: steps
+  save_steps: 300
+  save_total_limit: 3
+  load_best_model_at_end: true
+  early_stopping_patience: 3
+  
+  # 생성 설정
+  predict_with_generate: true
+  generation_num_beams: 4
+  generation_max_length: 84
+  
+  report_to: wandb
+  seed: 42
+
+# 대형 모델용 QLoRA 설정
+qlora:
+  use_qlora: true
+  lora_rank: 16
+  lora_alpha: 32
+  lora_dropout: 0.1
+  target_modules: ["q", "k", "v", "o"]
+  load_in_4bit: true
+  bnb_4bit_compute_dtype: "float16"
+  bnb_4bit_quant_type: "nf4"
+  bnb_4bit_use_double_quant: true
+
+wandb:
+  entity: lyjune37-juneictlab
+  project: nlp-5
+  name: mt5_xlsum_rtx3090_lyj
+  tags: [mT5, XL-Sum, RTX3090, large_model, lyj]
+  notes: "mT5 XL-Sum 1.2B 모델 RTX 3090 최적화"
+
+# Generation settings
+generation:
+  max_length: 256
+  min_length: 5
+  num_beams: 4
+  no_repeat_ngram_size: 2
+\ntraining:\n  eval_strategy: no
