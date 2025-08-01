@@ -511,14 +511,34 @@ class DialogueSummarizationTrainer:
             """
             preds, labels = eval_preds
 
-            # 토큰 ID를 텍스트로 디코딩 (특수 토큰 제거)
-            decoded_preds = self.tokenizer.batch_decode(preds, skip_special_tokens=True)
+            # 🛡️ 안전한 토큰 디코딩 (IndexError 방지)
+            def safe_decode(token_ids, tokenizer):
+                """토큰 ID 범위를 체크하여 안전하게 디코딩"""
+                try:
+                    # 토큰 ID가 vocab 범위를 벗어났는지 체크
+                    if hasattr(tokenizer, 'vocab_size'):
+                        vocab_size = tokenizer.vocab_size
+                    else:
+                        vocab_size = len(tokenizer.get_vocab())
+                    
+                    # 범위를 벗어난 토큰 ID를 클램핑
+                    if isinstance(token_ids, np.ndarray):
+                        token_ids = np.clip(token_ids, 0, vocab_size - 1)
+                    
+                    return tokenizer.batch_decode(token_ids, skip_special_tokens=True)
+                except Exception as e:
+                    logger.warning(f"Token decoding failed: {e}. Using fallback.")
+                    # 폴백: 빈 문자열 리스트 반환
+                    return [""] * len(token_ids)
+            
+            # 안전한 토큰 디코딩 적용
+            decoded_preds = safe_decode(preds, self.tokenizer)
             decoded_labels = self.tokenizer.batch_decode(labels, skip_special_tokens=True)
 
             # HuggingFace에서 사용하는 -100 패딩 토큰을 정상 토큰으로 변환
             # -100은 loss 계산에서 무시되는 라벨이지만 디코딩에서는 문제가 됨
             labels = np.where(labels != -100, labels, self.tokenizer.pad_token_id)
-            decoded_labels = self.tokenizer.batch_decode(labels, skip_special_tokens=True)
+            decoded_labels = safe_decode(labels, self.tokenizer)
 
             # 대화 요약에 특화된 ROUGE 메트릭 계산 (Multi-reference 지원)
             rouge_scores = []
