@@ -639,6 +639,9 @@ class DialogueSummarizationTrainer:
         # 학습 시작
         logger.info("Starting training...")
         
+        # 실험 연속성 import
+        from utils.experiment_continuity import save_experiment_checkpoint
+        
         # 학습 시작 체크포인트 저장
         training_info = {
             'total_epochs': self.config['training'].get('num_train_epochs', 0),
@@ -1220,7 +1223,17 @@ class DialogueSummarizationTrainer:
             "generation_max_length": self.config["generation"]["max_length"],
             "generation_num_beams": self.config["generation"]["num_beams"],
         }
-
+        
+        # save_steps와 eval_steps 동기화 (load_best_model_at_end 사용 시 필수)
+        if args_dict.get("load_best_model_at_end"):
+            eval_steps = args_dict.get("eval_steps", 500)
+            save_steps = args_dict.get("save_steps", 500)
+            
+            # save_steps가 eval_steps의 배수가 아니면 동기화
+            if save_steps % eval_steps != 0:
+                args_dict["save_steps"] = eval_steps
+                logger.warning(f"save_steps({save_steps})가 eval_steps({eval_steps})의 배수가 아니어서 {eval_steps}로 조정")
+        
         # 시퀀스-투-시퀀스 특화 인자
         seq2seq_args = Seq2SeqTrainingArguments(**args_dict)
 
