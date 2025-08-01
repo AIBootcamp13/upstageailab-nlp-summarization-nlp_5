@@ -66,12 +66,14 @@ LOCAL_OUTPUTS_DIR="${LOCAL_BASE}/${OUTPUTS_SUBDIR:-outputs}"
 LOCAL_LOGS_DIR="${LOCAL_BASE}/${LOGS_SUBDIR:-logs}"
 LOCAL_WANDB_DIR="${LOCAL_BASE}/${WANDB_SUBDIR:-wandb}"
 LOCAL_MODELS_DIR="${LOCAL_BASE}/${MODELS_SUBDIR:-models}"
+LOCAL_DATA_DIR="${LOCAL_BASE}/${DATA_SUBDIR:-data}"
 
 # 원격 경로 설정
 REMOTE_OUTPUTS_DIR="${REMOTE_BASE}/${OUTPUTS_SUBDIR:-outputs}"
 REMOTE_LOGS_DIR="${REMOTE_BASE}/${LOGS_SUBDIR:-logs}"
 REMOTE_WANDB_DIR="${REMOTE_BASE}/${WANDB_SUBDIR:-wandb}"
 REMOTE_MODELS_DIR="${REMOTE_BASE}/${MODELS_SUBDIR:-models}"
+REMOTE_DATA_DIR="${REMOTE_BASE}/${DATA_SUBDIR:-data}"
 
 # =================================================================
 # 유틸리티 함수들
@@ -131,6 +133,7 @@ setup_directories() {
     mkdir -p "$LOCAL_LOGS_DIR"
     mkdir -p "$LOCAL_WANDB_DIR"
     mkdir -p "$LOCAL_MODELS_DIR"
+    mkdir -p "$LOCAL_DATA_DIR"
     
     log_success "로컬 디렉토리 생성 완료"
     log_info "로컬 경로: $LOCAL_BASE"
@@ -212,7 +215,7 @@ sync_additional_logs() {
     if ssh "$REMOTE_HOST" "LC_ALL=C [ -d '$REMOTE_WANDB_DIR' ]" 2>/dev/null; then
         log_info "WandB 로그 동기화: wandb"
         LC_ALL=C rsync -avz --progress --ignore-existing \
-            --include="*/" --include="*.log" --include="*.json" \
+            --include="*/" --include="*.log" --include="*.json" --include="*.csv" \
             --exclude="*" \
             "$REMOTE_HOST:$REMOTE_WANDB_DIR/" \
             "$LOCAL_WANDB_DIR/" || true
@@ -225,6 +228,14 @@ sync_additional_logs() {
             "$REMOTE_HOST:$REMOTE_MODELS_DIR/" \
             "$LOCAL_MODELS_DIR/" || true
     
+    fi
+    
+    # data 디렉토리 동기화 (CSV 및 데이터 파일들)
+    if ssh "$REMOTE_HOST" "LC_ALL=C [ -d '$REMOTE_DATA_DIR' ]" 2>/dev/null; then
+        log_info "데이터 디렉토리 동기화: data"
+        LC_ALL=C rsync -avz --progress --ignore-existing \
+            "$REMOTE_HOST:$REMOTE_DATA_DIR/" \
+            "$LOCAL_DATA_DIR/" || true
     fi
 }
 
@@ -305,9 +316,11 @@ EOF
 - 실험 정보: outputs/*/experiments/*/experiment_info.json
 - 모델 레지스트리: outputs/*/models/models.json
 - 자동 실험 결과: outputs/auto_experiments/experiment_results_*.json
+- 실험 결과 CSV: outputs/auto_experiments/csv_results/*.csv
 - 로그 파일: logs/
-- WandB 로그: wandb/
+- WandB 로그: wandb/ (*.log, *.json, *.csv)
 - 모델 파일: models/
+- 데이터 파일: data/ (CSV 및 기타 데이터 파일)
 
 보고서 저장 위치: $report_file
 EOF
@@ -321,10 +334,14 @@ EOF
     local outputs_size=$(du -sh "$LOCAL_OUTPUTS_DIR" 2>/dev/null | cut -f1 || echo "0B")
     local logs_size=$(du -sh "$LOCAL_LOGS_DIR" 2>/dev/null | cut -f1 || echo "0B")
     local wandb_size=$(du -sh "$LOCAL_WANDB_DIR" 2>/dev/null | cut -f1 || echo "0B")
+    local models_size=$(du -sh "$LOCAL_MODELS_DIR" 2>/dev/null | cut -f1 || echo "0B")
+    local data_size=$(du -sh "$LOCAL_DATA_DIR" 2>/dev/null | cut -f1 || echo "0B")
     echo "총 실험 디렉토리: $total_dirs개"
     echo "Outputs 크기: $outputs_size"
     echo "Logs 크기: $logs_size"
     echo "WandB 크기: $wandb_size"
+    echo "Models 크기: $models_size"
+    echo "Data 크기: $data_size"
     echo "보고서: $report_file"
 }
 
