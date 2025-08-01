@@ -156,26 +156,70 @@ test_server_connection() {
 
 # 3. 원격 실험 결과 디렉토리 목록 가져오기
 get_remote_experiment_list() {
+    local experiment_dirs=()
+    
     # outputs 디렉토리의 실험 폴더들 찾기
-    # SSH 명령에서 로케일 설정을 명시적으로 지정
-    ssh "$REMOTE_HOST" "LC_ALL=C find '$REMOTE_OUTPUTS_DIR' -maxdepth 1 -type d -name '*_*' 2>/dev/null" | \
+    local outputs_dirs
+    outputs_dirs=$(ssh "$REMOTE_HOST" "LC_ALL=C find '$REMOTE_OUTPUTS_DIR' -maxdepth 1 -type d -name '*_*' 2>/dev/null" | \
         grep -E '(dialogue_summarization|auto_experiments|.*_[0-9]{8}_[0-9]{6})' | \
-        sort
+        sort)
+    
+    # logs 디렉토리의 실험 로그 폴더들도 찾기 (실패한 실험 포함)
+    local log_dirs
+    log_dirs=$(ssh "$REMOTE_HOST" "LC_ALL=C find '$REMOTE_LOGS_DIR' -maxdepth 1 -type d -name '*experiments*' 2>/dev/null" | \
+        sort)
+    
+    # outputs 결과를 배열에 추가
+    if [[ -n "$outputs_dirs" ]]; then
+        while IFS= read -r dir; do
+            experiment_dirs+=("$dir")
+        done <<< "$outputs_dirs"
+    fi
+    
+    # logs 결과를 배열에 추가 (중복 제거)
+    if [[ -n "$log_dirs" ]]; then
+        while IFS= read -r dir; do
+            # 이미 존재하지 않는 경우에만 추가
+            local already_exists=false
+            for existing_dir in "${experiment_dirs[@]}"; do
+                if [[ "$(basename "$dir")" == "$(basename "$existing_dir")" ]]; then
+                    already_exists=true
+                    break
+                fi
+            done
+            if [[ "$already_exists" == "false" ]]; then
+                experiment_dirs+=("$dir")
+            fi
+        done <<< "$log_dirs"
+    fi
+    
+    # 결과 출력
+    printf '%s\n' "${experiment_dirs[@]}"
 }
 
 # 4. 개별 실험 디렉토리 동기화
 sync_experiment_directory() {
     local remote_exp_dir="$1"
     local exp_name=$(basename "$remote_exp_dir")
-    local local_exp_dir="${LOCAL_OUTPUTS_DIR}/${exp_name}"
+    
+    # 로그 디렉토리인지 판단
+    local is_log_dir=false
+    local local_exp_dir
+    
+    if [[ "$remote_exp_dir" == *"/logs/"* ]]; then
+        is_log_dir=true
+        local_exp_dir="${LOCAL_LOGS_DIR}/${exp_name}"
+        log_info "실험 로그 동기화 중: $exp_name (로그 디렉토리)"
+    else
+        local_exp_dir="${LOCAL_OUTPUTS_DIR}/${exp_name}"
+        log_info "실험 동기화 중: $exp_name"
+    fi
+    
     # 디렉토리 이름 유효성 검증 (영문, 숫자, 언더스코어, 하이픈만 허용)
     if [[ -z "$exp_name" ]] || [[ ! "$exp_name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
         log_error "잘못된 디렉토리 이름: $exp_name"
         return 1
     fi
-    
-    
-    log_info "실험 동기화 중: $exp_name"
     
     # 로컬 디렉토리 생성
     mkdir -p "$local_exp_dir"
@@ -192,7 +236,11 @@ sync_experiment_directory() {
     # 동기화 검증
     if verify_directory_sync "$local_exp_dir" "$remote_exp_dir" "$exp_name"; then
         log_success "✅ $exp_name 동기화 및 검증 완료"
-        echo "$remote_exp_dir" >> "${LOCAL_OUTPUTS_DIR}/.synced_experiments"
+        if [[ "$is_log_dir" == "true" ]]; then
+            echo "$remote_exp_dir" >> "${LOCAL_LOGS_DIR}/.synced_experiments"
+        else
+            echo "$remote_exp_dir" >> "${LOCAL_OUTPUTS_DIR}/.synced_experiments"
+        fi
         return 0
     else
         log_warning "⚠️ $exp_name 동기화가 불완전할 수 있습니다"
@@ -376,8 +424,8 @@ main() {
     # 4. 각 실험 동기화
     local success_count=0
     for exp_dir in "${experiments[@]}"; do
-        # 유효한 디렉토리 경로인지 검증
-        if [[ "$exp_dir" =~ ^/.*/(dialogue_summarization|auto_experiments|.*_[0-9]{8}_[0-9]{6})$ ]]; then
+        # 유효한 디렉토리 경로인지 검증 (로그 디렉토리도 포함)
+        if [[ "$exp_dir" =~ ^/.*/(dialogue_summarization|auto_experiments|.*_[0-9]{8}_[0-9]{6}|.*experiments.*)$ ]]; then
             if sync_experiment_directory "$exp_dir"; then
                 ((success_count++))
             fi
