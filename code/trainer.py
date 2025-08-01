@@ -460,7 +460,7 @@ class DialogueSummarizationTrainer:
                 # 기존 WandB 세션 정리
                 if wandb.run is not None:
                     wandb.finish()
-                    
+
                 wandb_config = self.config.get("wandb", {})
                 wandb.init(
                     entity=wandb_config.get("entity", "lyjune37-juneictlab"),
@@ -470,7 +470,7 @@ class DialogueSummarizationTrainer:
                     tags=wandb_config.get("tags", []),
                     config=self.config,
                     reinit=True,
-                    resume="never"
+                    resume="never",
                 )
 
             experiment_id = self.experiment_tracker.start_experiment(
@@ -774,32 +774,29 @@ class DialogueSummarizationTrainer:
                 raise ValueError(
                     "Model checkpoint not found in config. Please specify 'model.checkpoint' or 'general.model_name'"
                 )
-    
+
         logger.info(f"Loading tokenizer: {model_checkpoint}")
-    
+
         try:
             # 모델별 토크나이저 설정
-            tokenizer_kwargs = {
-                "trust_remote_code": True,
-                "use_fast": True
-            }
-            
+            tokenizer_kwargs = {"trust_remote_code": True, "use_fast": True}
+
             # T5/mT5 모델 특별 처리
             if "mt5" in model_checkpoint.lower() or "t5" in model_checkpoint.lower():
                 tokenizer_kwargs["use_fast"] = False  # T5/mT5는 SentencePiece로 use_fast=False 사용
-                tokenizer_kwargs["legacy"] = False    # T5 legacy 모드 비활성화
-    
+                tokenizer_kwargs["legacy"] = False  # T5 legacy 모드 비활성화
+
             self.tokenizer = AutoTokenizer.from_pretrained(model_checkpoint, **tokenizer_kwargs)
-    
+
             # 특수 토큰 설정 (필요시)
             model_architecture = self.config.get("model", {}).get("architecture", "")
             if model_architecture in ["kogpt2", "gpt2"]:
                 # GPT 계열은 pad_token이 없을 수 있음
                 if self.tokenizer.pad_token is None:
                     self.tokenizer.pad_token = self.tokenizer.eos_token
-                    
+
             logger.info(f"✅ 토크나이저 로딩 성공: {type(self.tokenizer).__name__}")
-            
+
         except Exception as e:
             logger.error(f"❌ 토크나이저 로딩 실패: {e}")
             raise
@@ -902,25 +899,25 @@ class DialogueSummarizationTrainer:
     def _load_model_with_qlora(self, model_checkpoint: str, architecture: str, qlora_config: Dict[str, Any]) -> None:
         """
         일반 QLoRA를 사용한 모델 로딩
-    
+
         Args:
             model_checkpoint: 모델 체크포인트 경로
             architecture: 모델 아키텍처
             qlora_config: QLoRA 설정
         """
         logger.info("🔋 QLoRA로 메모리 효율적 모델 로딩 중...")
-    
+
         try:
             # 4-bit 양자화 설정
             from transformers import BitsAndBytesConfig
-    
+
             bnb_config = BitsAndBytesConfig(
                 load_in_4bit=qlora_config.get("load_in_4bit", True),
                 bnb_4bit_compute_dtype=getattr(torch, qlora_config.get("bnb_4bit_compute_dtype", "bfloat16")),
                 bnb_4bit_quant_type=qlora_config.get("bnb_4bit_quant_type", "nf4"),
                 bnb_4bit_use_double_quant=qlora_config.get("bnb_4bit_use_double_quant", True),
             )
-    
+
             # 모델 로딩 - trust_remote_code 추가
             if architecture in ["kobart", "bart", "t5", "mt5"]:
                 model = AutoModelForSeq2SeqLM.from_pretrained(
@@ -938,29 +935,27 @@ class DialogueSummarizationTrainer:
                     torch_dtype=torch.bfloat16,
                     trust_remote_code=True,
                 )
-    
+
             # LoRA 설정 - PEFT 어댑터 반드시 적용
             if LoraConfig is not None:
                 lora_config = LoraConfig(
                     r=qlora_config.get("lora_rank", 64),
                     lora_alpha=qlora_config.get("lora_alpha", 128),
-                    target_modules=qlora_config.get(
-                        "target_modules", ["q_proj", "k_proj", "v_proj", "out_proj"]
-                    ),
+                    target_modules=qlora_config.get("target_modules", ["q_proj", "k_proj", "v_proj", "out_proj"]),
                     lora_dropout=qlora_config.get("lora_dropout", 0.05),
                     bias="none",
                     task_type=(
                         TaskType.SEQ_2_SEQ_LM if architecture in ["kobart", "bart", "t5", "mt5"] else TaskType.CAUSAL_LM
                     ),
                 )
-    
+
                 # PEFT 모델 생성 - 이 부분이 핵심
                 model = get_peft_model(model, lora_config)
                 model.print_trainable_parameters()  # 학습 가능 파라미터 확인
                 logger.info("✅ QLoRA + PEFT 모델 준비 완료!")
             else:
                 raise ImportError("PEFT 라이브러리를 찾을 수 없습니다")
-    
+
             self.model = model
 
         except ImportError:
@@ -1153,38 +1148,38 @@ def create_trainer(config: Union[str, Dict[str, Any]], sweep_mode: bool = False)
 if __name__ == "__main__":
     # 테스트/디버깅용 메인 함수
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="Train dialogue summarization model")
     parser.add_argument("--config", type=str, required=True, help="Config file path")
     parser.add_argument("--train-data", type=str, help="Train data path")
     parser.add_argument("--val-data", type=str, help="Validation data path")
     parser.add_argument("--test-data", type=str, help="Test data path")
     parser.add_argument("--sweep", action="store_true", help="Run in sweep mode")
-    
+
     args = parser.parse_args()
-    
+
     # WandB 초기화 (비 Sweep 모드)
     if not args.sweep:
         # 기존 세션 정리
         if wandb.run is not None:
             wandb.finish()
-            
+
         wandb.init(
-            project="nlp-dialogue-summarization", 
-            name="manual_training", 
+            project="nlp-dialogue-summarization",
+            name="manual_training",
             config={"manual_run": True},
             reinit=True,
-            resume="never"
+            resume="never",
         )
-    
+
     # 트레이너 생성 및 학습
     trainer = create_trainer(args.config, sweep_mode=args.sweep)
-    
+
     # 데이터 준비
     datasets = trainer.prepare_data(train_path=args.train_data, val_path=args.val_data, test_path=args.test_data)
-    
+
     # 학습 실행
     result = trainer.train(datasets)
-    
+
     print(f"Training completed! Best ROUGE combined F1: {result.best_metrics.get('rouge_combined_f1', 0):.4f}")
     print(f"Training completed! Best ROUGE combined F1: {result.best_metrics.get('rouge_combined_f1', 0):.4f}")
