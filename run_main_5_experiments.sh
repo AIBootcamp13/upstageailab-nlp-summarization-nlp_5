@@ -149,7 +149,7 @@ cleanup_gpu_emergency() {
     pkill -f "python.*torch" 2>/dev/null || true
     
     # 강제 메모리 정리
-    python3 -c "
+    /opt/conda/bin/python3 -c "
 import torch
 import gc
 if torch.cuda.is_available():
@@ -228,7 +228,7 @@ cleanup_gpu() {
     done
 
     # Python에서 GPU 메모리 정리
-    python3 -c "
+    /opt/conda/bin/python3 -c "
 import torch
 import gc
 if torch.cuda.is_available():
@@ -248,10 +248,10 @@ gc.collect()
 " 2>/dev/null || true
 
     echo "✅ GPU 메모리 정리 완료"
-
-    # Python 가비지 컬렉션
-    python3 -c "import gc; gc.collect()" 2>/dev/null || true
-    echo "✅ Python 가비지 컬렉션 완료"
+    
+    # Python 가비지 컴렉션
+    /opt/conda/bin/python3 -c "import gc; gc.collect()" 2>/dev/null || true
+    echo "✅ Python 가비지 컴렉션 완료"
 
     # 시스템 캐시 정리 (권한이 있는 경우)
     if [ -w /proc/sys/vm/drop_caches ]; then
@@ -310,7 +310,7 @@ for i in "${!experiments[@]}"; do
     exp_name_clean="${exp_name_clean//💪/_}"
     LOG_FILE="${LOG_DIR}/experiment_${EXPERIMENT_NUM}_${exp_name_clean}.log"
     # 실험 실행 (1에포크 모드 옵션 처리)
-    EXPERIMENT_CMD="python3 code/auto_experiment_runner.py --config config/experiments/${config_file}"
+    EXPERIMENT_CMD="/opt/conda/bin/python3 code/auto_experiment_runner.py --config config/experiments/${config_file}"
 
     # 1에포크 모드일 때 --one-epoch 옵션 추가
     if [[ "$ONE_EPOCH_MODE" == "true" ]]; then
