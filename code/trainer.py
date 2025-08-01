@@ -9,6 +9,7 @@ import os
 import sys
 import json
 import logging
+import time
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple, Union
 from dataclasses import dataclass, field
@@ -899,6 +900,17 @@ class DialogueSummarizationTrainer:
             from utils.model_loading_utils import safe_load_tokenizer
             
             self.tokenizer = safe_load_tokenizer(model_checkpoint, **tokenizer_kwargs)
+            
+            # None 반환 시 직접 로딩 시도 (특정 모델 호환성 문제 해결)
+            if self.tokenizer is None:
+                logger.warning(f"safe_load_tokenizer 실패, 직접 로딩 시도: {model_checkpoint}")
+                try:
+                    self.tokenizer = AutoTokenizer.from_pretrained(model_checkpoint, **tokenizer_kwargs)
+                except Exception as direct_error:
+                    logger.error(f"직접 로딩도 실패: {direct_error}")
+                    # 대체 모델로 폴백 (KoBART 기본)
+                    logger.warning("기본 KoBART 토크나이저로 폴백")
+                    self.tokenizer = AutoTokenizer.from_pretrained("digit82/kobart-summarization")
 
             # 특수 토큰 설정 (필요시)
             model_architecture = self.config.get("model", {}).get("architecture", "")
