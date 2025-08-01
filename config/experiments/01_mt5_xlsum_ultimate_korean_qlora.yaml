@@ -47,8 +47,8 @@ training:
   eval_steps: 100                     # 더 자주 평가
   
   # 🔥 1단계 극한 최적화 배치 설정
-  per_device_train_batch_size: 16      # 18→16 최소 축소
-  per_device_eval_batch_size: 32      # 48→32 평가 배치 축소
+  per_device_train_batch_size: 12      # 16→12 메모리 절약
+  per_device_eval_batch_size: 16      # 32→16 평가 배치 추가 축소
   gradient_accumulation_steps: 2      # 유효 배치 48 유지
   
   # ⚡ 1단계 학습 파라미터
