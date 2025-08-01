@@ -47,7 +47,7 @@ training:
   eval_steps: 100                     # 더 자주 평가
   
   # 🔥 1단계 극한 최적화 배치 설정
-  per_device_train_batch_size: 32      # 6→8 점진적 증가
+  per_device_train_batch_size: 24      # 32→24 OOM 방지용 축소
   per_device_eval_batch_size: 48      # 12→16 증가
   gradient_accumulation_steps: 2      # 유효 배치 48 유지
   
@@ -62,7 +62,7 @@ training:
   fp16: false                         # bf16 사용으로 변경
   bf16: true                          # RTX 3090 + CUDA 12.2 최적
   tf32: true                          # Ampere 아키텍처 최적화
-  gradient_checkpointing: false       # Unsloth 자체 최적화
+  gradient_checkpointing: true        # 메모리 절약을 위해 활성화
   dataloader_num_workers: 32          # 48코어의 67% 활용
   dataloader_pin_memory: true         # 251GB RAM 활용
   dataloader_persistent_workers: true # 워커 재사용
