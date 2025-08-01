@@ -21,6 +21,7 @@ dependencies = [
     "datasets>=2.14.0",
     "evaluate>=0.4.0",
     # "unsloth",  # Ubuntu에서 활성화 예정
+    "black>=25.1.0",
 ]
 
 [project.optional-dependencies]
