@@ -306,6 +306,8 @@ class DialogueSummarizationTrainer:
             decoder_inputs = []
             decoder_outputs = []
 
+            if self.tokenizer is None:
+                raise ValueError("Tokenizer failed to load")
             bos_token = self.tokenizer.bos_token
             eos_token = self.tokenizer.eos_token
 
@@ -469,7 +471,7 @@ class DialogueSummarizationTrainer:
         continuity_manager = get_continuity_manager()
         
         # 실험 ID 생성 (기존 experiment_tracker ID 사용)
-        experiment_id = self.experiment_tracker.current_experiment_id if self.experiment_tracker else f"exp_{int(time.time())}"
+        experiment_id = f"exp_{int(time.time())}"
         
         # 체크포인트 초기화
         checkpoint = continuity_manager.start_experiment(
