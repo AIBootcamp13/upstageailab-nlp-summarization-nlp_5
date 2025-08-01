@@ -49,9 +49,9 @@ REMOTE_DATA_DIR="${REMOTE_BASE}/${DATA_SUBDIR:-data}"
 echo "🗑️  빠른 실험 결과 삭제 도구"
 echo "=================================="
 
-# 로컬 삭제
+# 로컬 삭제 (데이터 파일 제외)
 log_info "로컬 실험 결과 삭제 중..."
-for dir in "$LOCAL_OUTPUTS_DIR" "$LOCAL_LOGS_DIR" "$LOCAL_WANDB_DIR" "$LOCAL_MODELS_DIR" "$LOCAL_DATA_DIR"; do
+for dir in "$LOCAL_OUTPUTS_DIR" "$LOCAL_LOGS_DIR" "$LOCAL_WANDB_DIR" "$LOCAL_MODELS_DIR"; do
     if [[ -d "$dir" ]]; then
         rm -rf "$dir"/* 2>/dev/null || true
         log_success "$(basename "$dir") 삭제 완료"
@@ -60,13 +60,12 @@ done
 
 # 추가 파일 삭제
 rm -f "$LOCAL_BASE"/benchmark_*.log "$LOCAL_BASE"/mt5_training*.log "$LOCAL_BASE"/sync_report_*.txt "$LOCAL_BASE"/.synced_experiments 2>/dev/null || true
-
-# 원격 삭제
+# 원격 삭제 (데이터 파일 제외)
 log_info "원격 서버 실험 결과 삭제 중..."
 if ssh "$REMOTE_HOST" "echo '연결 확인'" >/dev/null 2>&1; then
     ssh "$REMOTE_HOST" "
         cd '$REMOTE_BASE' || exit 1
-        rm -rf '$REMOTE_OUTPUTS_DIR'/* '$REMOTE_LOGS_DIR'/* '$REMOTE_WANDB_DIR'/* '$REMOTE_MODELS_DIR'/* '$REMOTE_DATA_DIR'/* 2>/dev/null || true
+        rm -rf '$REMOTE_OUTPUTS_DIR'/* '$REMOTE_LOGS_DIR'/* '$REMOTE_WANDB_DIR'/* '$REMOTE_MODELS_DIR'/* 2>/dev/null || true
         rm -f benchmark_*.log mt5_training*.log *.tmp .synced_experiments 2>/dev/null || true
         echo '원격 서버 삭제 완료'
     "

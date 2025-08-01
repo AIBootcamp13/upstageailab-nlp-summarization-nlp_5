@@ -144,10 +144,10 @@ cleanup_local_results() {
     echo "📁 Logs: $logs_size ($logs_files 파일)"
     echo "📁 WandB: $wandb_size ($wandb_files 파일)"
     echo "📁 Models: $models_size ($models_files 파일)"
-    echo "📁 Data: $data_size ($data_files 파일)"
+    echo "📁 Data: $data_size ($data_files 파일) - 보존됨"
     
-    # 전체 합계
-    local total_files=$((outputs_files + logs_files + wandb_files + models_files + data_files))
+    # 전체 합계 (데이터 파일 제외)
+    local total_files=$((outputs_files + logs_files + wandb_files + models_files))
     
     if [[ $total_files -eq 0 ]]; then
         log_info "로컬에 삭제할 실험 결과가 없습니다."
@@ -167,8 +167,8 @@ cleanup_local_results() {
     
     log_info "로컬 실험 결과 삭제 시작..."
     
-    # 각 디렉토리 삭제
-    for dir_info in "outputs:$LOCAL_OUTPUTS_DIR" "logs:$LOCAL_LOGS_DIR" "wandb:$LOCAL_WANDB_DIR" "models:$LOCAL_MODELS_DIR" "data:$LOCAL_DATA_DIR"; do
+    # 각 디렉토리 삭제 (데이터 파일 제외)
+    for dir_info in "outputs:$LOCAL_OUTPUTS_DIR" "logs:$LOCAL_LOGS_DIR" "wandb:$LOCAL_WANDB_DIR" "models:$LOCAL_MODELS_DIR"; do
         local dir_name="${dir_info%%:*}"
         local dir_path="${dir_info##*:}"
         
@@ -229,10 +229,10 @@ cleanup_remote_results() {
     echo "📁 Logs: $logs_size ($logs_files 파일)"
     echo "📁 WandB: $wandb_size ($wandb_files 파일)"
     echo "📁 Models: $models_size ($models_files 파일)"
-    echo "📁 Data: $data_size ($data_files 파일)"
+    echo "📁 Data: $data_size ($data_files 파일) - 보존됨"
     
-    # 전체 합계
-    local total_files=$((outputs_files + logs_files + wandb_files + models_files + data_files))
+    # 전체 합계 (데이터 파일 제외)
+    local total_files=$((outputs_files + logs_files + wandb_files + models_files))
     
     if [[ $total_files -eq 0 ]]; then
         log_info "원격 서버에 삭제할 실험 결과가 없습니다."
@@ -252,8 +252,8 @@ cleanup_remote_results() {
     
     log_info "원격 서버 실험 결과 삭제 시작..."
     
-    # 각 디렉토리 삭제
-    for dir_info in "outputs:$REMOTE_OUTPUTS_DIR" "logs:$REMOTE_LOGS_DIR" "wandb:$REMOTE_WANDB_DIR" "models:$REMOTE_MODELS_DIR" "data:$REMOTE_DATA_DIR"; do
+    # 각 디렉토리 삭제 (데이터 파일 제외)
+    for dir_info in "outputs:$REMOTE_OUTPUTS_DIR" "logs:$REMOTE_LOGS_DIR" "wandb:$REMOTE_WANDB_DIR" "models:$REMOTE_MODELS_DIR"; do
         local dir_name="${dir_info%%:*}"
         local dir_path="${dir_info##*:}"
         
@@ -285,7 +285,7 @@ main() {
     echo -e "${YELLOW}삭제 대상:${NC}"
     echo "- 로컬: $LOCAL_BASE"
     echo "- 원격: $REMOTE_HOST:$REMOTE_BASE"
-    echo "- 디렉토리: outputs, logs, wandb, models, data"
+    echo "- 디렉토리: outputs, logs, wandb, models (데이터 파일 제외)"
     echo
     
     read -p "정말로 계속하시겠습니까? (yes 입력 필요): " -r
