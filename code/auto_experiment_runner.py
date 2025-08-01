@@ -344,7 +344,80 @@ class AutoExperimentRunner:
             
             # 결과 수집
             if process.returncode == 0:
-                result = self._collect_results(config, Path(config_path).stem)
+                
+                # 🆕 학습 완료 후 test.csv 추론 수행
+                print(f"\n📊 Test 추론 시작: {experiment_id}")
+                
+                try:
+                    # 베스트 체크포인트 찾기
+                    output_dir = Path(config.get('training', {}).get('output_dir', 'outputs'))
+                    checkpoint_dirs = list(output_dir.glob('checkpoint-*'))
+                    
+                    if checkpoint_dirs:
+                        # 가장 최근 체크포인트 선택
+                        best_checkpoint = max(checkpoint_dirs, key=lambda p: p.stat().st_mtime)
+                        print(f"🎯 베스트 체크포인트: {best_checkpoint}")
+                        
+                        # post_training_inference 활용
+                        try:
+                            from post_training_inference import generate_submission_after_training
+                            
+                            submission_path = generate_submission_after_training(
+                                experiment_name=experiment_id,
+                                model_path=str(best_checkpoint),
+                                config_dict=config
+                            )
+                            
+                            print(f"✅ 제출 파일 생성 완료: {submission_path}")
+                            result = self._collect_results(config, Path(config_path).stem)
+                            result['submission_path'] = submission_path
+                            
+                        except ImportError as ie:
+                            print(f"⚠️ post_training_inference import 실패: {ie}")
+                            # 대안: run_inference.py 직접 사용
+                            try:
+                                inference_cmd = [
+                                    sys.executable,
+                                    str(path_manager.resolve_path("code/run_inference.py")),
+                                    "--model_path", str(best_checkpoint),
+                                    "--input_file", "data/test.csv",
+                                    "--output_file", f"outputs/auto_experiments/{experiment_id}_submission.csv",
+                                    "--batch_size", "16"
+                                ]
+                                
+                                print(f"🔄 대안 추론 실행: {' '.join(inference_cmd)}")
+                                
+                                inference_process = subprocess.run(
+                                    inference_cmd,
+                                    capture_output=True,
+                                    text=True,
+                                    env=env
+                                )
+                                
+                                if inference_process.returncode == 0:
+                                    submission_path = f"outputs/auto_experiments/{experiment_id}_submission.csv"
+                                    print(f"✅ 대안 추론 성공: {submission_path}")
+                                    result = self._collect_results(config, Path(config_path).stem)
+                                    result['submission_path'] = submission_path
+                                else:
+                                    print(f"❌ 대안 추론 실패: {inference_process.stderr}")
+                                    result = self._collect_results(config, Path(config_path).stem)
+                                    result['inference_error'] = inference_process.stderr
+                                    
+                            except Exception as alt_e:
+                                print(f"❌ 대안 추론 예외: {alt_e}")
+                                result = self._collect_results(config, Path(config_path).stem)
+                                result['inference_error'] = str(alt_e)
+                                
+                    else:
+                        print("⚠️ 체크포인트를 찾을 수 없습니다.")
+                        result = self._collect_results(config, Path(config_path).stem)
+                        result['inference_error'] = "No checkpoint found"
+                        
+                except Exception as inf_e:
+                    print(f"❌ 추론 실행 중 예외: {inf_e}")
+                    result = self._collect_results(config, Path(config_path).stem)
+                    result['inference_error'] = str(inf_e)
                 result['status'] = 'success'
                 result['duration'] = time.time() - start_time
             else:
