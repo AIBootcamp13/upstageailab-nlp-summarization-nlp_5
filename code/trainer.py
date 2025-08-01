@@ -521,7 +521,29 @@ class DialogueSummarizationTrainer:
             decoded_labels = self.tokenizer.batch_decode(labels, skip_special_tokens=True)
 
             # 대화 요약에 특화된 ROUGE 메트릭 계산 (Multi-reference 지원)
-            result = self.rouge_calculator.compute_metrics(decoded_preds, decoded_labels)
+            rouge_scores = []
+            for pred, ref in zip(decoded_preds, decoded_labels):
+                score = self.rouge_calculator.calculate_single_reference(pred, ref)
+                rouge_scores.append(score)
+            
+            # 평균 점수 계산
+            avg_rouge1_f1 = np.mean([score.rouge1.f1 for score in rouge_scores])
+            avg_rouge2_f1 = np.mean([score.rouge2.f1 for score in rouge_scores])
+            avg_rougeL_f1 = np.mean([score.rougeL.f1 for score in rouge_scores])
+            avg_combined_f1 = avg_rouge1_f1 + avg_rouge2_f1 + avg_rougeL_f1
+            
+            result = {
+                'rouge1_f1': avg_rouge1_f1,
+                'rouge2_f1': avg_rouge2_f1,
+                'rougeL_f1': avg_rougeL_f1,
+                'rouge_combined_f1': avg_combined_f1,
+                'rouge1_precision': np.mean([score.rouge1.precision for score in rouge_scores]),
+                'rouge1_recall': np.mean([score.rouge1.recall for score in rouge_scores]),
+                'rouge2_precision': np.mean([score.rouge2.precision for score in rouge_scores]),
+                'rouge2_recall': np.mean([score.rouge2.recall for score in rouge_scores]),
+                'rougeL_precision': np.mean([score.rougeL.precision for score in rouge_scores]),
+                'rougeL_recall': np.mean([score.rougeL.recall for score in rouge_scores])
+            }
 
             return result
 
