@@ -103,3 +103,6 @@ sync_report_*.txt
 
 # Unsloth compiled cache
 unsloth_compiled_cache/
+
+# Hugging Face model cache
+hf_cache/
