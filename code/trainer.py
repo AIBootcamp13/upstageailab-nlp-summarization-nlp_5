@@ -7,6 +7,20 @@ WandB Sweep과의 통합을 위해 설계되었으며, 다양한 모델과 설�
 
 import os
 import sys
+from pathlib import Path
+
+# .env 파일 로드 (WandB API 키 등)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    print("⚠️ python-dotenv가 설치되지 않았습니다. .env 파일을 로드할 수 없습니다.")
+    pass
+
+# 프로젝트 루트 디렉토리를 Python 경로에 추가
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(Path(__file__).parent))
 import json
 import logging
 from pathlib import Path
@@ -50,33 +64,66 @@ except ImportError:
     UNSLOTH_AVAILABLE = False
 
 from datasets import Dataset, DatasetDict
-import evaluate
+
+# evaluate 모듈 선택적 import
+try:
+    import evaluate
+    EVALUATE_AVAILABLE = True
+except ImportError:
+    print("⚠️ evaluate 라이브러리를 찾을 수 없습니다. ROUGE 메트릭 계산이 제한될 수 있습니다.")
+    print("👉 'pip install evaluate' 명령으로 설치하세요.")
+    evaluate = None
+    EVALUATE_AVAILABLE = False
+
 import wandb
 # 로컬 유틸리티 임포트
-try:
-    from utils import load_config
-    from utils.data_utils import DataProcessor
-    from utils.metrics import RougeCalculator
-    from utils.experiment_utils import ExperimentTracker, ModelRegistry
-    from utils.environment_detector import EnvironmentDetector, get_auto_config, should_use_unsloth
-    from utils.path_utils import PathManager, path_manager
-except ImportError:
-    # code 디렉토리에서 실행되는 경우
-    import sys
-    sys.path.append('..')
-    from utils import load_config
-    from utils.data_utils import DataProcessor
-    from utils.metrics import RougeCalculator
-    from utils.experiment_utils import ExperimentTracker, ModelRegistry
-    from utils.environment_detector import EnvironmentDetector, get_auto_config, should_use_unsloth
-    from utils.path_utils import PathManager, path_manager
+from utils import load_config
+from utils.data_utils import DataProcessor
+from utils.metrics import RougeCalculator
+from utils.experiment_utils import ExperimentTracker, ModelRegistry
+from utils.path_utils import PathManager, path_manager
+
+
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-import pandas as pd
-from datasets import Dataset, DatasetDict
+# BART 모델을 위한 커스텀 DataCollator
+class SmartDataCollatorForSeq2Seq(DataCollatorForSeq2Seq):
+    """
+    모델 타입에 따라 자동으로 token_type_ids 처리를 조정하는 DataCollator
+    """
+    
+    def __init__(self, tokenizer, model=None, **kwargs):
+        super().__init__(tokenizer, model, **kwargs)
+        
+        # 모델 타입 확인
+        self.model_type = None
+        if model is not None:
+            model_class_name = model.__class__.__name__
+            if "Bart" in model_class_name or "bart" in model_class_name.lower():
+                self.model_type = "bart"
+            elif "T5" in model_class_name or "t5" in model_class_name.lower():
+                self.model_type = "t5"
+            elif "MT5" in model_class_name or "mt5" in model_class_name.lower():
+                self.model_type = "mt5"
+                
+    def __call__(self, features, return_tensors=None):
+        """
+        모델 타입에 따라 적절히 처리된 배치 반환
+        """
+        batch = super().__call__(features, return_tensors)
+        
+        # BART 모델인 경우 token_type_ids 제거
+        if self.model_type == "bart":
+            if "token_type_ids" in batch:
+                del batch["token_type_ids"]
+            if "decoder_token_type_ids" in batch:
+                del batch["decoder_token_type_ids"]
+                
+        return batch
 
+
+@dataclass
 class TrainingResult:
     """학습 결과 데이터 클래스"""
     best_metrics: Dict[str, float]
@@ -128,7 +175,6 @@ class WandbCallback(TrainerCallback):
                 log_metrics['best/rouge_combined_f1'] = rouge_combined
             
             wandb.log(log_metrics)
-            
             # 실험 추적기에도 로깅
             if self.trainer_instance.experiment_tracker:
                 self.trainer_instance.experiment_tracker.log_metrics(
@@ -220,9 +266,6 @@ class DialogueSummarizationTrainer:
         
         # 로그 디렉토리 설정
         self.log_dir = path_manager.get_log_path(experiment_name)
-        
-        # 파일 핸들러 추가 (output_dir이 설정된 후)
-        self._add_file_handler()
     
     def initialize_components(self) -> None:
         """모든 컴포넌트 초기화"""
@@ -251,183 +294,90 @@ class DialogueSummarizationTrainer:
         
         # ROUGE 계산기 초기화
         self.rouge_calculator = RougeCalculator(
-            use_korean_tokenizer=self.config.get("evaluation", {}).get("rouge_tokenize_korean", True),
-            use_stemmer=self.config.get("evaluation", {}).get("rouge_use_stemmer", True)
+            use_korean_tokenizer=self.config.get('evaluation', {}).get('rouge_tokenize_korean', True),
+            use_stemmer=self.config.get('evaluation', {}).get('rouge_use_stemmer', True)
         )
+        
         logger.info("All components initialized successfully")
+    
     def prepare_data(self, train_path: Optional[str] = None, 
                     val_path: Optional[str] = None,
                     test_path: Optional[str] = None) -> DatasetDict:
         """
-        데이터 준비 - baseline.py 방식으로 수정
-        """
-        # 경로 결정
-        data_paths = self.config.get('data', self.config.get('general', {}))
-        train_path = train_path or data_paths.get('train_path')
-        val_path = val_path or data_paths.get('val_path')
-        test_path = test_path or data_paths.get('test_path')
+        데이터 준비
         
-        logger.info("Loading and processing datasets (baseline style)...")
+        Args:
+            train_path: 학습 데이터 경로
+            val_path: 검증 데이터 경로  
+            test_path: 테스트 데이터 경로
+            
+        Returns:
+            처리된 데이터셋 딕셔너리
+        """
+        # 기본 데이터 경로 설정
+        data_path = self.config.get('general', {}).get('data_path', 'data/')
+        
+        # 상대 경로를 프로젝트 루트 기준으로 처리
+        if not Path(data_path).is_absolute():
+            # 프로젝트 루트 찾기 (trainer.py는 code/ 디렉토리에 있음)
+            project_root = Path(__file__).parent.parent
+            base_path = project_root / data_path
+        else:
+            base_path = Path(data_path)
+        
+        # 경로가 없으면 config에서 가져오거나 기본 파일명 사용
+        if train_path is None:
+            train_path = self.config.get('general', {}).get('train_path')
+            if train_path is None:
+                train_path = str(base_path / 'train.csv')
+        if val_path is None:
+            val_path = self.config.get('general', {}).get('val_path')
+            if val_path is None:
+                val_path = str(base_path / 'dev.csv')
+        if test_path is None:
+            test_path = self.config.get('general', {}).get('test_path')
+            if test_path is None and (base_path / 'test.csv').exists():
+                test_path = str(base_path / 'test.csv')
+        
+        logger.info("Loading and processing datasets...")
+        logger.info(f"Project root: {Path(__file__).parent.parent}")
+        logger.info(f"Base data path: {base_path}")
+        logger.info(f"Train path: {train_path}")
+        logger.info(f"Val path: {val_path}")
         
         datasets = {}
         
-        # Train 데이터 처리
-        if train_path:
-            logger.info(f"Loading train data from: {train_path}")
-            
-            # pandas로 CSV 읽기
-            train_df = pd.read_csv(train_path)
-            train_df = train_df[['fname', 'dialogue', 'summary']]
-            
-            # baseline의 make_input 로직
-            encoder_inputs = []
-            decoder_inputs = []
-            decoder_outputs = []
-            
-            bos_token = self.tokenizer.bos_token
-            eos_token = self.tokenizer.eos_token
-            
-            for dialogue, summary in zip(train_df['dialogue'], train_df['summary']):
-                encoder_input = dialogue
-                decoder_input = f"{bos_token} {summary}"
-                decoder_output = f"{summary} {eos_token}"
-                
-                encoder_inputs.append(encoder_input)
-                decoder_inputs.append(decoder_input)
-                decoder_outputs.append(decoder_output)
-            
-            # 토크나이징
-            tokenized_encoder = self.tokenizer(
-                encoder_inputs, 
-                return_tensors="pt", 
-                padding=True,
-                truncation=True, 
-                max_length=self.config['tokenizer']['encoder_max_len'],
-                return_token_type_ids=False
+        if train_path and Path(train_path).exists():
+            train_data = self.data_processor.load_data(train_path)
+            datasets['train'] = self.data_processor.process_data(
+                train_data, 
+                is_training=True
             )
-            
-            tokenized_decoder_inputs = self.tokenizer(
-                decoder_inputs,
-                return_tensors="pt",
-                padding=True,
-                truncation=True,
-                max_length=self.config['tokenizer']['decoder_max_len'],
-                return_token_type_ids=False
-            )
-            
-            tokenized_decoder_outputs = self.tokenizer(
-                decoder_outputs,
-                return_tensors="pt",
-                padding=True,
-                truncation=True,
-                max_length=self.config['tokenizer']['decoder_max_len'],
-                return_token_type_ids=False
-            )
-            
-            # HuggingFace Dataset 형식으로 변환
-            train_dataset = Dataset.from_dict({
-                'input_ids': tokenized_encoder['input_ids'],
-                'attention_mask': tokenized_encoder['attention_mask'],
-                'decoder_input_ids': tokenized_decoder_inputs['input_ids'],
-                'labels': tokenized_decoder_outputs['input_ids']
-            })
-            
-            datasets['train'] = train_dataset
-            logger.info(f"Train dataset size: {len(train_dataset)}")
+            logger.info(f"Train dataset size: {len(datasets['train'])}")
+        else:
+            logger.warning(f"Train data not found at {train_path}")
         
-        # Validation 데이터 처리
-        if val_path:
-            logger.info(f"Loading validation data from: {val_path}")
-            
-            # pandas로 CSV 읽기
-            val_df = pd.read_csv(val_path)
-            val_df = val_df[['fname', 'dialogue', 'summary']]
-            
-            # baseline의 make_input 로직
-            encoder_inputs = []
-            decoder_inputs = []
-            decoder_outputs = []
-            
-            bos_token = self.tokenizer.bos_token
-            eos_token = self.tokenizer.eos_token
-            
-            for dialogue, summary in zip(val_df['dialogue'], val_df['summary']):
-                encoder_input = dialogue
-                decoder_input = f"{bos_token} {summary}"
-                decoder_output = f"{summary} {eos_token}"
-                
-                encoder_inputs.append(encoder_input)
-                decoder_inputs.append(decoder_input)
-                decoder_outputs.append(decoder_output)
-            
-            # 토크나이징
-            tokenized_encoder = self.tokenizer(
-                encoder_inputs, 
-                return_tensors="pt", 
-                padding=True,
-                truncation=True, 
-                max_length=self.config['tokenizer']['encoder_max_len'],
-                return_token_type_ids=False
+        if val_path and Path(val_path).exists():
+            val_data = self.data_processor.load_data(val_path)
+            datasets['validation'] = self.data_processor.process_data(
+                val_data,
+                is_training=False
             )
-            
-            tokenized_decoder_inputs = self.tokenizer(
-                decoder_inputs,
-                return_tensors="pt",
-                padding=True,
-                truncation=True,
-                max_length=self.config['tokenizer']['decoder_max_len'],
-                return_token_type_ids=False
-            )
-            
-            tokenized_decoder_outputs = self.tokenizer(
-                decoder_outputs,
-                return_tensors="pt",
-                padding=True,
-                truncation=True,
-                max_length=self.config['tokenizer']['decoder_max_len'],
-                return_token_type_ids=False
-            )
-            
-            # HuggingFace Dataset 형식으로 변환
-            val_dataset = Dataset.from_dict({
-                'input_ids': tokenized_encoder['input_ids'],
-                'attention_mask': tokenized_encoder['attention_mask'],
-                'decoder_input_ids': tokenized_decoder_inputs['input_ids'],
-                'labels': tokenized_decoder_outputs['input_ids']
-            })
-            
-            datasets['validation'] = val_dataset
-            logger.info(f"Validation dataset size: {len(val_dataset)}")
+            logger.info(f"Validation dataset size: {len(datasets['validation'])}")
+        else:
+            logger.warning(f"Validation data not found at {val_path}")
         
-        # Test 데이터 처리
-        if test_path:
-            logger.info(f"Loading test data from: {test_path}")
-            
-            # pandas로 CSV 읽기
-            test_df = pd.read_csv(test_path)
-            test_df = test_df[['fname', 'dialogue']]  # test는 summary 없음
-            
-            # 토크나이징 (encoder만)
-            tokenized_encoder = self.tokenizer(
-                test_df['dialogue'].tolist(), 
-                return_tensors="pt", 
-                padding=True,
-                truncation=True, 
-                max_length=self.config['tokenizer']['encoder_max_len'],
-                return_token_type_ids=False
+        if test_path and Path(test_path).exists():
+            test_data = self.data_processor.load_data(test_path, is_test=True)
+            datasets['test'] = self.data_processor.process_data(
+                test_data,
+                is_training=False,
+                is_test=True
             )
-            
-            # HuggingFace Dataset 형식으로 변환
-            test_dataset = Dataset.from_dict({
-                'input_ids': tokenized_encoder['input_ids'],
-                'attention_mask': tokenized_encoder['attention_mask']
-            })
-            
-            datasets['test'] = test_dataset
-            logger.info(f"Test dataset size: {len(test_dataset)}")
+            logger.info(f"Test dataset size: {len(datasets['test'])}")
         
         return DatasetDict(datasets)
-
+    
     def train(self, dataset: DatasetDict, 
              resume_from_checkpoint: Optional[str] = None) -> TrainingResult:
         """
@@ -442,39 +392,11 @@ class DialogueSummarizationTrainer:
         """
         # 실험 시작
         if self.experiment_tracker:
- # WandB 초기화 (조장님 지시사항 반영)
- if self.config[training].get(report_to, none) in [all, wandb]:
- from utils.experiment_utils import get_korean_time_format
- 
- # 한국 시간 기준 MMDDHHMM 형식
- korean_time = get_korean_time_format(MMDDHHMM)
- 
- # 모델 아키텍처 첫 글자 추출
- model_arch = self.config.get(model, {}).get(architecture, unknown)
- model_prefix = model_arch[0] if model_arch != unknown else x
- 
- # WandB run name 생성
- run_name = f{model_prefix}_{self.experiment_name}_{korean_time}
- 
- # 환경 변수 설정
- os.environ[WANDB_LOG_MODEL] = false # mT5는 크기가 커서 로컬만 저장
- os.environ[TOKENIZERS_PARALLELISM] = true
- 
- wandb_config = self.config.get(wandb, {})
- wandb.init(
- entity=wandb_config.get(entity, lyjune37-juneictlab),
- project=wandb_config.get(project, nlp-5),
- name=run_name,
- notes=wandb_config.get(notes, ),
- tags=wandb_config.get(tags, []),
- config=self.config
- )
-
             experiment_id = self.experiment_tracker.start_experiment(
                 name=self.experiment_name,
-                description=f"Training {self.config.get('model', {}).get('architecture', 'unknown')} model",
+                description=f"Training {self._get_model_architecture()} model",
                 config=self.config,
-                model_type=self.config.get('model', {}).get('architecture', 'unknown'),
+                model_type=self._get_model_architecture(),
                 dataset_info={
                     'train_size': len(dataset.get('train', [])),
                     'val_size': len(dataset.get('validation', []))
@@ -487,8 +409,8 @@ class DialogueSummarizationTrainer:
         # 학습 인자 설정
         training_args = self._get_training_arguments()
         
-        # 데이터 콜레이터
-        data_collator = DataCollatorForSeq2Seq(
+        # 데이터 콜레이터 - 모델 타입에 따라 SmartDataCollatorForSeq2Seq 사용
+        data_collator = SmartDataCollatorForSeq2Seq(
             tokenizer=self.tokenizer,
             model=self.model,
             padding=True,
@@ -509,16 +431,82 @@ class DialogueSummarizationTrainer:
             preds, labels = eval_preds
             
             # 토큰 ID를 텍스트로 디코딩 (특수 토큰 제거)
-            decoded_preds = self.tokenizer.batch_decode(preds, skip_special_tokens=True)
-            decoded_labels = self.tokenizer.batch_decode(labels, skip_special_tokens=True)
+            # 먼저 predictions 디코딩 (보통 문제없음)
+            try:
+                decoded_preds = self.tokenizer.batch_decode(preds, skip_special_tokens=True)
+            except Exception as e:
+                logger.warning(f"⚠️  Predictions 디코딩 오류: {e}")
+                decoded_preds = ["" for _ in range(len(preds))]
             
-            # HuggingFace에서 사용하는 -100 패딩 토큰을 정상 토큰으로 변환
-            # -100은 loss 계산에서 무시되는 라벨이지만 디코딩에서는 문제가 됨
-            labels = np.where(labels != -100, labels, self.tokenizer.pad_token_id)
-            decoded_labels = self.tokenizer.batch_decode(labels, skip_special_tokens=True)
+            # labels 안전 디코딩 (OverflowError 방지)
+            try:
+                # HuggingFace에서 사용하는 -100 패딩 토큰을 정상 토큰으로 변환
+                # -100은 loss 계산에서 무시되는 라벨이지만 디코딩에서는 문제가 됨
+                labels_fixed = np.where(labels != -100, labels, self.tokenizer.pad_token_id)
+                
+                # 토큰 ID 범위 검증 (추가 안전장치)
+                vocab_size = getattr(self.tokenizer, 'vocab_size', 50000)  # 기본값 설정
+                labels_fixed = np.clip(labels_fixed, 0, vocab_size - 1)
+                
+                # 데이터 타입 확인 및 변환
+                if hasattr(labels_fixed, 'astype'):
+                    labels_fixed = labels_fixed.astype(np.int32)
+                
+                decoded_labels = self.tokenizer.batch_decode(labels_fixed, skip_special_tokens=True)
+                
+            except Exception as e:
+                logger.warning(f"⚠️  Labels 디코딩 오류: {e}")
+                # 폴백: 빈 문자열로 처리
+                decoded_labels = ["" for _ in range(len(labels))]
             
             # 대화 요약에 특화된 ROUGE 메트릭 계산 (Multi-reference 지원)
-            result = self.rouge_calculator.compute_metrics(decoded_preds, decoded_labels)
+            try:
+                # 디코딩된 텍스트로 직접 ROUGE 계산
+                rouge_scores = []
+                for pred, ref in zip(decoded_preds, decoded_labels):
+                    if pred.strip() and ref.strip():  # 빈 문자열 방지
+                        score = self.rouge_calculator.calculate_single_reference(pred, ref)
+                        rouge_scores.append(score)
+                    else:
+                        # 빈 문자열에 대한 0점 처리
+                        from utils.metrics import RougeScore, EvaluationResult
+                        zero_rouge = RougeScore(precision=0.0, recall=0.0, f1=0.0)
+                        zero_result = EvaluationResult(
+                            rouge1=zero_rouge, rouge2=zero_rouge, rougeL=zero_rouge, rouge_combined_f1=0.0
+                        )
+                        rouge_scores.append(zero_result)
+                
+                if rouge_scores:
+                    # 평균 점수 계산
+                    avg_rouge1_f1 = sum(score.rouge1.f1 for score in rouge_scores) / len(rouge_scores)
+                    avg_rouge2_f1 = sum(score.rouge2.f1 for score in rouge_scores) / len(rouge_scores)
+                    avg_rougeL_f1 = sum(score.rougeL.f1 for score in rouge_scores) / len(rouge_scores)
+                    avg_combined_f1 = avg_rouge1_f1 + avg_rouge2_f1 + avg_rougeL_f1
+                    
+                    result = {
+                        'rouge1_f1': avg_rouge1_f1,
+                        'rouge2_f1': avg_rouge2_f1,
+                        'rougeL_f1': avg_rougeL_f1,
+                        'rouge_combined_f1': avg_combined_f1
+                    }
+                else:
+                    # 모든 샘플이 비어있는 경우
+                    result = {
+                        'rouge1_f1': 0.0,
+                        'rouge2_f1': 0.0,
+                        'rougeL_f1': 0.0,
+                        'rouge_combined_f1': 0.0
+                    }
+                    
+            except Exception as e:
+                logger.warning(f"⚠️  ROUGE 계산 오류: {e}")
+                # 폴백: 0점 반환
+                result = {
+                    'rouge1_f1': 0.0,
+                    'rouge2_f1': 0.0, 
+                    'rougeL_f1': 0.0,
+                    'rouge_combined_f1': 0.0
+                }
             
             return result
         
@@ -587,9 +575,9 @@ class DialogueSummarizationTrainer:
             # 모델 등록
             if self.model_registry:
                 model_id = self.model_registry.register_model(
-                    name=f"{self.config.get('model', {}).get('architecture', 'unknown')}_{self.experiment_name}",
-                    architecture=self.config.get('model', {}).get('architecture', 'unknown'),
-                    checkpoint=self.config.get('model', {}).get('checkpoint', self.config.get('general', {}).get('model_name', '')),
+                    name=f"{self._get_model_architecture()}_{self.experiment_name}",
+                    architecture=self._get_model_architecture(),
+                    checkpoint=self._get_model_checkpoint(),
                     config=self.config,
                     performance=wandb_callback.best_metrics,
                     training_info={
@@ -742,39 +730,20 @@ class DialogueSummarizationTrainer:
     def _setup_logging(self) -> None:
         """로깅 설정"""
         log_level = self.config.get('logging', {}).get('level', 'INFO')
-        
-        # 기본 로깅 설정 (콘솔만)
         logging.basicConfig(
             level=getattr(logging, log_level),
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=[
+                logging.FileHandler(self.output_dir / 'training.log'),
                 logging.StreamHandler(sys.stdout)
             ]
         )
-        
-        # output_dir이 설정된 후에 파일 핸들러 추가
-        if hasattr(self, 'output_dir') and self.output_dir:
-            self._add_file_handler()
-    
-    def _add_file_handler(self) -> None:
-        """로깅에 파일 핸들러 추가 (output_dir 설정 후 호출)"""
-        if hasattr(self, 'output_dir') and self.output_dir:
-            # 기존 핸들러 가져오기
-            root_logger = logging.getLogger()
-            
-            # 파일 핸들러 추가
-            file_handler = logging.FileHandler(self.output_dir / 'training.log')
-            file_handler.setFormatter(
-                logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-            )
-            root_logger.addHandler(file_handler)
-            logger.info(f"로깅 파일 생성: {self.output_dir / 'training.log'}")
     
     def _load_tokenizer(self) -> None:
         """토크나이저 로딩"""
         # model 섹션이 없으면 general에서 model_name 사용
         if 'model' in self.config:
-            model_checkpoint = self.config.get('model', {}).get('checkpoint', self.config.get('general', {}).get('model_name', ''))
+            model_checkpoint = self.config['model']['checkpoint']
         else:
             model_checkpoint = self.config.get('general', {}).get('model_name')
             if not model_checkpoint:
@@ -782,41 +751,60 @@ class DialogueSummarizationTrainer:
         
         logger.info(f"Loading tokenizer: {model_checkpoint}")
         
-        # 모델별 토크나이저 설정
-        use_fast = True
-        if 'mt5' in model_checkpoint.lower() or 't5' in model_checkpoint.lower():
-            use_fast = False  # T5/mT5는 SentencePiece로 use_fast=False 사용
-        
         self.tokenizer = AutoTokenizer.from_pretrained(
             model_checkpoint,
-            use_fast=use_fast
+            use_fast=True
         )
         
         # 특수 토큰 설정 (필요시)
-        model_architecture = self.config.get('model', {}).get('architecture', '')
-        if model_architecture in ['kogpt2', 'gpt2']:
+        if 'model' in self.config and self.config['model']['architecture'] in ['kogpt2', 'gpt2']:
             # GPT 계열은 pad_token이 없을 수 있음
             if self.tokenizer.pad_token is None:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
-    def _get_architecture_from_model_name(self) -> str:
-        """모델 이름으로부터 아키텍처 추론"""
-        model_name = self.config.get('general', {}).get('model_name', '').lower()
-        
-        if 'bart' in model_name or 'kobart' in model_name:
-            return 'bart'
-        elif 'mt5' in model_name:
-            return 'mt5'
-        elif 't5' in model_name:
-            return 't5'
-        elif 'gpt' in model_name:
-            return 'gpt2'
+    def _get_model_architecture(self) -> str:
+        """모델 아키텍처 가져오기"""
+        if 'model' in self.config:
+            return self.config['model']['architecture']
         else:
-            return 'bart'  # 기본값
+            # model_name에서 추론
+            model_checkpoint = self.config.get('general', {}).get('model_name', '')
+            if 'kobart' in model_checkpoint.lower():
+                return 'bart'
+            elif 't5' in model_checkpoint.lower():
+                return 't5'
+            elif 'mt5' in model_checkpoint.lower():
+                return 'mt5'
+            else:
+                return 'seq2seq'
     
+    def _get_model_checkpoint(self) -> str:
+        """모델 체크포인트 가져오기"""
+        if 'model' in self.config:
+            return self.config['model']['checkpoint']
+        else:
+            model_checkpoint = self.config.get('general', {}).get('model_name')
+            if not model_checkpoint:
+                raise ValueError("Model checkpoint not found in config")
+            return model_checkpoint
     def _load_model(self) -> None:
         """모델 로딩 (unsloth 및 QLoRA 지원)"""
-        model_checkpoint = self.config.get('model', {}).get('checkpoint', self.config.get('general', {}).get('model_name', ''))
-        architecture = self.config.get('model', {}).get('architecture', 'bart')
+        # model 섹션이 없으면 general에서 model_name 사용
+        if 'model' in self.config:
+            model_checkpoint = self.config['model']['checkpoint']
+            architecture = self._get_model_architecture()
+        else:
+            model_checkpoint = self.config.get('general', {}).get('model_name')
+            if not model_checkpoint:
+                raise ValueError("Model checkpoint not found in config")
+            # architecture를 모델 이름에서 추론
+            if 'kobart' in model_checkpoint.lower():
+                architecture = 'BART'
+            elif 't5' in model_checkpoint.lower():
+                architecture = 'T5'
+            elif 'mt5' in model_checkpoint.lower():
+                architecture = 'mT5'
+            else:
+                architecture = 'seq2seq'  # 기본값
         
         # QLoRA 설정 확인
         qlora_config = self.config.get('qlora', {})
@@ -971,9 +959,22 @@ class DialogueSummarizationTrainer:
         # 모델 아키텍처에 따른 로딩
         if architecture in ['kobart', 'bart', 't5', 'mt5']:
             # 시퀀스-투-시퀀스 모델
+            model_config = {
+                'torch_dtype': torch.float16 if self.config['training'].get('fp16') else torch.float32
+            }
+            
+            # mT5 모델 특수 설정 (그래디언트 체크포인트 안정성)
+            if 'mt5' in model_checkpoint.lower() or 'multilingual' in model_checkpoint.lower():
+                model_config.update({
+                    'use_cache': False,  # gradient checkpointing과 충돌 방지
+                    'output_attentions': False,
+                    'output_hidden_states': False
+                })
+                logger.info("🔧 mT5 모델 안정성 설정 적용")
+            
             self.model = AutoModelForSeq2SeqLM.from_pretrained(
                 model_checkpoint,
-                torch_dtype=torch.float16 if self.config['training'].get('fp16') else torch.float32
+                **model_config
             )
         elif architecture in ['kogpt2', 'gpt2', 'gpt-neo']:
             # 인과 언어 모델
@@ -1003,7 +1004,7 @@ class DialogueSummarizationTrainer:
     
     def _preprocess_for_model(self, examples: Dict[str, Any]) -> Dict[str, Any]:
         """모델별 데이터 전처리"""
-        architecture = self.config.get('model', {}).get('architecture', self._get_architecture_from_model_name())
+        architecture = self.config['model']['architecture']
         
         if architecture in ['t5', 'mt5', 'flan-t5']:
             # T5는 prefix 추가
@@ -1028,7 +1029,7 @@ class DialogueSummarizationTrainer:
             'overwrite_output_dir': True,
             'do_train': True,
             'do_eval': True,
-            'eval_strategy': train_config.get('eval_strategy', 'steps'),
+            'eval_strategy': train_config.get('evaluation_strategy', 'steps'),
             'eval_steps': train_config.get('eval_steps', 500),
             'save_strategy': train_config.get('save_strategy', 'steps'),
             'save_steps': train_config.get('save_steps', 500),
@@ -1043,7 +1044,7 @@ class DialogueSummarizationTrainer:
             'adam_beta2': train_config.get('adam_beta2', 0.999),
             'adam_epsilon': train_config.get('adam_epsilon', 1e-8),
             'max_grad_norm': train_config.get('max_grad_norm', 1.0),
-            'num_train_epochs': train_config['num_train_epochs'],
+            'num_train_epochs': 1 if os.environ.get('FORCE_ONE_EPOCH', '').lower() in ['1', 'true', 'yes'] else train_config['num_train_epochs'],
             'lr_scheduler_type': train_config.get('lr_scheduler_type', 'linear'),
             'warmup_ratio': train_config.get('warmup_ratio', 0.1),
             'warmup_steps': train_config.get('warmup_steps', 0),
@@ -1056,13 +1057,15 @@ class DialogueSummarizationTrainer:
             'fp16_opt_level': train_config.get('fp16_opt_level', 'O1'),
             'dataloader_num_workers': train_config.get('dataloader_num_workers', 4),
             'remove_unused_columns': False,
+            'label_smoothing_factor': train_config.get('label_smoothing', 0.0),
+            'optim': train_config.get('optim', 'adamw_torch'),
             'seed': self.config['general'].get('seed', 42),
             'report_to': ['wandb'] if wandb.run else ['none'],
             'run_name': self.experiment_name if wandb.run else None,
             'push_to_hub': False,
             'predict_with_generate': True,
-            'generation_max_length': self.config['generation']['max_length'],
-            'generation_num_beams': self.config['generation']['num_beams']
+            'generation_max_length': train_config.get('generation_max_length', self.config['tokenizer']['decoder_max_len']),
+            'generation_num_beams': train_config.get('generation_num_beams', 4)
         }
         
         # 시퀀스-투-시퀀스 특화 인자
@@ -1075,8 +1078,8 @@ class DialogueSummarizationTrainer:
         # 결과 딕셔너리 생성
         results_dict = {
             'experiment_name': self.experiment_name,
-            'model_architecture': self.config.get('model', {}).get('architecture', 'unknown'),
-            'model_checkpoint': self.config.get('model', {}).get('checkpoint', self.config.get('general', {}).get('model_name', '')),
+            'model_architecture': self._get_model_architecture(),
+            'model_checkpoint': self._get_model_checkpoint(),
             'best_metrics': result.best_metrics,
             'final_metrics': result.final_metrics,
             'model_path': result.model_path,
@@ -1096,7 +1099,7 @@ class DialogueSummarizationTrainer:
         with open(summary_file, 'w', encoding='utf-8') as f:
             f.write(f"Training Summary for {self.experiment_name}\n")
             f.write("=" * 50 + "\n\n")
-            f.write(f"Model: {self.config['model']['architecture']} ({self.config['model']['checkpoint']})\n")
+            f.write(f"Model: {self._get_model_architecture()} ({self._get_model_checkpoint()})\n")
             f.write(f"Training Epochs: {self.config['training']['num_train_epochs']}\n")
             f.write(f"Batch Size: {self.config['training']['per_device_train_batch_size']}\n")
             f.write(f"Learning Rate: {self.config['training']['learning_rate']}\n\n")
@@ -1153,10 +1156,20 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
+    # 1에포크 모드 확인 및 메시지 출력
+    if os.environ.get('FORCE_ONE_EPOCH', '').lower() in ['1', 'true', 'yes']:
+        print("🚀 1에포크 모드로 실행합니다!")
+        print("📝 학습 epoch 수가 1로 강제 설정됩니다.")
+    
     # WandB 초기화 (비 Sweep 모드)
     if not args.sweep:
-        # wandb.init(
-            project="nlp-dialogue-summarization",
+        # .env에서 로드된 WandB 설정 확인
+        wandb_entity = os.getenv('WANDB_ENTITY', 'lyjune37-juneictlab')
+        wandb_project = os.getenv('WANDB_PROJECT', 'nlp-5')
+        
+        wandb.init(
+            entity=wandb_entity,
+            project=wandb_project,
             name="manual_training",
             config={"manual_run": True}
         )
