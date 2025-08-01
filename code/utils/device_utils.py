@@ -18,6 +18,20 @@ import time
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class DeviceInfo:
+    """디바이스 정보를 담는 데이터 클래스"""
+    device_type: str  # 'cuda', 'mps', 'cpu'
+    device_name: str
+    device_index: int = 0
+    memory_gb: Optional[float] = None
+    compute_capability: Optional[str] = None
+    
+    def __str__(self) -> str:
+        return f"{self.device_type}:{self.device_index} ({self.device_name})"
+
+
+
 class ContainerAwareDeviceDetector:
     """
     컴테이너 환경에 특화된 RTX 3090 디바이스 감지기
@@ -377,17 +391,7 @@ def get_robust_optimal_device() -> Tuple[torch.device, DeviceInfo]:
 
 
 
-@dataclass
-class DeviceInfo:
-    """디바이스 정보를 담는 데이터 클래스"""
-    device_type: str  # 'cuda', 'mps', 'cpu'
-    device_name: str
-    device_index: int = 0
-    memory_gb: Optional[float] = None
-    compute_capability: Optional[str] = None
-    
-    def __str__(self) -> str:
-        return f"{self.device_type}:{self.device_index} ({self.device_name})"
+
 
 
 @dataclass 
