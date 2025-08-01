@@ -347,9 +347,9 @@ def safe_load_model(model_class: Type[PreTrainedModel],
     # 통합 에러 처리로 모델 로딩 래핑
     return safe_execute(
         func=_execute_model_loading,
-        model_class,
-        model_name,
-        kwargs,
+        model_class=model_class,
+        model_name=model_name,
+        kwargs=kwargs,
         error_category="model_loading_errors",
         default_return=None  # 모델 로딩 실패 시 None 반환
     )
