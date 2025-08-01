@@ -1,6 +1,6 @@
 #!/bin/bash
-# RTX 3090 극한 최적화 7개 주요 모델 실험 스크립트 (mT5 단일 최적화 + 기존 4개)
-# 사용법: bash run_main_7_experiments.sh [-1]
+# RTX 3090 극한 최적화 5개 주요 모델 실험 스크립트
+# 사용법: bash run_main_5_experiments.sh [-1]
 # -1 옵션: 1에포크만 실행 (빠른 테스트용)
 
 set -e
@@ -172,31 +172,30 @@ START_TIME_STR=$(date '+%Y-%m-%d %H:%M:%S')
 echo "=== RTX 3090 극한 최적화 벤치마크 로그 ==="> "$BENCHMARK_LOG"
 echo "시작 시간: $START_TIME_STR" >> "$BENCHMARK_LOG"
 echo "" >> "$BENCHMARK_LOG"
-
 # 1에포크 모드에 따른 메시지 조정
 if [[ "$ONE_EPOCH_MODE" == "true" ]]; then
-    echo -e "${CYAN}🚀 7개 RTX 3090 최적화 실험 (1에포크 빠른 테스트)${NC}"
+echo -e "${CYAN}🚀 5개 RTX 3090 최적화 실험 (1에포크 빠른 테스트)${NC}"
     echo -e "${WHITE}════════════════════════════════════════════════════════${NC}"
     echo -e "⏰ 시작 시간: ${START_TIME_STR}"
     echo -e "🖥️  RTX 3090 24GB 최적화 실험 (1에포크 모드)"
     echo -e "⏱️  예상 소요 시간: 25-35분 (1에포크 모드 - 극한 최적화 빠른 테스트)"
-    echo -e "📝 방법: 사용법 - bash run_main_7_experiments.sh -1"
+    echo -e "📝 방법: 사용법 - bash run_main_5_experiments.sh -1"
 else
-    echo -e "${CYAN}🚀 7개 RTX 3090 최적화 실험 시작 (mT5 XLSum 3단계 + 고성능 4개)${NC}"
+    echo -e "${CYAN}🚀 5개 RTX 3090 최적화 실험 시작 (mT5 1개 + 고성능 4개)${NC}"
     echo -e "${WHITE}════════════════════════════════════════════════════════${NC}"
     echo -e "⏰ 시작 시간: ${START_TIME_STR}"
     echo -e "🖥️  RTX 3090 24GB 최적화 실험"
-    echo -e "⏱️  예상 소요 시간: 4.5-5.5시간 (mT5 3단계: 2.5시간 + RTX3090 극한최적화 4개: 2-3시간)"
+    echo -e "⏱️  예상 소요 시간: 3.5-4시간 (mT5: 60분 + RTX3090 극한최적화 4개: 2.5-3시간)"
     echo -e "💪 성능 반영: 안전모드 제거, RTX 3090 24GB 최대 활용"
     echo -e "🎯 mT5 XLSum 목표: ROUGE-1 25%+ 달성 (현재 10.23%에서 150% 향상)"
-    echo -e "📝 방법: 사용법 - bash run_main_7_experiments.sh"
+    echo -e "📝 방법: 사용법 - bash run_main_5_experiments.sh"
 fi
 
 # 로그 디렉토리 생성
 LOG_DIR="logs/main_experiments_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$LOG_DIR"
 
-# 실험 목록 (mT5 XLSum 3개 + RTX 3090 극한 최적화 4개 = 총 7개)
+# 실험 목록 (mT5 1개 + RTX 3090 극한 최적화 4개 = 총 5개)
 declare -a experiments=(
  # 🔥 mT5 XLSum 한국어 도메인 적응 QLoRA 극한 최적화 (조장님 피드백 반영)
  01_mt5_xlsum_ultimate_korean_qlora.yaml:🚀_mT5_한국어_QLoRA_극한최적화_batch32:60분
@@ -364,10 +363,10 @@ TOTAL_MINUTES=$(((TOTAL_DURATION % 3600) / 60))
 # 결과 요약
 echo
 if [[ "$ONE_EPOCH_MODE" == "true" ]]; then
-    echo -e "${CYAN}🎉 7개 실험 모두 완료! (1에포크 빠른 테스트)${NC}"
+    echo -e "${CYAN}🎉 5개 실험 모두 완료! (1에포크 빠른 테스트)${NC}"
     echo -e "${WHITE}════════════════════════════════════════════════════════${NC}"
 else
-    echo -e "${CYAN}🎉 7개 실험 모두 완료! (mT5 XLSum 3단계 + RTX3090 고성능 4개)${NC}"
+    echo -e "${CYAN}🎉 5개 실험 모두 완료! (mT5 1개 + RTX3090 고성능 4개)${NC}"
     echo -e "${WHITE}════════════════════════════════════════════════════════${NC}"
 fi
 echo -e "⏰ 종료 시간: ${END_TIME_STR}"
@@ -403,7 +402,7 @@ echo
 # 실험 요약 파일 생성 (벤치마크 정보 포함)
 SUMMARY_FILE="${LOG_DIR}/experiment_summary.txt"
 {
-    echo "7개 주요 모델 실험 요약 (mT5 XLSum 3단계 + RTX3090 극한최적화 4개)"
+    echo "5개 주요 모델 실험 요약 (mT5 1개 + RTX3090 극한최적화 4개)"
     echo "======================"
     echo "실행 시간: ${START_TIME_STR} ~ ${END_TIME_STR}"
     echo "총 소요 시간: ${TOTAL_HOURS}시간 ${TOTAL_MINUTES}분"
@@ -424,7 +423,7 @@ SUMMARY_FILE="${LOG_DIR}/experiment_summary.txt"
 echo
 echo -e "${WHITE}📝 실험 요약 파일 저장: ${SUMMARY_FILE}${NC}"
 echo
-echo -e "${CYAN}✨ 7개 주요 모델 실험 완료! (RTX 3090 극한 최적화)${NC}"
+echo -e "${CYAN}✨ 5개 주요 모델 실험 완료! (RTX 3090 극한 최적화)${NC}"
 echo -e "   ${COMPLETED}/${TOTAL_EXPERIMENTS} 실험 성공 (성공률: $((COMPLETED * 100 / TOTAL_EXPERIMENTS))%)"
 echo -e "   📈 메모리 절약: ${TOTAL_MEMORY_SAVED:.2f}GB, 시간 절약: $((TOTAL_TIME_SAVED / 60))분"
 echo -e "   🏆 최적화 성과를 WandB에서 상세 결과를 확인하세요."
