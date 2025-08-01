@@ -310,7 +310,7 @@ for i in "${!experiments[@]}"; do
     exp_name_clean="${exp_name_clean//💪/_}"
     LOG_FILE="${LOG_DIR}/experiment_${EXPERIMENT_NUM}_${exp_name_clean}.log"
     # 실험 실행 (1에포크 모드 옵션 처리)
-    EXPERIMENT_CMD="python code/auto_experiment_runner.py --config config/experiments/${config_file}"
+    EXPERIMENT_CMD="python3 code/auto_experiment_runner.py --config config/experiments/${config_file}"
 
     # 1에포크 모드일 때 --one-epoch 옵션 추가
     if [[ "$ONE_EPOCH_MODE" == "true" ]]; then
