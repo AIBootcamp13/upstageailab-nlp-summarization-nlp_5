@@ -1119,14 +1119,15 @@ class DialogueSummarizationTrainer:
         logger.info(f"Results saved to {self.results_dir}")
 
 
-def create_trainer(config: Union[str, Dict[str, Any]], sweep_mode: bool = False) -> DialogueSummarizationTrainer:
+def create_trainer(config: Union[str, Dict[str, Any]], sweep_mode: bool = False, one_epoch_mode: bool = False) -> DialogueSummarizationTrainer:
     """
     트레이너 생성 편의 함수
-
+    
     Args:
         config: 설정 파일 경로 또는 설정 딕셔너리
         sweep_mode: WandB Sweep 모드 여부
-
+        one_epoch_mode: 1에포크 모드 여부 (빠른 테스트용)
+    
     Returns:
         초기화된 트레이너 인스턴스
     """
@@ -1135,7 +1136,13 @@ def create_trainer(config: Union[str, Dict[str, Any]], sweep_mode: bool = False)
         config_dict = load_config(config)
     else:
         config_dict = config
-
+    
+    # 1에포크 모드 적용
+    if one_epoch_mode:
+        original_epochs = config_dict["training"].get("num_train_epochs", 3)
+        config_dict["training"]["num_train_epochs"] = 1
+        logger.info(f"🚀 1에포크 모드 활성화: {original_epochs}에포크 → 1에포크로 단축")
+    
     # 트레이너 생성
     trainer = DialogueSummarizationTrainer(config=config_dict, sweep_mode=sweep_mode)
 
@@ -1155,6 +1162,7 @@ if __name__ == "__main__":
     parser.add_argument("--val-data", type=str, help="Validation data path")
     parser.add_argument("--test-data", type=str, help="Test data path")
     parser.add_argument("--sweep", action="store_true", help="Run in sweep mode")
+    parser.add_argument("--one-epoch", action="store_true", help="Run only one epoch for quick testing")
 
     args = parser.parse_args()
 
@@ -1163,7 +1171,7 @@ if __name__ == "__main__":
         # 기존 세션 정리
         if wandb.run is not None:
             wandb.finish()
-
+    
         wandb.init(
             project="nlp-dialogue-summarization",
             name="manual_training",
@@ -1171,9 +1179,9 @@ if __name__ == "__main__":
             reinit=True,
             resume="never",
         )
-
+    
     # 트레이너 생성 및 학습
-    trainer = create_trainer(args.config, sweep_mode=args.sweep)
+    trainer = create_trainer(args.config, sweep_mode=args.sweep, one_epoch_mode=args.one_epoch)
 
     # 데이터 준비
     datasets = trainer.prepare_data(train_path=args.train_data, val_path=args.val_data, test_path=args.test_data)
