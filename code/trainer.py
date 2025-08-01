@@ -440,33 +440,33 @@ class DialogueSummarizationTrainer:
         """
         # 실험 시작
         if self.experiment_tracker:
- # WandB 초기화 (조장님 지시사항 반영)
- if self.config[training].get(report_to, none) in [all, wandb]:
- from utils.experiment_utils import get_korean_time_format
- 
- # 한국 시간 기준 MMDDHHMM 형식
- korean_time = get_korean_time_format(MMDDHHMM)
- 
- # 모델 아키텍처 첫 글자 추출
- model_arch = self.config.get(model, {}).get(architecture, unknown)
- model_prefix = model_arch[0] if model_arch != unknown else x
- 
- # WandB run name 생성
- run_name = f{model_prefix}_{self.experiment_name}_{korean_time}
- 
- # 환경 변수 설정
- os.environ[WANDB_LOG_MODEL] = false # mT5는 크기가 커서 로컬만 저장
- os.environ[TOKENIZERS_PARALLELISM] = true
- 
- wandb_config = self.config.get(wandb, {})
- wandb.init(
- entity=wandb_config.get(entity, lyjune37-juneictlab),
- project=wandb_config.get(project, nlp-5),
- name=run_name,
- notes=wandb_config.get(notes, ),
- tags=wandb_config.get(tags, []),
- config=self.config
- )
+            # WandB 초기화 (조장님 지시사항 반영)
+            if self.config['training'].get('report_to', 'none') in ['all', 'wandb']:
+                from utils.experiment_utils import get_korean_time_format
+                
+                # 한국 시간 기준 MMDDHHMM 형식
+                korean_time = get_korean_time_format('MMDDHHMM')
+                
+                # 모델 아키텍처 첫 글자 추출
+                model_arch = self.config.get('model', {}).get('architecture', 'unknown')
+                model_prefix = model_arch[0] if model_arch != 'unknown' else 'x'
+                
+                # WandB run name 생성
+                run_name = f"{model_prefix}_{self.experiment_name}_{korean_time}"
+                
+                # 환경 변수 설정
+                os.environ['WANDB_LOG_MODEL'] = 'false'  # mT5는 크기가 커서 로컬만 저장
+                os.environ['TOKENIZERS_PARALLELISM'] = 'true'
+                
+                wandb_config = self.config.get('wandb', {})
+                wandb.init(
+                    entity=wandb_config.get('entity', 'lyjune37-juneictlab'),
+                    project=wandb_config.get('project', 'nlp-5'),
+                    name=run_name,
+                    notes=wandb_config.get('notes', ''),
+                    tags=wandb_config.get('tags', []),
+                    config=self.config
+                )
 
             experiment_id = self.experiment_tracker.start_experiment(
                 name=self.experiment_name,
