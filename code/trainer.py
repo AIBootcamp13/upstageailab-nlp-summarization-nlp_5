@@ -1114,7 +1114,7 @@ class DialogueSummarizationTrainer:
             "wandb_run_id": result.wandb_run_id,
             "experiment_id": result.experiment_id,
             "config": result.config_used,
-            "timestamp": str(Path(result.model_path).parent.parent.name),
+            "timestamp": str(Path(result.model_path).parent.parent.name) if result.model_path else "unknown",
         }
 
         # JSON 저장
@@ -1127,10 +1127,10 @@ class DialogueSummarizationTrainer:
         with open(summary_file, "w", encoding="utf-8") as f:
             f.write(f"Training Summary for {self.experiment_name}\n")
             f.write("=" * 50 + "\n\n")
-            f.write(f"Model: {self.config['model']['architecture']} ({self.config['model']['checkpoint']})\n")
-            f.write(f"Training Epochs: {self.config['training']['num_train_epochs']}\n")
-            f.write(f"Batch Size: {self.config['training']['per_device_train_batch_size']}\n")
-            f.write(f"Learning Rate: {self.config['training']['learning_rate']}\n\n")
+            f.write(f"Model: {self.config.get('model', {}).get('architecture', 'unknown')} ({self.config.get('model', {}).get('checkpoint', 'unknown')})\n")
+            f.write(f"Training Epochs: {self.config.get('training', {}).get('num_train_epochs', 'unknown')}\n")
+            f.write(f"Batch Size: {self.config.get('training', {}).get('per_device_train_batch_size', 'unknown')}\n")
+            f.write(f"Learning Rate: {self.config.get('training', {}).get('learning_rate', 'unknown')}\n\n")
             f.write("Best Metrics:\n")
             for metric, value in result.best_metrics.items():
                 f.write(f"  {metric}: {value:.4f}\n")
