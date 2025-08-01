@@ -64,6 +64,11 @@ try:
     from utils.experiment_utils import ExperimentTracker, ModelRegistry
     from utils.environment_detector import EnvironmentDetector, get_auto_config, should_use_unsloth
     from utils.path_utils import PathManager, path_manager
+    # 통합 에러 처리 시스템 import
+    from utils.error_handling import (
+        handle_error, log_structured, log_performance_metric, log_experiment_event,
+        safe_execute, get_logging_manager, get_error_handler
+    )
 except ImportError:
     # code 디렉토리에서 실행되는 경우
     import sys
@@ -75,6 +80,11 @@ except ImportError:
     from utils.experiment_utils import ExperimentTracker, ModelRegistry
     from utils.environment_detector import EnvironmentDetector, get_auto_config, should_use_unsloth
     from utils.path_utils import PathManager, path_manager
+    # 통합 에러 처리 시스템 import
+    from utils.error_handling import (
+        handle_error, log_structured, log_performance_metric, log_experiment_event,
+        safe_execute, get_logging_manager, get_error_handler
+    )
 logger = logging.getLogger(__name__)
 
 
@@ -166,17 +176,34 @@ class DialogueSummarizationTrainer:
     def __init__(self, config: Dict[str, Any], sweep_mode: bool = False, experiment_name: Optional[str] = None):
         """
         트레이너 초기화
-
+    
         Args:
             config: 설정 딕셔너리 (ConfigManager로부터)
             sweep_mode: WandB Sweep 모드 여부
             experiment_name: 실험명 (None이면 자동 생성)
         """
+        # 통합 로깅 초기화
+        self.logging_manager = get_logging_manager()
+        
+        # 실험 시작 로깅
+        log_experiment_event(
+            event_type="trainer_init",
+            event_data={
+                "sweep_mode": sweep_mode,
+                "experiment_name": experiment_name,
+                "config_keys": list(config.keys()) if config else []
+            },
+            component="trainer"
+        )
+        
         self.config = config
         self.sweep_mode = sweep_mode
         self.experiment_name = experiment_name or config.get("meta", {}).get(
             "experiment_name", "dialogue_summarization"
         )
+        
+        # 실험 ID를 로깅 관리자에 설정 (체크포인트와 연동)
+        self.logging_manager.set_experiment_id(self.experiment_name)
 
         # 디바이스 설정
         self.device = self._setup_device()
@@ -437,6 +464,22 @@ class DialogueSummarizationTrainer:
         Returns:
             학습 결과
         """
+        # 실험 연속성 추적 시작
+        from utils.experiment_continuity import get_continuity_manager
+        continuity_manager = get_continuity_manager()
+        
+        # 실험 ID 생성 (기존 experiment_tracker ID 사용)
+        experiment_id = self.experiment_tracker.current_experiment_id if self.experiment_tracker else f"exp_{int(time.time())}"
+        
+        # 체크포인트 초기화
+        checkpoint = continuity_manager.start_experiment(
+            experiment_id=experiment_id,
+            experiment_name=self.experiment_name,
+            config=self.config
+        )
+        
+        logger.info(f"📁 실험 연속성 추적 시작: {experiment_id}")
+        
         # 실험 시작
         if self.experiment_tracker:
             # WandB 초기화 (조장님 지시사항 반영)
@@ -457,21 +500,20 @@ class DialogueSummarizationTrainer:
                 os.environ["WANDB_LOG_MODEL"] = "false"  # mT5는 크기가 커서 로컬만 저장
                 os.environ["TOKENIZERS_PARALLELISM"] = "true"
 
-                # 기존 WandB 세션 정리
-                if wandb.run is not None:
-                    wandb.finish()
-
-                wandb_config = self.config.get("wandb", {})
-                wandb.init(
-                    entity=wandb_config.get("entity", "lyjune37-juneictlab"),
-                    project=wandb_config.get("project", "nlp-5"),
-                    name=run_name,
-                    notes=wandb_config.get("notes", ""),
-                    tags=wandb_config.get("tags", []),
+                # 견고한 WandB 초기화 (네트워크 실패 시 오프라인 모드 자동 전환)
+                from utils.wandb_utils import safe_setup_wandb_for_experiment
+                
+                wandb_result = safe_setup_wandb_for_experiment(
                     config=self.config,
-                    reinit=True,
-                    resume="never",
+                    experiment_name=self.experiment_name,
+                    sweep_mode=self.sweep_mode
                 )
+                
+                # 연결 상태 로깅
+                if wandb_result.get('offline_mode', False):
+                    logger.warning("🔄 WandB 오프라인 모드에서 실험 진행")
+                else:
+                    logger.info("✅ WandB 온라인 모드로 실험 시작")
 
             experiment_id = self.experiment_tracker.start_experiment(
                 name=self.experiment_name,
@@ -593,6 +635,16 @@ class DialogueSummarizationTrainer:
 
         # 학습 시작
         logger.info("Starting training...")
+        
+        # 학습 시작 체크포인트 저장
+        training_info = {
+            'total_epochs': self.config['training'].get('num_train_epochs', 0),
+            'train_dataset_size': len(dataset.get('train', [])),
+            'eval_dataset_size': len(dataset.get('validation', [])),
+            'batch_size': self.config['training'].get('per_device_train_batch_size', 0)
+        }
+        save_experiment_checkpoint('training_started', progress_info=training_info)
+        logger.info("📋 학습 시작 체크포인트 저장")
 
         try:
             train_result = self.trainer.train(resume_from_checkpoint=resume_from_checkpoint)
@@ -649,7 +701,13 @@ class DialogueSummarizationTrainer:
 
             # 결과 저장
             self._save_results(training_result)
-
+            
+            # 실험 성공 체크포인트 저장
+            from utils.experiment_continuity import get_continuity_manager
+            continuity_manager = get_continuity_manager()
+            continuity_manager.finish_experiment(success=True, final_metrics=eval_results)
+            logger.info("📋 실험 성공 체크포인트 저장")
+            
             return training_result
 
         except Exception as e:
@@ -660,6 +718,13 @@ class DialogueSummarizationTrainer:
 
             logger.debug(f"Full traceback: {traceback.format_exc()}")
             logger.error(f"Training failed: {str(e)}")
+            
+            # 실험 실패 체크포인트 저장
+            from utils.experiment_continuity import get_continuity_manager
+            continuity_manager = get_continuity_manager()
+            continuity_manager.finish_experiment(success=False, final_metrics={'error': str(e)})
+            logger.info("📋 실험 실패 체크포인트 저장")
+            
             if self.experiment_tracker and experiment_id:
                 self.experiment_tracker.end_experiment(experiment_id=experiment_id, status="failed", notes=str(e))
             raise
@@ -740,13 +805,13 @@ class DialogueSummarizationTrainer:
 
     def _setup_device(self) -> torch.device:
         """디바이스 설정"""
-        from utils.device_utils import get_optimal_device, setup_device_config
-
+        from utils.device_utils import get_robust_optimal_device, setup_device_config
+        
         device_config = self.config["general"].get("device", "auto")
-
+        
         if device_config == "auto":
-            # 최적 디바이스 자동 선택
-            device, device_info = get_optimal_device()
+            # 견고한 최적 디바이스 자동 선택 (컴테이너 환경 대응)
+            device, device_info = get_robust_optimal_device()
 
             # 디바이스별 최적화 설정 가져오기
             model_size = self.config.get("model", {}).get("size", "base")
@@ -828,7 +893,10 @@ class DialogueSummarizationTrainer:
                 tokenizer_kwargs["use_fast"] = False  # T5/mT5는 SentencePiece로 use_fast=False 사용
                 tokenizer_kwargs["legacy"] = False  # T5 legacy 모드 비활성화
 
-            self.tokenizer = AutoTokenizer.from_pretrained(model_checkpoint, **tokenizer_kwargs)
+            # 안전한 토크나이저 로딩 (네트워크 실패 시 캐시 활용)
+            from utils.model_loading_utils import safe_load_tokenizer
+            
+            self.tokenizer = safe_load_tokenizer(model_checkpoint, **tokenizer_kwargs)
 
             # 특수 토큰 설정 (필요시)
             model_architecture = self.config.get("model", {}).get("architecture", "")
@@ -895,6 +963,19 @@ class DialogueSummarizationTrainer:
                 self.model.gradient_checkpointing_enable()
             else:
                 logger.warning("모델이 gradient_checkpointing을 지원하지 않습니다.")
+        
+        # 모델 로딩 완료 체크포인트 저장
+        from utils.experiment_continuity import save_experiment_checkpoint
+        model_info = {
+            'architecture': architecture,
+            'checkpoint': model_checkpoint,
+            'model_loaded': True,
+            'use_qlora': use_qlora,
+            'use_unsloth': use_unsloth,
+            'parameters': sum(p.numel() for p in self.model.parameters()) if hasattr(self, 'model') else 0
+        }
+        save_experiment_checkpoint('model_loaded', model_info=model_info)
+        logger.info("📋 모델 로딩 완료 체크포인트 저장")
 
     def _load_model_with_unsloth(self, model_checkpoint: str, qlora_config: Dict[str, Any]) -> None:
         """
@@ -959,10 +1040,13 @@ class DialogueSummarizationTrainer:
                 bnb_4bit_quant_type=qlora_config.get("bnb_4bit_quant_type", "nf4"),
                 bnb_4bit_use_double_quant=qlora_config.get("bnb_4bit_use_double_quant", True),
             )
-
-            # 모델 로딩 - trust_remote_code 추가
+            
+            # 안전한 모델 로딩 (네트워크 실패 시 캐시 활용)
+            from utils.model_loading_utils import safe_load_model
+            
             if architecture in ["kobart", "bart", "t5", "mt5"]:
-                model = AutoModelForSeq2SeqLM.from_pretrained(
+                model = safe_load_model(
+                    AutoModelForSeq2SeqLM,
                     model_checkpoint,
                     quantization_config=bnb_config,
                     device_map="auto",
@@ -970,7 +1054,8 @@ class DialogueSummarizationTrainer:
                     trust_remote_code=True,
                 )
             else:
-                model = AutoModelForCausalLM.from_pretrained(
+                model = safe_load_model(
+                    AutoModelForCausalLM,
                     model_checkpoint,
                     quantization_config=bnb_config,
                     device_map="auto",
@@ -1012,28 +1097,36 @@ class DialogueSummarizationTrainer:
     def _load_model_standard(self, model_checkpoint: str, architecture: str) -> None:
         """
         표준 모델 로딩 (기존 방식)
-
+    
         Args:
             model_checkpoint: 모델 체크포인트 경로
             architecture: 모델 아키텍처
         """
         logger.info("📚 표준 모델 로딩 중...")
-
+    
+        # 안전한 모델 로딩 (네트워크 실패 시 캐시 활용)
+        from utils.model_loading_utils import safe_load_model
+        
         # 모델 아키텍처에 따른 로딩
         if architecture in ["kobart", "bart", "t5", "mt5"]:
             # 시퀀스-투-시퀀스 모델
-            self.model = AutoModelForSeq2SeqLM.from_pretrained(
-                model_checkpoint, torch_dtype=torch.float16 if self.config["training"].get("fp16") else torch.float32
+            self.model = safe_load_model(
+                AutoModelForSeq2SeqLM,
+                model_checkpoint, 
+                torch_dtype=torch.float16 if self.config["training"].get("fp16") else torch.float32
             )
         elif architecture in ["kogpt2", "gpt2", "gpt-neo"]:
             # 인과 언어 모델
-            self.model = AutoModelForCausalLM.from_pretrained(
-                model_checkpoint, torch_dtype=torch.float16 if self.config["training"].get("fp16") else torch.float32
+            self.model = safe_load_model(
+                AutoModelForCausalLM,
+                model_checkpoint, 
+                torch_dtype=torch.float16 if self.config["training"].get("fp16") else torch.float32
             )
         else:
             raise ValueError(f"Unsupported architecture: {architecture}")
-
-        logger.info("✅ 표준 모델 로딩 완료!")
+    
+            logger.info("✅ 표준 모델 로딩 성공")
+    
 
     def _get_model_specific_config(self, architecture: str, checkpoint: str) -> Dict[str, Any]:
         """모델별 특수 설정 반환"""

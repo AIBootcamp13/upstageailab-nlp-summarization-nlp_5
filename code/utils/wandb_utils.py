@@ -2,23 +2,319 @@
 WandB 통합 유틸리티
 
 실험별로 고유한 WandB run 설정 및 모델 레지스트리 연동
+견고한 WandB 관리 시스템으로 네트워크 연결 실패 시에도 실험 연속성 보장
+
+통합 에러 처리 시스템 적용:
+- 네트워크 에러: 자동 재시도 및 오프라인 모드 전환
+- 구조화된 로깅으로 WandB 연결 상태 추적
+- 에러 발생 시에도 실험 진행 중단 없이 로컬 로깅으로 대체
 """
 
 import os
-from datetime import datetime
-from typing import Dict, Any, Optional
 import wandb
 from pathlib import Path
 import logging
+import time
+import socket
+from datetime import datetime
+from typing import Dict, Any, Optional
+
+# 통합 에러 처리 시스템 import
+from .error_handling import (
+    handle_error, log_structured, log_performance_metric,
+    safe_execute, get_logging_manager
+)
 
 logger = logging.getLogger(__name__)
+
+
+class RobustWandbManager:
+    """
+    견고한 WandB 관리 시스템
+    
+    네트워크 연결 실패 시에도 실험이 중단되지 않도록 하는 Fail-Safe WandB 관리자.
+    연결 테스트, 재시도 로직, 오프라인 모드 자동 전환을 통해 실험 연속성을 보장합니다.
+    """
+    
+    def __init__(self, fallback_mode: bool = True, max_retries: int = 3):
+        """
+        Args:
+            fallback_mode: 연결 실패 시 오프라인 모드로 전환할지 여부
+            max_retries: 최대 재시도 횟수
+        """
+        self.fallback_mode = fallback_mode
+        self.max_retries = max_retries
+        self.connection_status = "unknown"
+        self.offline_mode = False
+        
+    def safe_setup_wandb_for_experiment(self, 
+                                       config: Dict[str, Any], 
+                                       experiment_name: str,
+                                       sweep_mode: bool = False) -> Dict[str, Any]:
+        """
+        안전한 WandB 실험 설정 (기존 setup_wandb_for_experiment 래핑)
+        
+        통합 에러 처리 시스템을 사용하여 네트워크 에러를 자동으로 처리하고
+        오프라인 모드로 안전하게 대체합니다.
+        
+        Args:
+            config: 실험 설정
+            experiment_name: 실험명
+            sweep_mode: Sweep 모드 여부
+            
+        Returns:
+            WandB 설정 정보 (오프라인 모드 정보 포함)
+        """
+        # 통합 에러 처리로 전체 프로세스 래핑
+        return safe_execute(
+            func=self._execute_wandb_setup,
+            config=config,
+            experiment_name=experiment_name,
+            sweep_mode=sweep_mode,
+            error_category="wandb_errors",
+            default_return=self._create_offline_fallback_result(config, experiment_name)
+        )
+    
+    def _execute_wandb_setup(self, 
+                            config: Dict[str, Any], 
+                            experiment_name: str,
+                            sweep_mode: bool = False) -> Dict[str, Any]:
+        """
+        실제 WandB 설정 실행 (내부 메서드)
+        """
+        log_structured(
+            level="INFO",
+            message=f"WandB 실험 설정 시작: {experiment_name}",
+            component="wandb_utils",
+            function="safe_setup_wandb_for_experiment",
+            metadata={"experiment_name": experiment_name, "sweep_mode": sweep_mode}
+        )
+        
+        start_time = time.time()
+        
+        try:
+            # 1단계: 네트워크 연결 사전 테스트
+            if not self._test_wandb_connectivity():
+                logger.warning("WandB 연결 테스트 실패 - 오프라인 모드로 전환")
+                return self._handle_offline_mode(config, experiment_name)
+            
+            # 2단계: 기존 함수로 WandB 설정 생성
+            wandb_config = setup_wandb_for_experiment(config, experiment_name, sweep_mode)
+            
+            # 3단계: 안전한 WandB 초기화 시도
+            result = self._safe_wandb_init(wandb_config, experiment_name)
+            
+            # 성공 시 성능 메트릭 로깅
+            log_performance_metric(
+                metric_name="wandb_setup_duration",
+                value=time.time() - start_time,
+                unit="seconds",
+                component="wandb_utils"
+            )
+            
+            return result
+            
+        except Exception as e:
+            # 기존 예외 처리를 통합 에러 처리로 대체
+            error_context = handle_error(
+                error=e,
+                component="wandb_utils",
+                function="safe_setup_wandb_for_experiment",
+                error_category="wandb_errors",
+                context={"experiment_name": experiment_name, "sweep_mode": sweep_mode}
+            )
+            
+            # 에러 전략에 따른 처리
+            if error_context.strategy.value == "fallback":
+                logger.warning(f"WandB 설정 실패, 오프라인 모드로 대체: {e}")
+                return self._handle_offline_mode(config, experiment_name)
+            else:
+                # 기타 전략의 경우 에러 재발생
+                raise e
+    
+    def _create_offline_fallback_result(self, config: Dict[str, Any], experiment_name: str) -> Dict[str, Any]:
+        """
+        오프라인 모드 폴백 결과 생성
+        
+        Args:
+            config: 실험 설정
+            experiment_name: 실험명
+            
+        Returns:
+            오프라인 모드 설정 정보
+        """
+        log_structured(
+            level="WARNING",
+            message=f"WandB 오프라인 모드 활성화: {experiment_name}",
+            component="wandb_utils",
+            function="_create_offline_fallback_result",
+            metadata={"experiment_name": experiment_name, "offline_mode": True}
+        )
+        
+        self.offline_mode = True
+        
+        return {
+            'status': 'offline',
+            'offline_mode': True,
+            'experiment_name': experiment_name,
+            'message': 'WandB 연결 실패로 오프라인 모드로 전환',
+            'fallback_logging': {
+                'local_log_dir': './logs/wandb_offline',
+                'experiment_id': f'offline_{int(time.time())}_{experiment_name}'
+            }
+        }
+    
+    def _test_wandb_connectivity(self) -> bool:
+        """
+        WandB 서비스 연결 테스트
+        
+        Returns:
+            연결 가능 여부
+        """
+        try:
+            # DNS 해결 테스트
+            socket.gethostbyname('api.wandb.ai')
+            
+            # 포트 연결 테스트 (HTTPS)
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(5)  # 5초 타임아웃
+            result = sock.connect_ex(('api.wandb.ai', 443))
+            sock.close()
+            
+            if result == 0:
+                self.connection_status = "connected"
+                logger.debug("WandB 연결 테스트 성공")
+                return True
+            else:
+                logger.debug(f"WandB 포트 연결 실패: {result}")
+                return False
+                
+        except socket.gaierror as e:
+            logger.debug(f"WandB DNS 해결 실패: {e}")
+            return False
+        except Exception as e:
+            logger.debug(f"WandB 연결 테스트 예외: {e}")
+            return False
+    
+    def _safe_wandb_init(self, wandb_config: Dict[str, Any], experiment_name: str) -> Dict[str, Any]:
+        """
+        지수 백오프 재시도 로직으로 안전한 WandB 초기화
+        
+        Args:
+            wandb_config: WandB 설정
+            experiment_name: 실험명
+            
+        Returns:
+            초기화 결과
+        """
+        for attempt in range(self.max_retries):
+            try:
+                # WandB 초기화 시도
+                run = wandb.init(**wandb_config)
+                
+                if run is not None:
+                    self.connection_status = "initialized"
+                    logger.info(f"WandB 초기화 성공: {run.name}")
+                    
+                    return {
+                        'status': 'success',
+                        'run_id': run.id,
+                        'run_name': run.name,
+                        'run_url': run.get_url(),
+                        'offline_mode': False
+                    }
+                
+            except Exception as e:
+                wait_time = (2 ** attempt) + 1  # 지수 백오프: 1, 3, 5초
+                logger.warning(f"WandB 초기화 시도 {attempt + 1}/{self.max_retries} 실패: {e}")
+                
+                if attempt < self.max_retries - 1:
+                    logger.info(f"{wait_time}초 후 재시도...")
+                    time.sleep(wait_time)
+                else:
+                    # 최대 재시도 초과 시 오프라인 모드
+                    if self.fallback_mode:
+                        logger.warning("모든 재시도 실패, 오프라인 모드로 전환")
+                        return self._handle_offline_mode(wandb_config, experiment_name)
+                    else:
+                        raise e
+        
+        return self._handle_offline_mode(wandb_config, experiment_name)
+    
+    def _handle_offline_mode(self, config: Dict[str, Any], experiment_name: str) -> Dict[str, Any]:
+        """
+        오프라인 모드 처리
+        
+        Args:
+            config: 원본 설정
+            experiment_name: 실험명
+            
+        Returns:
+            오프라인 모드 설정 정보
+        """
+        self.offline_mode = True
+        self.connection_status = "offline"
+        
+        # 오프라인 WandB 초기화
+        try:
+            offline_run = wandb.init(
+                mode="offline",
+                project=config.get('project', 'offline_project'),
+                name=f"offline_{experiment_name}_{int(time.time())}",
+                config=config.get('config', {}),
+                dir=config.get('dir', './wandb_offline')
+            )
+            
+            return {
+                'status': 'offline',
+                'offline_mode': True,
+                'run_id': offline_run.id if offline_run else 'offline_run',
+                'run_name': offline_run.name if offline_run else f'offline_{experiment_name}',
+                'local_dir': config.get('dir', './wandb_offline')
+            }
+            
+        except Exception as e:
+            logger.error(f"오프라인 WandB 초기화도 실패: {e}")
+            return self._create_offline_fallback_result(config, experiment_name)
+    
+    def get_connection_status(self) -> Dict[str, Any]:
+        """연결 상태 정보 반환"""
+        return {
+            'status': self.connection_status,
+            'offline_mode': self.offline_mode,
+            'fallback_enabled': self.fallback_mode
+        }
+
+
+# 전역 RobustWandbManager 인스턴스
+_robust_wandb_manager = RobustWandbManager()
+
+
+def safe_setup_wandb_for_experiment(config: Dict[str, Any], 
+                                   experiment_name: str,
+                                   sweep_mode: bool = False) -> Dict[str, Any]:
+    """
+    견고한 WandB 실험 설정 (전역 함수)
+    
+    기존 setup_wandb_for_experiment()의 안전한 버전.
+    네트워크 연결 실패 시 오프라인 모드로 자동 전환하여 실험 연속성을 보장합니다.
+    
+    Args:
+        config: 실험 설정
+        experiment_name: 실험명
+        sweep_mode: Sweep 모드 여부
+        
+    Returns:
+        WandB 설정 정보 (오프라인 모드 정보 포함)
+    """
+    return _robust_wandb_manager.safe_setup_wandb_for_experiment(config, experiment_name, sweep_mode)
 
 
 def setup_wandb_for_experiment(config: Dict[str, Any], 
                              experiment_name: str,
                              sweep_mode: bool = False) -> Dict[str, Any]:
     """
-    실험별 WandB 설정 초기화
+    실험별 WandB 설정 초기화 (원본 함수 - 조장님 패턴 유지)
     
     Args:
         config: 실험 설정
@@ -89,7 +385,7 @@ def log_model_to_wandb(model_path: str,
                       config: Dict[str, Any],
                       aliases: Optional[list] = None):
     """
-    학습된 모델을 WandB Model Registry에 등록
+    학습된 모델을 WandB Model Registry에 등록 (원본 함수)
     
     Args:
         model_path: 모델 저장 경로
