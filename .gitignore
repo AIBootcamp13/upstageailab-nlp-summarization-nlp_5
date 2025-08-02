@@ -106,3 +106,4 @@ unsloth_compiled_cache/
 
 # Hugging Face model cache
 hf_cache/
+.hf_cache/

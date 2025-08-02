@@ -15,7 +15,7 @@ mkdir -p "$HUGGINGFACE_HUB_CACHE"
 echo "📂 캐시 디렉토리 설정: $HUGGINGFACE_HUB_CACHE"
 
 # Python을 사용한 모델 사전 다운로드
-python3 -c "
+/opt/conda/bin/python3 -c "
 import os
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 import torch
