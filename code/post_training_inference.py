@@ -1,46 +1,62 @@
 #!/usr/bin/env python3
 """
-학습 후 자동 추론 스크립트
+학습 후 자동 추론 스크립트 - baseline.py 완벽 호환 버전
 
-학습이 완료된 후 test.csv에 대한 예측을 수행하고 제출 파일을 생성합니다.
+baseline.py의 inference() 함수를 정확히 재현하면서
+다중 모델을 지원하도록 확장
 """
 
 import os
 import sys
-import json
 import logging
 from pathlib import Path
 import pandas as pd
 from datetime import datetime
+import torch
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+from typing import Dict, Any, List
 
 # 프로젝트 루트를 Python 경로에 추가
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from core.inference import InferenceEngine, InferenceConfig
 from utils.path_utils import path_manager
-from utils import load_config
+from utils.baseline_compatible import (
+    BaselinePreprocess, 
+    DatasetForInference,
+    prepare_test_dataset,
+    remove_special_tokens
+)
+from utils.model_handler import ModelSpecificHandler
 
 logger = logging.getLogger(__name__)
 
 
 class PostTrainingInference:
-    """학습 후 자동 추론 클래스"""
+    """학습 후 자동 추론 클래스 - baseline.py 완벽 호환"""
     
     def __init__(self, experiment_name: str, model_path: str, config: dict):
         """
         Args:
             experiment_name: 실험명
-            model_path: 학습된 모델 경로
+            model_path: 학습된 모델 체크포인트 경로
             config: 실험 설정
         """
         self.experiment_name = experiment_name
         self.model_path = model_path
         self.config = config
         
-    def run_test_inference(self, test_file: str = "data/test.csv") -> str:
+        # 모델별 설정 가져오기
+        model_name = config.get('general', {}).get('model_name', '')
+        self.model_config = ModelSpecificHandler.get_model_config(model_name, config)
+        
+        logger.info(f"Initializing PostTrainingInference for {experiment_name}")
+        logger.info(f"Model: {model_name}, Architecture: {self.model_config.get('architecture')}")
+    
+    def run_test_inference(self, test_file: str) -> str:
         """
-        테스트 데이터에 대한 추론 수행
+        baseline.py의 inference() 함수를 정확히 재현
         
         Args:
             test_file: 테스트 데이터 파일 경로
@@ -48,103 +64,187 @@ class PostTrainingInference:
         Returns:
             생성된 제출 파일 경로
         """
-        logger.info(f"Starting test inference for {self.experiment_name}")
+        # 1. 디바이스 설정 (baseline.py와 동일)
+        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        print('-'*10, f'device : {device}', '-'*10)
+        print(torch.__version__)
         
-        # 테스트 파일 경로 확인
-        test_path = path_manager.resolve_path(test_file)
-        if not test_path.exists():
-            raise FileNotFoundError(f"Test file not found: {test_path}")
+        # 2. 모델과 토크나이저 로드
+        print('-'*10, 'Load tokenizer & model', '-'*10)
+        model, tokenizer = self._load_model_and_tokenizer(device)
         
-        # 추론 설정
-        inference_config = InferenceConfig(
-            model_path=self.model_path,
-            batch_size=self.config.get('inference', {}).get('batch_size', 8),
-            max_source_length=self.config.get('tokenizer', {}).get('encoder_max_len', 512),
-            max_target_length=self.config.get('tokenizer', {}).get('decoder_max_len', 100),
-            num_beams=self.config.get('inference', {}).get('num_beams', 4),
-            device=self.config.get('device', None),
-            fp16=self.config.get('training', {}).get('fp16', False)
+        # 3. 특수 토큰 추가 (baseline.py와 동일)
+        special_tokens_dict = {
+            'additional_special_tokens': self.config['tokenizer']['special_tokens']
+        }
+        tokenizer.add_special_tokens(special_tokens_dict)
+        model.resize_token_embeddings(len(tokenizer))
+        
+        # 4. 전처리기 초기화 (baseline.py의 Preprocess와 동일)
+        preprocessor = BaselinePreprocess(
+            self.config['tokenizer']['bos_token'],
+            self.config['tokenizer']['eos_token']
         )
         
-        # 추론 엔진 생성
-        engine = InferenceEngine(inference_config)
-        
-        # 테스트 데이터 로드
-        test_df = pd.read_csv(test_path)
-        logger.info(f"Loaded {len(test_df)} test samples")
-        
-        # 추론 실행
-        result_df = engine.predict_from_dataframe(
-            test_df,
-            dialogue_column='dialogue',
-            output_column='summary',
-            show_progress=True
+        # 5. 테스트 데이터 준비 (baseline.py의 prepare_test_dataset와 동일)
+        test_data, test_encoder_inputs_dataset = self._prepare_test_data(
+            preprocessor, tokenizer, test_file
         )
         
-        # 제출 파일 경로 생성
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        output_dir = path_manager.ensure_dir("outputs/submissions")
-        output_file = output_dir / f"{self.experiment_name}_{timestamp}.csv"
+        # 6. DataLoader 생성 (baseline.py와 동일)
+        dataloader = DataLoader(
+            test_encoder_inputs_dataset,
+            batch_size=self.config['inference']['batch_size']
+        )
         
-        # 제출 형식으로 저장
-        submission_df = result_df[['fname', 'summary']].copy()
-        submission_df.to_csv(output_file, index=False, encoding='utf-8')
+        # 7. 추론 실행 (baseline.py와 완전 동일)
+        summary = []
+        text_ids = []
         
-        logger.info(f"Submission file saved: {output_file}")
+        with torch.no_grad():
+            for item in tqdm(dataloader):
+                text_ids.extend(item['ID'])
+                generated_ids = model.generate(
+                    input_ids=item['input_ids'].to(device),
+                    no_repeat_ngram_size=self.config['inference']['no_repeat_ngram_size'],
+                    early_stopping=self.config['inference']['early_stopping'],
+                    max_length=self.config['inference']['generate_max_length'],
+                    num_beams=self.config['inference']['num_beams'],
+                )
+                for ids in generated_ids:
+                    result = tokenizer.decode(ids)
+                    summary.append(result)
         
-        # 샘플 출력
-        logger.info("\n--- Sample predictions ---")
-        for idx, row in submission_df.head(3).iterrows():
-            logger.info(f"[{idx+1}] {row['fname']}: {row['summary'][:100]}...")
+        # 8. 특수 토큰 제거 (baseline.py와 동일)
+        remove_tokens = self.config['inference']['remove_tokens']
+        preprocessed_summary = remove_special_tokens(summary, remove_tokens)
         
-        return str(output_file)
-
-
-def generate_submission_after_training(experiment_name: str, model_path: str, 
-                                     config_path: str = None, config_dict: dict = None):
-    """
-    학습 완료 후 제출 파일 생성
+        # 9. 결과 저장 (baseline.py와 동일한 형식)
+        output = pd.DataFrame({
+            "fname": test_data['fname'],
+            "summary": preprocessed_summary,
+        })
+        
+        # 10. 파일 저장
+        submission_path = self._save_results(output)
+        
+        return str(submission_path)
     
-    Args:
-        experiment_name: 실험명
-        model_path: 학습된 모델 경로
-        config_path: 설정 파일 경로
-        config_dict: 설정 딕셔너리 (config_path 대신 사용 가능)
+    def _load_model_and_tokenizer(self, device):
+        """모델과 토크나이저 로드 - 다중 모델 지원"""
+        from transformers import AutoTokenizer, BartForConditionalGeneration
         
-    Returns:
-        생성된 제출 파일 경로
-    """
-    # 설정 로드
-    if config_dict:
-        config = config_dict
-    elif config_path:
-        config = load_config(config_path)
-    else:
-        raise ValueError("Either config_path or config_dict must be provided")
+        # 모델명에서 원본 토크나이저 경로 추출
+        model_name = self.config['general']['model_name']
+        
+        print('-'*10, f'Model Name : {model_name}', '-'*10)
+        
+        # baseline.py와 동일한 방식으로 로드
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        
+        # 모델 로드 (체크포인트에서)
+        model, _ = ModelSpecificHandler.load_model_for_inference(
+            self.model_path,
+            self.model_config,
+            device
+        )
+        
+        print('-'*10, 'Load tokenizer & model complete', '-'*10)
+        
+        return model, tokenizer
     
-    # 추론 실행
-    inferencer = PostTrainingInference(experiment_name, model_path, config)
-    submission_path = inferencer.run_test_inference()
+    def _prepare_test_data(self, preprocessor, tokenizer, test_file):
+        """테스트 데이터 준비 - prefix 처리 포함"""
+        # config 업데이트 (data_path 설정)
+        config_copy = self.config.copy()
+        test_path = Path(test_file)
+        config_copy['general']['data_path'] = str(test_path.parent)
+        
+        # baseline.py의 prepare_test_dataset 호출
+        test_data, test_encoder_inputs_dataset = prepare_test_dataset(
+            config_copy, preprocessor, tokenizer
+        )
+        
+        # 모델별 prefix 처리
+        if self.model_config.get('use_prefix', False):
+            prefix = self.model_config.get('prefix', '')
+            if prefix:
+                # 이미 토큰화된 데이터이므로 원본 데이터를 다시 처리
+                test_df = pd.read_csv(test_file)
+                dialogues = test_df['dialogue'].tolist()
+                
+                # prefix 추가
+                dialogues_with_prefix = [f"{prefix}{d}" for d in dialogues]
+                
+                # 다시 토큰화
+                test_tokenized_encoder_inputs = tokenizer(
+                    dialogues_with_prefix,
+                    return_tensors="pt",
+                    padding=True,
+                    add_special_tokens=True,
+                    truncation=True,
+                    max_length=self.config['tokenizer']['encoder_max_len'],
+                    return_token_type_ids=False
+                )
+                
+                # Dataset 재생성
+                test_encoder_inputs_dataset = DatasetForInference(
+                    test_tokenized_encoder_inputs,
+                    test_data['fname'].tolist(),
+                    len(dialogues)
+                )
+                
+                print(f"Applied prefix: {prefix[:50]}...")
+        
+        return test_data, test_encoder_inputs_dataset
     
-    return submission_path
+    def _save_results(self, output_df: pd.DataFrame) -> Path:
+        """결과 저장 - baseline.py와 동일한 구조"""
+        # 타임스탬프 생성
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # 저장 경로 설정
+        result_path = path_manager.ensure_dir("prediction")
+        
+        # 실험별 폴더 생성
+        exp_folder = result_path / f"{self.experiment_name}_{timestamp}"
+        exp_folder.mkdir(parents=True, exist_ok=True)
+        
+        # output.csv 저장
+        output_path = exp_folder / "output.csv"
+        output_df.to_csv(output_path, index=False)
+        print(f"Saved submission to: {output_path}")
+        
+        # latest_output.csv 업데이트
+        latest_path = result_path / "latest_output.csv"
+        output_df.to_csv(latest_path, index=False)
+        print(f"Updated latest submission: {latest_path}")
+        
+        return output_path
 
 
+# CLI 지원 (선택사항)
 if __name__ == "__main__":
-    # 테스트용 메인 함수
     import argparse
+    from utils import load_config
     
-    parser = argparse.ArgumentParser(description="Run inference after training")
-    parser.add_argument("--experiment", required=True, help="Experiment name")
-    parser.add_argument("--model", required=True, help="Model path")
-    parser.add_argument("--config", required=True, help="Config file path")
-    parser.add_argument("--test", default="data/test.csv", help="Test data path")
+    parser = argparse.ArgumentParser(description="학습 후 추론 실행")
+    parser.add_argument("--experiment", required=True, help="실험명")
+    parser.add_argument("--checkpoint", required=True, help="체크포인트 경로")
+    parser.add_argument("--config", required=True, help="설정 파일 경로")
+    parser.add_argument("--test-file", default="data/test.csv", help="테스트 파일")
     
     args = parser.parse_args()
     
-    submission_path = generate_submission_after_training(
+    # 설정 로드
+    config = load_config(args.config)
+    
+    # 추론 실행
+    inference = PostTrainingInference(
         experiment_name=args.experiment,
-        model_path=args.model,
-        config_path=args.config
+        model_path=args.checkpoint,
+        config=config
     )
     
-    print(f"Submission file created: {submission_path}")
+    submission_path = inference.run_test_inference(args.test_file)
+    print(f"Inference completed: {submission_path}")
