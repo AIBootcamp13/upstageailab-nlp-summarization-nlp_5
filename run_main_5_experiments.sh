@@ -4,6 +4,7 @@
 # -1 옵션: 1에포크만 실행 (빠른 테스트용)
 
 set -e
+set -o pipefail  # 파이프라인 중간 명령 실패도 감지
 
 # -1 옵션 처리 (1에포크 모드)
 ONE_EPOCH_MODE=false
@@ -35,7 +36,7 @@ TOTAL_TIME_SAVED=0
 enhanced_gpu_monitor() {
     local prefix="$1"
     local gpu_data
-    gpu_data=$(nvidia-smi --query-gpu=memory.used,memory.total,utilization.gpu,temperature.gpu --format=csv,noheader,nounits)
+    gpu_data=$(nvidia-smi --query-gpu=memory.used,memory.total,utilization.gpu,temperature.gpu --format=csv,noheader,nounits 2>/dev/null)
     
     if [ -n "$gpu_data" ]; then
         IFS=',' read -r memory_used memory_total gpu_util temperature <<< "$gpu_data"
@@ -109,7 +110,10 @@ smart_wait() {
         
         if [ "$current_memory" -le "$target_memory" ]; then
             echo -e "${GREEN}✅ 대기 완료: GPU 메모리 ${current_memory}MB (${current_wait_time}초 대기)${NC}"
-            TOTAL_TIME_SAVED=$((TOTAL_TIME_SAVED + 60 - current_wait_time))
+            # 음수 방지: 60초보다 적게 기다린 경우만 절약 시간 계산
+            if [ "$current_wait_time" -lt 60 ]; then
+                TOTAL_TIME_SAVED=$((TOTAL_TIME_SAVED + 60 - current_wait_time))
+            fi
             break
         fi
         
@@ -393,9 +397,10 @@ for i in "${!experiments[@]}"; do
         echo -e "${BLUE}📁 생성된 채점용 파일들:${NC}"
         
         # 현재 시간 기준으로 최근 생성된 폴더 찾기
-        today_pattern="*_$(date +%Y%m%d)*"
-        if find ./prediction -maxdepth 1 -name "$today_pattern" -type d 2>/dev/null | head -1 >/dev/null; then
-            latest_exp_folder=$(find ./prediction -maxdepth 1 -name "$today_pattern" -type d 2>/dev/null | sort -r | head -1)
+        today_pattern="$(date +%Y%m%d)"
+        # 시간순으로 정렬하여 가장 최근 폴더 찾기
+        if ls -td ./prediction/*_"$today_pattern"* 2>/dev/null | head -1 >/dev/null; then
+            latest_exp_folder=$(ls -td ./prediction/*_"$today_pattern"* 2>/dev/null | head -1)
             if [ -n "$latest_exp_folder" ] && [ -f "$latest_exp_folder/output.csv" ]; then
                 echo -e "  📤 실험별 제출: ${latest_exp_folder}/output.csv"
             else
