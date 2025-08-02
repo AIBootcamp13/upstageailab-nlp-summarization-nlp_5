@@ -158,16 +158,37 @@ test_server_connection() {
 get_remote_experiment_list() {
     local experiment_dirs=()
     
-    # outputs 디렉토리의 실험 폴더들 찾기
+    # 디버깅: 원격 디렉토리 확인
+    if [[ "${DEBUG:-false}" == "true" ]]; then
+        log_info "[DEBUG] outputs 디렉토리 확인: $REMOTE_OUTPUTS_DIR"
+        ssh "$REMOTE_HOST" "LC_ALL=C ls -la '$REMOTE_OUTPUTS_DIR' 2>/dev/null || echo '디렉토리 없음'"
+        log_info "[DEBUG] logs 디렉토리 확인: $REMOTE_LOGS_DIR"
+        ssh "$REMOTE_HOST" "LC_ALL=C ls -la '$REMOTE_LOGS_DIR' 2>/dev/null || echo '디렉토리 없음'"
+    fi
+    
+    # outputs 디렉토리의 실험 폴더들 찾기 (더 유연한 패턴)
     local outputs_dirs
     outputs_dirs=$(ssh "$REMOTE_HOST" "LC_ALL=C find '$REMOTE_OUTPUTS_DIR' -maxdepth 1 -type d -name '*_*' 2>/dev/null" | \
-        grep -E '(dialogue_summarization|auto_experiments|.*_[0-9]{8}_[0-9]{6})' | \
+        grep -v "^$REMOTE_OUTPUTS_DIR$" | \
         sort)
     
-    # logs 디렉토리의 실험 로그 폴더들도 찾기 (실패한 실험 포함)
+    # 디버깅: 찾은 outputs 디렉토리 출력
+    if [[ "${DEBUG:-false}" == "true" ]]; then
+        log_info "[DEBUG] 찾은 outputs 디렉토리:"
+        echo "$outputs_dirs"
+    fi
+    
+    # logs 디렉토리의 실험 로그 폴더들도 찾기
     local log_dirs
-    log_dirs=$(ssh "$REMOTE_HOST" "LC_ALL=C find '$REMOTE_LOGS_DIR' -maxdepth 1 -type d -name '*experiments*' 2>/dev/null" | \
+    log_dirs=$(ssh "$REMOTE_HOST" "LC_ALL=C find '$REMOTE_LOGS_DIR' -maxdepth 1 -type d -name '*_*' 2>/dev/null" | \
+        grep -v "^$REMOTE_LOGS_DIR$" | \
         sort)
+    
+    # 디버깅: 찾은 logs 디렉토리 출력
+    if [[ "${DEBUG:-false}" == "true" ]]; then
+        log_info "[DEBUG] 찾은 logs 디렉토리:"
+        echo "$log_dirs"
+    fi
     
     # outputs 결과를 배열에 추가
     if [[ -n "$outputs_dirs" ]]; then
@@ -215,8 +236,8 @@ sync_experiment_directory() {
         log_info "실험 동기화 중: $exp_name"
     fi
     
-    # 디렉토리 이름 유효성 검증 (영문, 숫자, 언더스코어, 하이픈만 허용)
-    if [[ -z "$exp_name" ]] || [[ ! "$exp_name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+    # 디렉토리 이름 유효성 검증 (영문, 숫자, 언더스코어, 하이픈, 점 허용)
+    if [[ -z "$exp_name" ]] || [[ ! "$exp_name" =~ ^[a-zA-Z0-9_.-]+$ ]]; then
         log_error "잘못된 디렉토리 이름: $exp_name"
         return 1
     fi
@@ -424,8 +445,8 @@ main() {
     # 4. 각 실험 동기화
     local success_count=0
     for exp_dir in "${experiments[@]}"; do
-        # 유효한 디렉토리 경로인지 검증 (로그 디렉토리도 포함)
-        if [[ "$exp_dir" =~ ^/.*/(dialogue_summarization|auto_experiments|.*_[0-9]{8}_[0-9]{6}|.*experiments.*)$ ]]; then
+        # 유효한 디렉토리 경로인지 검증 (모든 '_' 포함 디렉토리 허용)
+        if [[ "$exp_dir" =~ ^/.*/.*_.*$ ]]; then
             if sync_experiment_directory "$exp_dir"; then
                 ((success_count++))
             fi

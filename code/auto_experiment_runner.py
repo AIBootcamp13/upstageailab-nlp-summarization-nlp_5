@@ -385,6 +385,17 @@ class AutoExperimentRunner:
                     print(f"❌ 추론 실행 중 예외: {inf_e}")
                     result = self._collect_results(config, Path(config_path).stem)
                     result['inference_error'] = str(inf_e)
+            else:
+                # 프로세스 실행 실패 처리
+                result = {
+                    'status': 'error',
+                    'returncode': process.returncode,
+                    'duration': time.time() - start_time
+                }
+        except Exception as e:
+            # 전체 실험 실행 예외 처리
+            result = {
+                'status': 'error',
                 'error': str(e),
                 'duration': time.time() - start_time
             }
