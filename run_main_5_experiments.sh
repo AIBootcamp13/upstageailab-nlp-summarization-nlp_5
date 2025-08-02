@@ -40,7 +40,11 @@ enhanced_gpu_monitor() {
         gpu_util=$(echo "$gpu_util" | xargs)
         temperature=$(echo "$temperature" | xargs)
         
-        local memory_percent=$((memory_used * 100 / memory_total))
+        # 0으로 나누기 방지
+        local memory_percent=0
+        if [ "$memory_total" -gt 0 ]; then
+            memory_percent=$((memory_used * 100 / memory_total))
+        fi
         local memory_free=$((memory_total - memory_used))
         
         echo -e "${BLUE}📊 $prefix GPU 상태:${NC}"
@@ -81,7 +85,15 @@ smart_wait() {
     
     while true; do
         local current_memory
-        current_memory=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | xargs)
+        current_memory=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | xargs)
+        
+        # nvidia-smi 실패 시 처리
+        if [ -z "$current_memory" ]; then
+            echo "  ⚠️  GPU 정보를 가져올 수 없습니다. 10초 후 재시도..."
+            sleep 10
+            continue
+        fi
+        
         local current_wait_time=$(($(date +%s) - wait_start))
         
         if [ "$current_memory" -le "$target_memory" ]; then
@@ -135,7 +147,13 @@ handle_experiment_error() {
     
     # GPU 메모리 과부하 감지
     local current_memory
-    current_memory=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | xargs)
+    current_memory=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | xargs)
+    
+    # nvidia-smi 실패 시 기본값 사용
+    if [ -z "$current_memory" ]; then
+        current_memory=0
+    fi
+    
     if [ "$current_memory" -gt 20000 ]; then
         echo -e "${RED}⚠️  GPU 메모리 과부하 감지! 긴급 정리 실행...${NC}"
         cleanup_gpu_emergency
@@ -347,8 +365,9 @@ for i in "${!experiments[@]}"; do
         echo -e "${BLUE}📁 생성된 채점용 파일들:${NC}"
         
         # 현재 시간 기준으로 최근 생성된 폴더 찾기
-        if ls ./prediction/*_"$(date +%Y%m%d)"* 2>/dev/null | tail -1 >/dev/null; then
-            latest_exp_folder=$(ls -td ./prediction/*_"$(date +%Y%m%d)"* 2>/dev/null | head -1)
+        today_pattern="*_$(date +%Y%m%d)*"
+        if find ./prediction -maxdepth 1 -name "$today_pattern" -type d 2>/dev/null | head -1 >/dev/null; then
+            latest_exp_folder=$(find ./prediction -maxdepth 1 -name "$today_pattern" -type d 2>/dev/null | sort -r | head -1)
             if [ -n "$latest_exp_folder" ] && [ -f "$latest_exp_folder/output.csv" ]; then
                 echo -e "  📤 실험별 제출: ${latest_exp_folder}/output.csv"
             else
