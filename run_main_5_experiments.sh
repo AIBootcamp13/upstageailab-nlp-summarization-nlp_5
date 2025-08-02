@@ -30,7 +30,8 @@ TOTAL_TIME_SAVED=0
 # 🔥 극한 최적화 GPU 메모리 모니터링 함수
 enhanced_gpu_monitor() {
     local prefix="$1"
-    local gpu_data=$(nvidia-smi --query-gpu=memory.used,memory.total,utilization.gpu,temperature.gpu --format=csv,noheader,nounits)
+    local gpu_data
+    gpu_data=$(nvidia-smi --query-gpu=memory.used,memory.total,utilization.gpu,temperature.gpu --format=csv,noheader,nounits)
     
     if [ -n "$gpu_data" ]; then
         IFS=',' read -r memory_used memory_total gpu_util temperature <<< "$gpu_data"
@@ -73,12 +74,14 @@ enhanced_gpu_monitor() {
 smart_wait() {
     local target_memory=${1:-5000}  # 기본 5GB 아래로 대기
     local max_wait_time=${2:-300}   # 최대 5분 대기
-    local wait_start=$(date +%s)
+    local wait_start
+    wait_start=$(date +%s)
     
     echo -e "${YELLOW}⏳ 스마트 대기: GPU 메모리 ${target_memory}MB 아래로 대기 중...${NC}"
     
     while true; do
-        local current_memory=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | xargs)
+        local current_memory
+        current_memory=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | xargs)
         local current_wait_time=$(($(date +%s) - wait_start))
         
         if [ "$current_memory" -le "$target_memory" ]; then
@@ -101,7 +104,8 @@ smart_wait() {
 track_experiment_time() {
     local exp_name="$1"
     local start_time="$2"
-    local end_time=$(date +%s)
+    local end_time
+    end_time=$(date +%s)
     local duration=$((end_time - start_time))
     local duration_min=$((duration / 60))
     local duration_sec=$((duration % 60))
@@ -130,7 +134,8 @@ handle_experiment_error() {
     fi
     
     # GPU 메모리 과부하 감지
-    local current_memory=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | xargs)
+    local current_memory
+    current_memory=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | xargs)
     if [ "$current_memory" -gt 20000 ]; then
         echo -e "${RED}⚠️  GPU 메모리 과부하 감지! 긴급 정리 실행...${NC}"
         cleanup_gpu_emergency
@@ -330,7 +335,7 @@ for i in "${!experiments[@]}"; do
         
         # 향상된 실험 시간 추적
         track_experiment_time "$exp_name" "$EXP_START_TIME"
-        actual_duration=$?
+        # actual_duration=$?  # 사용되지 않는 변수 제거
         
         EXP_DURATION_MIN=$((EXP_DURATION / 60))
         EXP_DURATION_SEC=$((EXP_DURATION % 60))
@@ -342,8 +347,8 @@ for i in "${!experiments[@]}"; do
         echo -e "${BLUE}📁 생성된 채점용 파일들:${NC}"
         
         # 현재 시간 기준으로 최근 생성된 폴더 찾기
-        if ls ./prediction/*_$(date +%Y%m%d)* 2>/dev/null | tail -1 >/dev/null; then
-            latest_exp_folder=$(ls -td ./prediction/*_$(date +%Y%m%d)* 2>/dev/null | head -1)
+        if ls ./prediction/*_"$(date +%Y%m%d)"* 2>/dev/null | tail -1 >/dev/null; then
+            latest_exp_folder=$(ls -td ./prediction/*_"$(date +%Y%m%d)"* 2>/dev/null | head -1)
             if [ -n "$latest_exp_folder" ] && [ -f "$latest_exp_folder/output.csv" ]; then
                 echo -e "  📤 실험별 제출: ${latest_exp_folder}/output.csv"
             else
@@ -436,7 +441,7 @@ if [ -f "./prediction/experiment_index.csv" ]; then
     
     # 최고 성능 실험 (간단 버전)
     echo -e "🥇 실험 목록 (최신순):"
-    tail -n +2 ./prediction/experiment_index.csv | head -5 | while IFS=',' read -r exp_name folder_name timestamp file_path rest; do
+    tail -n +2 ./prediction/experiment_index.csv | head -5 | while IFS=',' read -r exp_name _ timestamp file_path rest; do
         echo -e "   📋 $exp_name"
         echo -e "      📁 $file_path"
         echo -e "      🕐 $timestamp"
@@ -444,7 +449,7 @@ if [ -f "./prediction/experiment_index.csv" ]; then
     done
     
     # 성능이 가장 좋은 실험 찾기 (간단 버전)
-    if [ $(tail -n +2 ./prediction/experiment_index.csv | wc -l) -gt 0 ]; then
+    if [ "$(tail -n +2 ./prediction/experiment_index.csv | wc -l)" -gt 0 ]; then
         best_experiment=$(tail -n +2 ./prediction/experiment_index.csv | head -1)
         best_exp_name=$(echo "$best_experiment" | cut -d',' -f1)
         best_file_path=$(echo "$best_experiment" | cut -d',' -f4)
@@ -476,7 +481,7 @@ enhanced_gpu_monitor "모든 실험 완료 후"
 echo
 echo -e "${CYAN}📈 RTX 3090 극한 최적화 성과:${NC}"
 echo -e "${WHITE}──────────────────────────────────────${NC}"
-echo -e "🗜 총 메모리 절약: ${TOTAL_MEMORY_SAVED:.2f}GB"
+echo -e "🗜 총 메모리 절약: ${TOTAL_MEMORY_SAVED}GB"
 echo -e "⏱️  총 시간 절약: ${TOTAL_TIME_SAVED}초 (${TOTAL_TIME_SAVED} / 60 = $((TOTAL_TIME_SAVED / 60))분)"
 echo -e "🏆 성공률: ${COMPLETED}/${TOTAL_EXPERIMENTS} ($((COMPLETED * 100 / TOTAL_EXPERIMENTS))%)"
 echo
@@ -495,7 +500,7 @@ SUMMARY_FILE="${LOG_DIR}/experiment_summary.txt"
     done
     echo
     echo "RTX 3090 극한 최적화 성과:"
-    echo "  총 메모리 절약: ${TOTAL_MEMORY_SAVED:.2f}GB"
+    echo "  총 메모리 절약: ${TOTAL_MEMORY_SAVED}GB"
     echo "  총 시간 절약: ${TOTAL_TIME_SAVED}초 ($((TOTAL_TIME_SAVED / 60))분)"
     echo "  성공률: ${COMPLETED}/${TOTAL_EXPERIMENTS} ($((COMPLETED * 100 / TOTAL_EXPERIMENTS))%)"
     echo
@@ -507,6 +512,6 @@ echo -e "${WHITE}📝 실험 요약 파일 저장: ${SUMMARY_FILE}${NC}"
 echo
 echo -e "${CYAN}✨ 5개 주요 모델 실험 완료! (RTX 3090 극한 최적화)${NC}"
 echo -e "   ${COMPLETED}/${TOTAL_EXPERIMENTS} 실험 성공 (성공률: $((COMPLETED * 100 / TOTAL_EXPERIMENTS))%)"
-echo -e "   📈 메모리 절약: ${TOTAL_MEMORY_SAVED:.2f}GB, 시간 절약: $((TOTAL_TIME_SAVED / 60))분"
+echo -e "   📈 메모리 절약: ${TOTAL_MEMORY_SAVED}GB, 시간 절약: $((TOTAL_TIME_SAVED / 60))분"
 echo -e "   🏆 최적화 성과를 WandB에서 상세 결과를 확인하세요."
 echo -e "   📄 벤치마크 상세: $BENCHMARK_LOG"
