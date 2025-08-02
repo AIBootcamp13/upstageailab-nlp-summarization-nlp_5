@@ -21,9 +21,13 @@ PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
 WHITE='\033[1;37m'
 NC='\033[0m' # No Color
-
 # 🔥 RTX 3090 극한 최적화 벤치마킹 전역 변수
 BENCHMARK_LOG="benchmark_$(date +%Y%m%d_%H%M%S).log"
+# 벤치마크 로그 파일 생성 테스트
+if ! echo "test" > "$BENCHMARK_LOG" 2>/dev/null; then
+    echo -e "${YELLOW}⚠️  벤치마크 로그 파일을 생성할 수 없습니다. /dev/null로 리다이렉트합니다.${NC}"
+    BENCHMARK_LOG="/dev/null"
+fi
 TOTAL_MEMORY_SAVED=0
 TOTAL_TIME_SAVED=0
 
@@ -39,6 +43,12 @@ enhanced_gpu_monitor() {
         memory_total=$(echo "$memory_total" | xargs)
         gpu_util=$(echo "$gpu_util" | xargs)
         temperature=$(echo "$temperature" | xargs)
+        
+        # 값이 숫자인지 확인
+        if ! [[ "$memory_used" =~ ^[0-9]+$ ]] || ! [[ "$memory_total" =~ ^[0-9]+$ ]]; then
+            echo -e "${RED}❌ nvidia-smi 출력 형식 오류${NC}"
+            return 1
+        fi
         
         # 0으로 나누기 방지
         local memory_percent=0
@@ -63,7 +73,8 @@ enhanced_gpu_monitor() {
             echo -e "  ${GREEN}✅ 안전: GPU 메모리 여유량 충분${NC}"
         fi
         
-        if [ "$temperature" -gt 80 ]; then
+        # 온도가 숫자인지 확인 후 비교
+        if [[ "$temperature" =~ ^[0-9]+$ ]] && [ "$temperature" -gt 80 ]; then
             echo -e "  ${RED}⚠️  경고: GPU 온도 높음 (80°C 초과)${NC}"
         fi
         
@@ -127,7 +138,7 @@ track_experiment_time() {
     # 벤치마크 로그에 기록
     echo "$(date '+%Y-%m-%d %H:%M:%S') | $exp_name | ${duration_min}m ${duration_sec}s" >> "$BENCHMARK_LOG"
     
-    return $duration
+    return 0  # return 값은 0-255 범위로 제한, 시간은 직접 사용하지 않으므로 0 반환
 }
 
 # 🔥 에러 처리 및 안전 폴백 함수
@@ -191,10 +202,12 @@ gc.collect()
 START_TIME=$(date +%s)
 START_TIME_STR=$(date '+%Y-%m-%d %H:%M:%S')
 
-# 🔥 벤치마크 로그 초기화
-echo "=== RTX 3090 극한 최적화 벤치마크 로그 ==="> "$BENCHMARK_LOG"
-echo "시작 시간: $START_TIME_STR" >> "$BENCHMARK_LOG"
-echo "" >> "$BENCHMARK_LOG"
+# 🔥 벤치마크 로그 초기화 (/dev/null인 경우 무시)
+if [ "$BENCHMARK_LOG" != "/dev/null" ]; then
+    echo "=== RTX 3090 극한 최적화 벤치마크 로그 ===" > "$BENCHMARK_LOG"
+    echo "시작 시간: $START_TIME_STR" >> "$BENCHMARK_LOG"
+    echo "" >> "$BENCHMARK_LOG"
+fi
 # 1에포크 모드에 따른 메시지 조정
 if [[ "$ONE_EPOCH_MODE" == "true" ]]; then
 echo -e "${CYAN}🚀 5개 RTX 3090 최적화 실험 (1에포크 빠른 테스트)${NC}"
@@ -220,9 +233,24 @@ else
     echo -e "📝 방법: 사용법 - bash run_main_5_experiments.sh"
 fi
 
-# 로그 디렉토리 생성
+# 로그 디렉토리 생성 (실패 대비)
 LOG_DIR="logs/main_experiments_$(date +%Y%m%d_%H%M%S)"
-mkdir -p "$LOG_DIR"
+if ! mkdir -p "$LOG_DIR" 2>/dev/null; then
+    echo -e "${YELLOW}⚠️  로그 디렉토리를 생성할 수 없습니다. /tmp에 생성합니다.${NC}"
+    LOG_DIR="/tmp/nlp_logs_$(date +%Y%m%d_%H%M%S)"
+    mkdir -p "$LOG_DIR" || {
+        echo -e "${RED}❌ 로그 디렉토리 생성 실패. 종료합니다.${NC}"
+        exit 1
+    }
+fi
+
+# 필수 디렉토리 확인 및 생성
+for dir in "./prediction" "./outputs" "./logs"; do
+    if [ ! -d "$dir" ]; then
+        echo -e "${YELLOW}📁 $dir 디렉토리 생성 중...${NC}"
+        mkdir -p "$dir" 2>/dev/null || echo -e "${YELLOW}⚠️  $dir 생성 실패${NC}"
+    fi
+done
 
 # 실험 목록 (mT5 1개 + RTX 3090 극한 최적화 4개 = 총 5개)
 declare -a experiments=(
