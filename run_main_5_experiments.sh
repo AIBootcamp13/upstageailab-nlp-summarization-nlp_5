@@ -390,7 +390,7 @@ for i in "${!experiments[@]}"; do
     exp_name_clean=$(echo "$exp_name" | sed 's/[^a-zA-Z0-9_-]/_/g' | sed 's/__*/_/g' | sed 's/^_//;s/_$//')
     LOG_FILE="${LOG_DIR}/experiment_${EXPERIMENT_NUM}_${exp_name_clean}.log"
     # 실험 실행 (1에포크 모드 옵션 처리)
-    EXPERIMENT_CMD="/opt/conda/bin/python3 code/auto_experiment_runner.py --config config/experiments/${config_file}"
+    EXPERIMENT_CMD="/opt/conda/bin/python3 code/auto_experiment_runner.py --configs config/experiments/${config_file}"
 
     # 1에포크 모드일 때 --one-epoch 옵션 추가
     if [[ "$ONE_EPOCH_MODE" == "true" ]]; then
