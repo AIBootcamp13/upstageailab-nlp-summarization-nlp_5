@@ -45,11 +45,15 @@ enhanced_gpu_monitor() {
         gpu_util=$(echo "$gpu_util" | xargs)
         temperature=$(echo "$temperature" | xargs)
         
-        # 값이 숫자인지 확인
-        if ! [[ "$memory_used" =~ ^[0-9]+$ ]] || ! [[ "$memory_total" =~ ^[0-9]+$ ]]; then
+        # 값이 숫자인지 확인 (소수점 포함)
+        if ! [[ "$memory_used" =~ ^[0-9]+(\.[0-9]+)?$ ]] || ! [[ "$memory_total" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
             echo -e "${RED}❌ nvidia-smi 출력 형식 오류${NC}"
             return 1
         fi
+        
+        # 소수점 값을 정수로 변환 (bash는 소수점 연산 불가)
+        memory_used=$(echo "$memory_used" | cut -d'.' -f1)
+        memory_total=$(echo "$memory_total" | cut -d'.' -f1)
         
         # 0으로 나누기 방지
         local memory_percent=0
@@ -74,9 +78,12 @@ enhanced_gpu_monitor() {
             echo -e "  ${GREEN}✅ 안전: GPU 메모리 여유량 충분${NC}"
         fi
         
-        # 온도가 숫자인지 확인 후 비교
-        if [[ "$temperature" =~ ^[0-9]+$ ]] && [ "$temperature" -gt 80 ]; then
-            echo -e "  ${RED}⚠️  경고: GPU 온도 높음 (80°C 초과)${NC}"
+        # 온도가 숫자인지 확인 후 비교 (소수점 처리)
+        if [[ "$temperature" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+            temp_int=$(echo "$temperature" | cut -d'.' -f1)
+            if [ "$temp_int" -gt 80 ]; then
+                echo -e "  ${RED}⚠️  경고: GPU 온도 높음 (80°C 초과)${NC}"
+            fi
         fi
         
         return 0
@@ -101,6 +108,11 @@ smart_wait() {
         
         # nvidia-smi 실패 시 처리
         if [ -z "$current_memory" ]; then
+            local current_wait_time=$(($(date +%s) - wait_start))
+            if [ "$current_wait_time" -ge "$max_wait_time" ]; then
+                echo -e "${YELLOW}⚠️  대기 시간 초과: nvidia-smi 실패로 강제 진행 (${max_wait_time}초 대기)${NC}"
+                break
+            fi
             echo "  ⚠️  GPU 정보를 가져올 수 없습니다. 10초 후 재시도..."
             sleep 10
             continue
@@ -331,11 +343,11 @@ gc.collect()
         if [ "$used" -lt 5000 ]; then
             echo -e "${GREEN}✅ GPU 메모리가 안전한 수준으로 정리됨${NC}"
         fi
-        done
-        
-        echo "✅ RTX 3090 극한 최적화 준비 완료!"
-        echo
-        }
+    done
+    
+    echo "✅ RTX 3090 극한 최적화 준비 완료!"
+    echo
+    }
 # 초기 GPU 상태 확인 (향상된 모니터링)
 enhanced_gpu_monitor "실험 전"
 
