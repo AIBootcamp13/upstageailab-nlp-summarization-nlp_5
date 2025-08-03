@@ -21,14 +21,14 @@ from typing import Dict, Any, List
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from utils.path_utils import path_manager
-from utils.baseline_compatible import (
+from code.utils.path_utils import path_manager
+from code.utils.baseline_compatible import (
     BaselinePreprocess, 
     DatasetForInference,
     prepare_test_dataset,
     remove_special_tokens
 )
-from utils.model_handler import ModelSpecificHandler
+from code.utils.model_handler import ModelSpecificHandler
 
 logger = logging.getLogger(__name__)
 
@@ -225,7 +225,7 @@ class PostTrainingInference:
 # CLI 지원 (선택사항)
 if __name__ == "__main__":
     import argparse
-    from utils import load_config
+    from code.utils import load_config
     
     parser = argparse.ArgumentParser(description="학습 후 추론 실행")
     parser.add_argument("--experiment", required=True, help="실험명")
