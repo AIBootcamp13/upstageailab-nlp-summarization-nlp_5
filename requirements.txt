@@ -56,7 +56,7 @@ gpustat==1.1.1  # GPU monitoring
 py-cpuinfo==9.0.0
 
 # Optional: Backtranslation
-googletrans==4.0.0-rc1  # Google Translate
+# googletrans==4.0.0-rc1  # Google Translate (httpx 버전 충돌로 비활성화)
 sentencepiece==0.2.0  # For MarianMT - updated
 
 # Optional: Advanced Features
