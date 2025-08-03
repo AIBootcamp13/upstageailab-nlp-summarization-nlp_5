@@ -118,12 +118,8 @@ class ModelSpecificHandler:
             # 실패 시 체크포인트에서 로드
             tokenizer = AutoTokenizer.from_pretrained(model_path)
         
-        # 모델 로드 (체크포인트에서)
-        if architecture == "t5":
-            from transformers import T5ForConditionalGeneration
-            model = T5ForConditionalGeneration.from_pretrained(model_path)
-        else:  # bart
-            model = BartForConditionalGeneration.from_pretrained(model_path)
+        # 모델 로드 (체크포인트에서) - Auto 클래스로 모든 Seq2Seq 모델 지원
+        model = AutoModelForSeq2SeqLM.from_pretrained(model_path)
         
         # 디바이스 설정
         model = model.to(device)
