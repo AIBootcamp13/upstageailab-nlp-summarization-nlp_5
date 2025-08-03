@@ -6,7 +6,7 @@ torch==2.5.1  # PyTorch stable version
 torchvision==0.20.1  # Compatible with PyTorch 2.5.1
 torchaudio==2.5.1  # Compatible with PyTorch 2.5.1
 transformers==4.54.0
-datasets==3.6.0  # Updated working version
+datasets==3.6.0  # CRITICAL: Required for trainer.py - HuggingFace datasets
 evaluate==0.4.0
 pytorch_lightning==2.5.2
 unsloth==2025.7.8  # QLoRA support - WORKING VERSION
@@ -57,7 +57,7 @@ py-cpuinfo==9.0.0
 
 # Optional: Backtranslation
 # googletrans==4.0.0-rc1  # Google Translate (httpx 버전 충돌로 비활성화)
-sentencepiece==0.2.0  # For MarianMT - updated
+sentencepiece==0.2.0  # CRITICAL: Required for mT5 and T5 tokenizers - updated
 
 # Optional: Advanced Features
 accelerate==1.9.0  # For distributed training - updated
