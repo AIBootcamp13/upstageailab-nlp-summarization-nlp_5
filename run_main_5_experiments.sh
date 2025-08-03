@@ -224,14 +224,14 @@ echo -e "${CYAN}🚀 5개 RTX 3090 최적화 실험 (1에포크 빠른 테스트
     echo -e "⏱️  예상 소요 시간: 25-35분 (1에포크 모드 - 극한 최적화 빠른 테스트)"
     echo -e "📝 방법: 사용법 - bash run_main_5_experiments.sh -1"
 else
-    echo -e "${CYAN}🚀 5개 RTX 3090 최적화 실험 시작 (mT5 1개 + 고성능 4개)${NC}"
+    echo -e "${CYAN}🚀 5개 RTX 3090 최적화 실험 시작 (간단한 순서: 베이스라인 → mT5)${NC}"
     echo -e "${WHITE}════════════════════════════════════════════════════════${NC}"
     echo -e "⏰ 시작 시간: ${START_TIME_STR}"
     echo -e "🖥️  RTX 3090 24GB 최적화 실험"
     # GPU 메모리 단편화 방지 설정
     export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
     echo -e "✅ GPU 메모리 단편화 방지 설정 활성화"
-    echo -e "⏱️  예상 소요 시간: 3.5-4시간 (mT5: 60분 + RTX3090 극한최적화 4개: 2.5-3시간)"
+    echo -e "⏱️  예상 소요 시간: 3.5-4시간 (간단한 순서: KoBART 45분 + 기타 3개 115분 + mT5 60분)"
     echo -e "💪 성능 반영: 안전모드 제거, RTX 3090 24GB 최대 활용"
     echo -e "🎯 mT5 XLSum 목표: ROUGE-1 25%+ 달성 (현재 10.23%에서 150% 향상)"
     echo -e "📝 방법: 사용법 - bash run_main_5_experiments.sh"
@@ -258,14 +258,14 @@ done
 
 # 실험 목록 (mT5 1개 + RTX 3090 극한 최적화 4개 = 총 5개)
 declare -a experiments=(
- # 🔥 mT5 XLSum 한국어 도메인 적응 QLoRA 극한 최적화 (조장님 피드백 반영)
- 01_mt5_xlsum_ultimate_korean_qlora.yaml:🚀_mT5_한국어_QLoRA_극한최적화_batch32:60분
+ # 💪 RTX 3090 극한 최적화 (간단한 순서로 배치)
+ baseline_kobart_rtx3090.yaml:💪_KoBART_베이스라인_RTX3090:45분
+ high_learning_rate_rtx3090.yaml:💪_고성능_학습률_RTX3090:35분
+ batch_optimization_rtx3090.yaml:💪_배치_최적화_RTX3090:40분
+ eenzeenee_t5_rtx3090.yaml:💪_eenzeenee_T5_RTX3090:40분
 
- # 💪 RTX 3090 극한 최적화 4개 (안전모드 제거)
- 02_eenzeenee_t5_rtx3090.yaml:💪_eenzeenee_T5_RTX3090_극한최적화:40분
- 01_baseline_kobart_rtx3090.yaml:💪_KoBART_RTX3090_극한최적화:45분
- 03_high_learning_rate_rtx3090.yaml:💪_극한_고성능_학습률_RTX3090:35분
- 04_batch_optimization_rtx3090.yaml:💪_배치_극한최적화_RTX3090:40분
+ # 🔥 mT5 XLSum 한국어 도메인 적응 QLoRA (가장 복잡)
+ mt5_xlsum_ultimate_korean_qlora.yaml:🚀_mT5_한국어_QLoRA_극한최적화:60분
 )
 
 # GPU 정보 출력 함수
@@ -460,7 +460,7 @@ if [[ "$ONE_EPOCH_MODE" == "true" ]]; then
     echo -e "${CYAN}🎉 5개 실험 모두 완료! (1에포크 빠른 테스트)${NC}"
     echo -e "${WHITE}════════════════════════════════════════════════════════${NC}"
 else
-    echo -e "${CYAN}🎉 5개 실험 모두 완료! (mT5 1개 + RTX3090 고성능 4개)${NC}"
+    echo -e "${CYAN}🎉 5개 실험 모두 완료! (간단한 순서: 베이스라인 → mT5)${NC}"
     echo -e "${WHITE}════════════════════════════════════════════════════════${NC}"
 fi
 echo -e "⏰ 종료 시간: ${END_TIME_STR}"

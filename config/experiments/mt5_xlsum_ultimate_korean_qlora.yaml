@@ -1,4 +1,4 @@
-# mT5 XL-Sum RTX 3090 극한 최적화 실험 1단계
+# mT5 XL-Sum RTX 3090 극한 최적화 실험 1단계 (수정된 버전)
 experiment_name: mt5_xlsum_ultimate_korean_qlora
 description: "mT5 XL-Sum RTX 3090 + Unsloth 극한 최적화 1단계 - 배치 8 + 시퀀스 1024"
 
@@ -47,13 +47,13 @@ training:
   eval_steps: 100                     # 더 자주 평가
   
   # 🔥 1단계 극한 최적화 배치 설정
-  per_device_train_batch_size: 12      # 16→12 메모리 절약
-  per_device_eval_batch_size: 16      # 32→16 평가 배치 추가 축소
-  gradient_accumulation_steps: 2      # 유효 배치 48 유지
+  per_device_train_batch_size: 8      # 12→8 메모리 안전성 강화
+  per_device_eval_batch_size: 12      # 16→12 평가 배치 추가 축소
+  gradient_accumulation_steps: 3      # 유효 배치 24 유지
   
   # ⚡ 1단계 학습 파라미터
   num_train_epochs: 6                 # 최적화로 더 긴 학습
-  learning_rate: 8.0e-05              # 배치 증가에 따른 학습률 증가
+  learning_rate: 5.0e-05              # 8e-05→5e-05 안정성 강화
   lr_scheduler_type: cosine_with_restarts
   warmup_ratio: 0.02                  # 짧은 웜업
   weight_decay: 0.0001                # 세밀한 정규화
@@ -63,7 +63,7 @@ training:
   bf16: true                          # RTX 3090 + CUDA 12.2 최적
   tf32: true                          # Ampere 아키텍처 최적화
   gradient_checkpointing: true        # 메모리 절약을 위해 활성화
-  dataloader_num_workers: 16          # 32→16 메모리 절약
+  dataloader_num_workers: 8           # 16→8 메모리 절약
   dataloader_pin_memory: true         # 251GB RAM 활용
   dataloader_persistent_workers: true # 워커 재사용
   group_by_length: true
@@ -100,8 +100,8 @@ training:
 qlora:
   use_unsloth: false
   use_qlora: true
-  lora_rank: 128                      # 48→128 배 이상 증가
-  lora_alpha: 256                     # 96→256 배 이상 증가
+  lora_rank: 64                       # 128→64 메모리 안전성 강화
+  lora_alpha: 128                     # 256→128 메모리 안전성 강화
   lora_dropout: 0.01                  # 0.05→0.01 드롭아웃 감소
   target_modules: ["q", "k", "v", "o", "wi", "wo", "lm_head", "embed_tokens"]  # 모듈 확장
   load_in_4bit: true
@@ -112,9 +112,9 @@ qlora:
 wandb:
   entity: lyjune37-juneictlab
   project: nlp-5
-  name: mt5_xlsum_extreme_stage1_rtx3090
-  tags: [mT5, XL-Sum, RTX3090, extreme_stage1, Unsloth, batch8, seq1024]
-  notes: "mT5 XL-Sum RTX 3090 + Unsloth 극한 최적화 1단계 - 배치 8, 시퀀스 1024, LoRA 128"
+  name: mt5_xlsum_extreme_stage1_rtx3090_fixed
+  tags: [mT5, XL-Sum, RTX3090, extreme_stage1, Unsloth, batch8, seq1024, fixed]
+  notes: "mT5 XL-Sum RTX 3090 + Unsloth 극한 최적화 1단계 - 배치 8, 시퀀스 1024, LoRA 64 (안정성 강화)"
 
 # 🏆 1단계 극한 최적화 생성 설정
 generation:
@@ -125,3 +125,13 @@ generation:
   no_repeat_ngram_size: 3             # 반복 방지
   early_stopping: true                # 조기 중단
   do_sample: false                    # 결정론적 생성
+
+# 🚀 추가된 inference 섹션 (baseline.py 참조)
+inference:
+  no_repeat_ngram_size: 3             # generation과 동일값 사용
+  early_stopping: true               # generation과 동일값
+  generate_max_length: 200            # generation의 max_length와 동일
+  num_beams: 12                       # generation과 동일값
+  batch_size: 8                       # 추론 배치 크기 (안전하게 설정)
+  result_path: "./prediction/"        # baseline.py와 동일
+  remove_tokens: ['<pad>', '</s>', '<unk>', '<s>']  # 정리용 토큰들

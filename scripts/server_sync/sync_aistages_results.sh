@@ -67,8 +67,10 @@ SKIP_CONFIRMATION=${SKIP_CONFIRMATION:-true}  # 기본적으로 확인 건너뛰
 # 경로 설정
 LOCAL_OUTPUTS_DIR="${LOCAL_BASE}/${OUTPUTS_SUBDIR:-outputs}"
 LOCAL_LOGS_DIR="${LOCAL_BASE}/${LOGS_SUBDIR:-logs}"
+LOCAL_PREDICTION_DIR="${LOCAL_BASE}/${PREDICTION_SUBDIR:-prediction}"
 REMOTE_OUTPUTS_DIR="${REMOTE_BASE}/${OUTPUTS_SUBDIR:-outputs}"
 REMOTE_LOGS_DIR="${REMOTE_BASE}/${LOGS_SUBDIR:-logs}"
+REMOTE_PREDICTION_DIR="${REMOTE_BASE}/${PREDICTION_SUBDIR:-prediction}"
 
 # =================================================================
 # 유틸리티 함수들
@@ -93,6 +95,7 @@ setup_directories() {
     
     mkdir -p "$LOCAL_OUTPUTS_DIR"
     mkdir -p "$LOCAL_LOGS_DIR"
+    mkdir -p "$LOCAL_PREDICTION_DIR"
     
     log_success "로컬 디렉토리 생성 완료"
 }
@@ -113,6 +116,14 @@ get_remote_experiment_list() {
         logs_list=$(ssh "$REMOTE_HOST" "ls -1 '$REMOTE_LOGS_DIR' 2>/dev/null" | grep "_" || true)
     fi
     
+    # prediction 디렉토리 검색 (채점용 파일들 - 중요!)
+    local prediction_files=""
+    if ssh "$REMOTE_HOST" "[ -d '$REMOTE_PREDICTION_DIR' ]" 2>/dev/null; then
+        prediction_files=$(ssh "$REMOTE_HOST" "find '$REMOTE_PREDICTION_DIR' -maxdepth 1 -type f -name '*.csv' 2>/dev/null" | xargs -I {} basename {} || true)
+        # 디렉토리도 검색
+        local prediction_dirs=$(ssh "$REMOTE_HOST" "ls -1 '$REMOTE_PREDICTION_DIR' 2>/dev/null" | grep "_" || true)
+    fi
+    
     # 결과 출력
     if [[ -n "$outputs_list" ]]; then
         echo "$outputs_list" | while read -r dir; do
@@ -125,11 +136,14 @@ get_remote_experiment_list() {
             echo "logs:$dir"
         done
     fi
+    
+    # prediction 디렉토리 전체 동기화 (가장 중요)
+    echo "prediction:."
 }
 
 # 개별 디렉토리 동기화 (개선된 버전)
 sync_single_directory() {
-    local dir_type="$1"  # outputs 또는 logs
+    local dir_type="$1"  # outputs, logs, 또는 prediction
     local dir_name="$2"
     
     local remote_dir
@@ -141,12 +155,25 @@ sync_single_directory() {
     elif [[ "$dir_type" == "logs" ]]; then
         remote_dir="${REMOTE_LOGS_DIR}/${dir_name}"
         local_dir="${LOCAL_LOGS_DIR}/${dir_name}"
+    elif [[ "$dir_type" == "prediction" ]]; then
+        if [[ "$dir_name" == "." ]]; then
+            # prediction 디렉토리 전체 동기화
+            remote_dir="$REMOTE_PREDICTION_DIR"
+            local_dir="$LOCAL_PREDICTION_DIR"
+            log_info "동기화 중: 채점용 prediction 디렉토리 전체"
+        else
+            remote_dir="${REMOTE_PREDICTION_DIR}/${dir_name}"
+            local_dir="${LOCAL_PREDICTION_DIR}/${dir_name}"
+            log_info "동기화 중: $dir_type/$dir_name"
+        fi
     else
         log_error "잘못된 디렉토리 타입: $dir_type"
         return 1
     fi
     
-    log_info "동기화 중: $dir_type/$dir_name"
+    if [[ "$dir_type" != "prediction" ]] || [[ "$dir_name" != "." ]]; then
+        log_info "동기화 중: $dir_type/$dir_name"
+    fi
     
     # 로컬 디렉토리 생성
     mkdir -p "$local_dir"
@@ -156,14 +183,22 @@ sync_single_directory() {
         return 0
     fi
     
-    # rsync로 동기화 (개선된 옵션)
-    if rsync -avz --progress --update \
+    # rsync로 동기화 (개선된 옵션 - 기존 파일 유지)
+    if rsync -avz --progress --update --ignore-existing \
         "$REMOTE_HOST:$remote_dir/" \
         "$local_dir/" 2>/dev/null; then
-        log_success "✅ $dir_type/$dir_name 동기화 완료"
+        if [[ "$dir_type" == "prediction" ]] && [[ "$dir_name" == "." ]]; then
+            log_success "✅ 채점용 prediction 디렉토리 동기화 완료"
+        else
+            log_success "✅ $dir_type/$dir_name 동기화 완료"
+        fi
         return 0
     else
-        log_error "❌ $dir_type/$dir_name 동기화 실패"
+        if [[ "$dir_type" == "prediction" ]] && [[ "$dir_name" == "." ]]; then
+            log_error "❌ 채점용 prediction 디렉토리 동기화 실패"
+        else
+            log_error "❌ $dir_type/$dir_name 동기화 실패"
+        fi
         return 1
     fi
 }
@@ -216,6 +251,34 @@ EOF
     
     cat >> "$report_file" << EOF
 
+동기화된 prediction 디렉토리 (채점용 파일들):
+EOF
+    
+    if [[ -d "$LOCAL_PREDICTION_DIR" ]]; then
+        local csv_count=$(find "$LOCAL_PREDICTION_DIR" -name '*.csv' 2>/dev/null | wc -l)
+        local total_size=$(du -sh "$LOCAL_PREDICTION_DIR" 2>/dev/null | cut -f1)
+        echo "- 채점용 CSV 파일: $csv_count개, 전체 크기: $total_size" >> "$report_file"
+        
+        # 중요 파일들 나열
+        if [[ -f "$LOCAL_PREDICTION_DIR/latest_output.csv" ]]; then
+            echo "  - 최신 채점 파일: latest_output.csv" >> "$report_file"
+        fi
+        if [[ -f "$LOCAL_PREDICTION_DIR/experiment_index.csv" ]]; then
+            echo "  - 실험 인덱스: experiment_index.csv" >> "$report_file"
+        fi
+        
+        # 실험별 디렉토리들
+        find "$LOCAL_PREDICTION_DIR" -maxdepth 1 -type d -name '*_*' 2>/dev/null | while read -r local_dir; do
+            if [[ -d "$local_dir" ]]; then
+                local exp_name=$(basename "$local_dir")
+                local file_count=$(find "$local_dir" -type f 2>/dev/null | wc -l)
+                echo "  - 실험: $exp_name ($file_count 파일)" >> "$report_file"
+            fi
+        done
+    fi
+    
+    cat >> "$report_file" << EOF
+
 보고서 저장 위치: $report_file
 EOF
     
@@ -226,11 +289,14 @@ EOF
     log_info "=== 동기화 요약 ==="
     local outputs_count=$(find "$LOCAL_OUTPUTS_DIR" -maxdepth 1 -type d -name '*_*' 2>/dev/null | wc -l)
     local logs_count=$(find "$LOCAL_LOGS_DIR" -maxdepth 1 -type d -name '*_*' 2>/dev/null | wc -l)
+    local prediction_csv_count=$(find "$LOCAL_PREDICTION_DIR" -name '*.csv' 2>/dev/null | wc -l)
     local outputs_size=$(du -sh "$LOCAL_OUTPUTS_DIR" 2>/dev/null | cut -f1 || echo "0B")
     local logs_size=$(du -sh "$LOCAL_LOGS_DIR" 2>/dev/null | cut -f1 || echo "0B")
+    local prediction_size=$(du -sh "$LOCAL_PREDICTION_DIR" 2>/dev/null | cut -f1 || echo "0B")
     
     echo "Outputs 디렉토리: $outputs_count개, 크기: $outputs_size"
     echo "Logs 디렉토리: $logs_count개, 크기: $logs_size"
+    echo "Prediction 디렉토리: $prediction_csv_count개 CSV 파일, 크기: $prediction_size (채점용 - 중요!)"
     echo "보고서: $report_file"
 }
 
@@ -253,13 +319,23 @@ main() {
     fi
     
     # 3. 실험 목록 가져오기
+    log_info "원격 서버에서 동기화할 디렉토리 검색 중..."
     local experiments=($(get_remote_experiment_list))
     if [[ ${#experiments[@]} -eq 0 ]]; then
-        log_warning "서버에서 실험을 찾을 수 없습니다"
+        log_warning "서버에서 동기화할 실험 디렉토리를 찾을 수 없습니다"
         exit 0
     fi
     
-    log_info "${#experiments[@]}개의 실험 디렉토리를 찾았습니다"
+    log_info "${#experiments[@]}개의 디렉토리를 찾았습니다"
+    
+    # 찾은 디렉토리 목록 출력
+    log_info "동기화 대상 목록:"
+    for exp_entry in "${experiments[@]}"; do
+        local dir_type=$(echo "$exp_entry" | cut -d: -f1)
+        local dir_name=$(echo "$exp_entry" | cut -d: -f2)
+        echo "  - $dir_type: $dir_name"
+    done
+    echo
     
     # 4. 각 실험 동기화
     local success_count=0
@@ -276,7 +352,7 @@ main() {
     generate_sync_report
     
     log_success "동기화 프로세스 완료!"
-    log_info "$success_count개의 실험이 성공적으로 동기화되었습니다"
+    log_info "$success_count개의 디렉토리가 성공적으로 동기화되었습니다"
 }
 
 # =================================================================
