@@ -120,7 +120,11 @@ smart_wait() {
         
         local current_wait_time=$(($(date +%s) - wait_start))
         
-        if [ "$current_memory" -le "$target_memory" ]; then
+        # 소수점 값을 정수로 변환 후 비교
+        current_memory_int=$(echo "$current_memory" | cut -d'.' -f1)
+        target_memory_int=$(echo "$target_memory" | cut -d'.' -f1)
+        
+        if [ "$current_memory_int" -le "$target_memory_int" ]; then
             echo -e "${GREEN}✅ 대기 완료: GPU 메모리 ${current_memory}MB (${current_wait_time}초 대기)${NC}"
             # 음수 방지: 60초보다 적게 기다린 경우만 절약 시간 계산
             if [ "$current_wait_time" -lt 60 ]; then
@@ -181,7 +185,10 @@ handle_experiment_error() {
         current_memory=0
     fi
     
-    if [ "$current_memory" -gt 20000 ]; then
+    # 소수점 값을 정수로 변환 후 비교
+    current_memory_int=$(echo "$current_memory" | cut -d'.' -f1)
+    
+    if [ "$current_memory_int" -gt 20000 ]; then
         echo -e "${RED}⚠️  GPU 메모리 과부하 감지! 긴급 정리 실행...${NC}"
         cleanup_gpu_emergency
     fi
@@ -226,7 +233,7 @@ if [ "$BENCHMARK_LOG" != "/dev/null" ]; then
 fi
 # 1에포크 모드에 따른 메시지 조정
 if [[ "$ONE_EPOCH_MODE" == "true" ]]; then
-echo -e "${CYAN}🚀 5개 RTX 3090 최적화 실험 (1에포크 빠른 테스트)${NC}"
+    echo -e "${CYAN}🚀 5개 RTX 3090 최적화 실험 (1에포크 빠른 테스트)${NC}"
     echo -e "${WHITE}════════════════════════════════════════════════════════${NC}"
     echo -e "⏰ 시작 시간: ${START_TIME_STR}"
     echo -e "🖥️  RTX 3090 24GB 최적화 실험 (1에포크 모드)"
@@ -295,7 +302,9 @@ cleanup_gpu() {
     echo -e "${BLUE}📊 정리 전 GPU 상태:${NC}"
     nvidia-smi --query-gpu=memory.used,memory.total,utilization.gpu --format=csv,noheader,nounits | while read -r used total util; do
         echo "GPU 메모리: ${used}MB/${total}MB (사용률: ${util}%)"
-        if [ "$used" -gt 22000 ]; then
+        # 소수점 값을 정수로 변환 후 비교
+        used_int=$(echo "$used" | cut -d'.' -f1)
+        if [ "$used_int" -gt 22000 ]; then
             echo -e "${RED}⚠️  임계 상태: GPU 메모리가 22GB 초과 (${used}MB)${NC}"
         fi
     done
@@ -340,7 +349,9 @@ gc.collect()
     echo -e "${BLUE}📊 정리 후 GPU 상태:${NC}"
     nvidia-smi --query-gpu=memory.used,memory.total,utilization.gpu --format=csv,noheader,nounits | while read -r used total util; do
         echo "GPU 메모리: ${used}MB/${total}MB (사용률: ${util}%)"
-        if [ "$used" -lt 5000 ]; then
+        # 소수점 값을 정수로 변환 후 비교
+        used_int=$(echo "$used" | cut -d'.' -f1)
+        if [ "$used_int" -lt 5000 ]; then
             echo -e "${GREEN}✅ GPU 메모리가 안전한 수준으로 정리됨${NC}"
         fi
     done
