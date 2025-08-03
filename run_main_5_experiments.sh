@@ -31,6 +31,7 @@ if ! echo "test" > "$BENCHMARK_LOG" 2>/dev/null; then
 fi
 TOTAL_MEMORY_SAVED=0
 TOTAL_TIME_SAVED=0
+CONSECUTIVE_FAILURES=0  # 연속 실패 카운터 (안전 복구 메커니즘)
 
 # 🔥 극한 최적화 GPU 메모리 모니터링 함수
 enhanced_gpu_monitor() {
@@ -68,14 +69,16 @@ enhanced_gpu_monitor() {
         echo "  ⚡ GPU 활용률: ${gpu_util}%"
         echo "  🔓 사용 가능: ${memory_free}MB"
         
-        # 경고 사항 처리
-        if [ "$memory_used" -gt 22000 ]; then
-            echo -e "  ${RED}⚠️  경고: GPU 메모리 임계 상태 (22GB 초과)${NC}"
+        # 경고 사항 처리 (임계값 강화: 22GB→18GB, 20GB→15GB, 5GB→2GB)
+        if [ "$memory_used" -gt 18000 ]; then
+            echo -e "  ${RED}⚠️  위험: GPU 메모리 과부하 상태 (18GB 초과)${NC}"
             return 1
-        elif [ "$memory_used" -gt 20000 ]; then
-            echo -e "  ${YELLOW}⚠️  주의: GPU 메모리 높음 (20GB 초과)${NC}"
-        elif [ "$memory_used" -lt 5000 ]; then
-            echo -e "  ${GREEN}✅ 안전: GPU 메모리 여유량 충분${NC}"
+        elif [ "$memory_used" -gt 15000 ]; then
+            echo -e "  ${YELLOW}⚠️  경고: GPU 메모리 임계 수준 (15GB 초과)${NC}"
+        elif [ "$memory_used" -gt 12000 ]; then
+            echo -e "  ${CYAN}ℹ️  주의: GPU 메모리 사용량 높음 (12GB 초과)${NC}"
+        elif [ "$memory_used" -lt 2000 ]; then
+            echo -e "  ${GREEN}✅ 안전: GPU 메모리 여유량 충분 (2GB 미만)${NC}"
         fi
         
         # 온도가 숫자인지 확인 후 비교 (소수점 처리)
@@ -93,10 +96,10 @@ enhanced_gpu_monitor() {
     fi
 }
 
-# 🔥 스마트 대기 함수 (동적 대기 시간 최적화)
+# 🔥 스마트 대기 함수 (동적 대기 시간 최적화 - 안전성 강화)
 smart_wait() {
-    local target_memory=${1:-5000}  # 기본 5GB 아래로 대기
-    local max_wait_time=${2:-300}   # 최대 5분 대기
+    local target_memory=${1:-2000}  # 기본 2GB 아래로 대기 (기존 5GB→2GB 강화)
+    local max_wait_time=${2:-360}   # 최대 6분 대기 (기존 5분→6분 보수적)
     local wait_start
     wait_start=$(date +%s)
     
@@ -161,7 +164,7 @@ track_experiment_time() {
     return 0  # return 값은 0-255 범위로 제한, 시간은 직접 사용하지 않으므로 0 반환
 }
 
-# 🔥 에러 처리 및 안전 폴백 함수
+# 🔥 에러 처리 및 안전 폴백 함수 (강화된 복구 메커니즘)
 handle_experiment_error() {
     local exp_name="$1"
     local log_file="$2"
@@ -170,13 +173,63 @@ handle_experiment_error() {
     echo -e "${RED}❌ 실험 $exp_num 실패: $exp_name${NC}"
     echo -e "${YELLOW}📄 로그 파일: $log_file${NC}"
     
-    # 에러 로그 분석 및 출력
-    echo -e "${YELLOW}🔍 최근 에러 로그:${NC}"
+    # 1. 실패 원인 분석 (강화된 OOM 및 에러 감지)
+    local error_type="unknown"
+    local oom_detected=false
+    local cuda_error=false
+    local memory_leak=false
+    
+    echo -e "${YELLOW}🔍 실패 원인 분석 중...${NC}"
     if [ -f "$log_file" ]; then
-        tail -n 30 "$log_file" | grep -E "(ERROR|Error|error|Traceback|Exception|CUDA|OutOfMemoryError|RuntimeError)" | tail -n 10 || echo "에러 로그를 찾을 수 없습니다."
+        # OOM(Out of Memory) 감지
+        if grep -q -i "out of memory\|OutOfMemoryError\|CUDA out of memory" "$log_file"; then
+            error_type="OOM"
+            oom_detected=true
+            echo -e "  ${RED}🚨 OOM(Out of Memory) 감지!${NC}"
+        # CUDA 에러 감지
+        elif grep -q -i "CUDA error\|RuntimeError.*CUDA\|device-side assert" "$log_file"; then
+            error_type="CUDA_ERROR"
+            cuda_error=true
+            echo -e "  ${RED}🔥 CUDA 에러 감지!${NC}"
+        # 메모리 누수 감지
+        elif grep -q -i "memory leak\|allocation failed" "$log_file"; then
+            error_type="MEMORY_LEAK"
+            memory_leak=true
+            echo -e "  ${YELLOW}💧 메모리 누수 감지!${NC}"
+        # 일반적인 에러
+        else
+            error_type="GENERAL"
+            echo -e "  ${CYAN}ℹ️  일반적인 에러 발생${NC}"
+        fi
+        
+        # 에러 로그 출력 (더 상세히)
+        echo -e "${YELLOW}🔍 최근 에러 로그:${NC}"
+        tail -n 50 "$log_file" | grep -E "(ERROR|Error|error|Traceback|Exception|CUDA|OutOfMemoryError|RuntimeError|Failed)" | tail -n 15 || echo "에러 로그를 찾을 수 없습니다."
+    else
+        echo -e "  ${RED}⚠️  로그 파일을 찾을 수 없음: $log_file${NC}"
     fi
     
-    # GPU 메모리 과부하 감지
+    # 2. 에러 유형별 차별화된 복구 전략
+    echo -e "${CYAN}🔧 에러 유형별 복구 전략 실행...${NC}"
+    
+    if [ "$oom_detected" = true ] || [ "$cuda_error" = true ]; then
+        echo -e "  ${RED}🚑 심각한 메모리/CUDA 에러 - 긴급 정리 실행${NC}"
+        cleanup_gpu_emergency
+        # 추가 대기 시간 (심각한 에러의 경우)
+        echo -e "  ${YELLOW}⏳ 에러 복구를 위한 추가 대기 (30초)...${NC}"
+        sleep 30
+    elif [ "$memory_leak" = true ]; then
+        echo -e "  ${YELLOW}🧹 메모리 누수 에러 - 일반 정리 실행${NC}"
+        cleanup_gpu
+        sleep 15
+    else
+        echo -e "  ${GREEN}🔄 일반 에러 - 기본 정리 실행${NC}"
+        cleanup_gpu
+        sleep 10
+    fi
+    
+    # 3. 에러 후 GPU 상태 최종 검증
+    echo -e "${CYAN}🔍 에러 후 GPU 상태 검증...${NC}"
     local current_memory
     current_memory=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | xargs | tr -d ',')
     
@@ -188,24 +241,64 @@ handle_experiment_error() {
     # 소수점 값을 정수로 변환 후 비교
     current_memory_int=$(echo "$current_memory" | cut -d'.' -f1)
     
-    if [ "$current_memory_int" -gt 20000 ]; then
-        echo -e "${RED}⚠️  GPU 메모리 과부하 감지! 긴급 정리 실행...${NC}"
+    if [ "$current_memory_int" -gt 15000 ]; then
+        echo -e "  ${RED}⚠️  에러 후에도 GPU 메모리 과부하! 추가 긴급 정리 실행...${NC}"
         cleanup_gpu_emergency
+    else
+        echo -e "  ${GREEN}✅ GPU 메모리 상태 정상: ${current_memory}MB${NC}"
     fi
     
-    # 벤치마크 로그에 에러 기록
-    echo "$(date '+%Y-%m-%d %H:%M:%S') | $exp_name | ERROR | Memory: ${current_memory}MB" >> "$BENCHMARK_LOG"
+    # 4. 연속 실패 카운터 업데이트 (전역 변수 사용)
+    CONSECUTIVE_FAILURES=$((CONSECUTIVE_FAILURES + 1))
+    echo -e "${YELLOW}📊 연속 실패 횟수: $CONSECUTIVE_FAILURES${NC}"
+    
+    # 5. 연속 실패 보호 메커니즘
+    if [ "$CONSECUTIVE_FAILURES" -ge 3 ]; then
+        echo -e "${RED}🚨 심각: 3회 연속 실패! 전체 실험 중단을 권장합니다.${NC}"
+        echo -e "${YELLOW}📄 실험 중단 신호 파일 생성: experiment_abort_signal${NC}"
+        touch "experiment_abort_signal"  # 중단 신호 파일
+    elif [ "$CONSECUTIVE_FAILURES" -ge 2 ]; then
+        echo -e "${YELLOW}⚠️  주의: 2회 연속 실패! 다음 실험에서 배치 크기 자동 감소 추천${NC}"
+    fi
+    
+    # 6. 벤치마크 로그에 상세 에러 기록 (강화)
+    echo "$(date '+%Y-%m-%d %H:%M:%S') | $exp_name | ERROR | Type: $error_type | Memory: ${current_memory}MB | Consecutive: $CONSECUTIVE_FAILURES" >> "$BENCHMARK_LOG"
 }
 
 # 🔥 긴급 GPU 리셋 함수
 cleanup_gpu_emergency() {
     echo -e "${RED}🚑 긴급 GPU 메모리 리셋 실행 중...${NC}"
     
-    # 강제 CUDA 프로세스 종료
-    pkill -f "python.*cuda" 2>/dev/null || true
-    pkill -f "python.*torch" 2>/dev/null || true
+    # 안전한 사용자별 프로세스 정리 (pkill 대신 사용자 격리 방식)
+    echo -e "${YELLOW}🔒 현재 사용자($USER)의 CUDA/PyTorch 프로세스만 정리 중...${NC}"
     
-    # 강제 메모리 정리
+    # 1. 현재 사용자의 Python CUDA/PyTorch 프로세스 찾기
+    USER_CUDA_PIDS=$(ps aux | grep "$USER" | grep python | grep -E "(cuda|torch)" | awk '{print $2}' | grep -E '^[0-9]+$' || true)
+    
+    if [ -n "$USER_CUDA_PIDS" ]; then
+        echo -e "${YELLOW}📋 발견된 사용자 프로세스: $USER_CUDA_PIDS${NC}"
+        # 안전 검증: 프로세스 소유자 재확인
+        for pid in $USER_CUDA_PIDS; do
+            if [ -d "/proc/$pid" ]; then
+                OWNER=$(ps -o user= -p "$pid" 2>/dev/null | tr -d ' ' || echo "unknown")
+                if [ "$OWNER" = "$USER" ]; then
+                    echo -e "${CYAN}🔧 사용자 프로세스 $pid 정리 중...${NC}"
+                    kill "$pid" 2>/dev/null || true
+                else
+                    echo -e "${RED}⚠️  건너뜀: 프로세스 $pid 소유자가 다름 ($OWNER)${NC}"
+                fi
+            fi
+        done
+        
+        # 프로세스 정리 확인 대기
+        sleep 3
+        echo -e "${GREEN}✅ 사용자별 프로세스 정리 완료${NC}"
+    else
+        echo -e "${GREEN}ℹ️  정리할 사용자 프로세스 없음${NC}"
+    fi
+    
+    # 2. GPU 메모리 정리 (기존 로직 유지)
+    echo -e "${YELLOW}🧹 GPU 메모리 정리 중...${NC}"
     python3 -c "
 import torch
 import gc
@@ -218,8 +311,8 @@ if torch.cuda.is_available():
 gc.collect()
 " 2>/dev/null || true
     
-    sleep 15  # 긴급 대기
-    echo -e "${GREEN}✅ 긴급 GPU 리셋 완료${NC}"
+    sleep 10  # 정리 대기 시간 단축 (15초 → 10초)
+    echo -e "${GREEN}✅ 안전한 GPU 리셋 완료 (사용자 격리)${NC}"
 }
 # 실험 시작 시간
 START_TIME=$(date +%s)
@@ -468,6 +561,12 @@ for i in "${!experiments[@]}"; do
         results+=("✅ ${exp_name}: ${EXP_DURATION_MIN}분 ${EXP_DURATION_SEC}초")
         COMPLETED=$((COMPLETED + 1))
         
+        # 실험 성공 시 연속 실패 카운터 리셋 (강화된 복구 메커니즘)
+        if [ "$CONSECUTIVE_FAILURES" -gt 0 ]; then
+            echo -e "${GREEN}🔄 실험 성공! 연속 실패 카운터 리셋 ($CONSECUTIVE_FAILURES →0)${NC}"
+            CONSECUTIVE_FAILURES=0
+        fi
+        
         # GPU 상태 최종 확인
         enhanced_gpu_monitor "실험 $EXPERIMENT_NUM 완료 후"
     else
@@ -477,12 +576,43 @@ for i in "${!experiments[@]}"; do
     fi
 
     echo
-
+    
+    # 연속 실패 보호: 중단 신호 파일 확인 (강화된 복구 메커니즘)
+    if [ -f "experiment_abort_signal" ]; then
+        echo -e "${RED}🚨 중단 신호 감지! 실험을 안전하게 중단합니다.${NC}"
+        echo -e "${YELLOW}📊 연속 실패 횟수: $CONSECUTIVE_FAILURES회${NC}"
+        echo -e "${CYAN}📄 중단 신호 파일 삭제 중...${NC}"
+        rm -f "experiment_abort_signal"
+        FAILED=$((FAILED + TOTAL_EXPERIMENTS - i))  # 나머지 실험들을 실패로 처리
+        break  # 실험 루프 중단
+    fi
+    
     # 다음 실험 전 스마트 대기 및 정리 (마지막 실험 제외)
     if [ "$i" -lt $((TOTAL_EXPERIMENTS - 1)) ]; then
         echo -e "${YELLOW}⏸️  다음 실험 준비 중... (스마트 대기)${NC}"
+        
+        # 1. 기본 GPU 정리
         cleanup_gpu
-        smart_wait 5000 240  # 5GB 아래로 대기, 최대 4분
+        
+        # 2. 실험간 안전 검증 (강화된 복구 메커니즘)
+        echo -e "${CYAN}🔍 다음 실험 전 GPU 상태 강제 검증...${NC}"
+        next_memory=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | xargs | tr -d ',')
+        
+        if [ -n "$next_memory" ]; then
+            next_memory_int=$(echo "$next_memory" | cut -d'.' -f1)
+            if [ "$next_memory_int" -gt 10000 ]; then  # 10GB 이상시 경고
+                echo -e "  ${YELLOW}⚠️  실험간 GPU 메모리 높음: ${next_memory}MB - 추가 정리 실행${NC}"
+                cleanup_gpu_emergency
+            else
+                echo -e "  ${GREEN}✅ 실험간 GPU 메모리 상태 양호: ${next_memory}MB${NC}"
+            fi
+        else
+            echo -e "  ${RED}⚠️  GPU 상태 확인 실패 - 기본 정리 실행${NC}"
+            cleanup_gpu
+        fi
+        
+        # 3. 스마트 대기
+        smart_wait 2000 360  # 2GB 아래로 대기, 최대 6분 (기존 5GB/4분→2GB/6분 강화)
     fi
 done
 
