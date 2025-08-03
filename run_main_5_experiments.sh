@@ -491,13 +491,12 @@ for i in "${!experiments[@]}"; do
     # 안전한 로그 파일명 생성 (모든 특수문자 처리)
     exp_name_clean=$(echo "$exp_name" | sed 's/[^a-zA-Z0-9_-]/_/g' | sed 's/__*/_/g' | sed 's/^_//;s/_$//')
     LOG_FILE="${LOG_DIR}/experiment_${EXPERIMENT_NUM}_${exp_name_clean}.log"
-    # 실험 전 검증 실행
-    echo -e "${CYAN}🔍 실험 전 검증 중: ${config_file}${NC}"
     
-    # 검증 스크립트 실행
+    # 검증 스크립트 실행 (직접 실행으로 수정 - eval 제거로 정확한 exit code 감지)
+    echo -e "${CYAN}🔍 실험 전 검증 중: ${config_file}${NC}"
     VALIDATION_CMD="python3 code/validation/pre_experiment_check.py --config config/experiments/${config_file} --auto-fix --cleanup"
     
-    if ! eval "$VALIDATION_CMD"; then
+    if ! $VALIDATION_CMD; then
         echo -e "${RED}❌ 실험 전 검증 실패: $exp_name${NC}"
         echo -e "${YELLOW}⚠️  문제를 해결한 후 다시 시도하세요.${NC}"
         FAILED=$((FAILED + 1))
@@ -515,7 +514,9 @@ for i in "${!experiments[@]}"; do
         echo -e "${YELLOW}1에포크 모드로 실행 중...${NC}"
     fi
 
-    if eval "$EXPERIMENT_CMD > ${LOG_FILE} 2>&1"; then
+    # 실험 실행 (직접 실행으로 수정 - eval 제거로 정확한 exit code 감지)
+    echo -e "${CYAN}🚀 실험 실행 중: $EXPERIMENT_CMD${NC}"
+    if $EXPERIMENT_CMD > "${LOG_FILE}" 2>&1; then
         EXP_END_TIME=$(date +%s)
         EXP_DURATION=$((EXP_END_TIME - EXP_START_TIME))
         
