@@ -69,16 +69,16 @@ enhanced_gpu_monitor() {
         echo "  ⚡ GPU 활용률: ${gpu_util}%"
         echo "  🔓 사용 가능: ${memory_free}MB"
         
-        # 경고 사항 처리 (임계값 강화: 22GB→18GB, 20GB→15GB, 5GB→2GB)
-        if [ "$memory_used" -gt 18000 ]; then
-            echo -e "  ${RED}⚠️  위험: GPU 메모리 과부하 상태 (18GB 초과)${NC}"
+        # 경고 사항 처리 (RTX 3090 최적화 임계값: 안전성과 성능의 균형)
+        if [ "$memory_used" -gt 21000 ]; then
+            echo -e "  ${RED}⚠️  위험: GPU 메모리 과부하 상태 (21GB 초과, 여유 3GB)${NC}"
             return 1
-        elif [ "$memory_used" -gt 15000 ]; then
-            echo -e "  ${YELLOW}⚠️  경고: GPU 메모리 임계 수준 (15GB 초과)${NC}"
-        elif [ "$memory_used" -gt 12000 ]; then
-            echo -e "  ${CYAN}ℹ️  주의: GPU 메모리 사용량 높음 (12GB 초과)${NC}"
-        elif [ "$memory_used" -lt 2000 ]; then
-            echo -e "  ${GREEN}✅ 안전: GPU 메모리 여유량 충분 (2GB 미만)${NC}"
+        elif [ "$memory_used" -gt 19000 ]; then
+            echo -e "  ${YELLOW}⚠️  경고: GPU 메모리 임계 수준 (19GB 초과, 여유 5GB)${NC}"
+        elif [ "$memory_used" -gt 16000 ]; then
+            echo -e "  ${CYAN}ℹ️  주의: GPU 메모리 사용량 높음 (16GB 초과, 여유 8GB)${NC}"
+        elif [ "$memory_used" -lt 4000 ]; then
+            echo -e "  ${GREEN}✅ 안전: GPU 메모리 여유량 충분 (4GB 미만)${NC}"
         fi
         
         # 온도가 숫자인지 확인 후 비교 (소수점 처리)
@@ -96,10 +96,10 @@ enhanced_gpu_monitor() {
     fi
 }
 
-# 🔥 스마트 대기 함수 (동적 대기 시간 최적화 - 안전성 강화)
+# 🔥 스마트 대기 함수 (RTX 3090 최적화: 성능과 안전성 균형)
 smart_wait() {
-    local target_memory=${1:-2000}  # 기본 2GB 아래로 대기 (기존 5GB→2GB 강화)
-    local max_wait_time=${2:-360}   # 최대 6분 대기 (기존 5분→6분 보수적)
+    local target_memory=${1:-4000}  # 기본 4GB 아래로 대기 (기존 2GB→4GB 성능 최적화)
+    local max_wait_time=${2:-300}   # 최대 5분 대기 (기존 6분→5분 효율성)
     local wait_start
     wait_start=$(date +%s)
     
@@ -601,7 +601,7 @@ for i in "${!experiments[@]}"; do
         
         if [ -n "$next_memory" ]; then
             next_memory_int=$(echo "$next_memory" | cut -d'.' -f1)
-            if [ "$next_memory_int" -gt 10000 ]; then  # 10GB 이상시 경고
+            if [ "$next_memory_int" -gt 16000 ]; then  # 16GB 이상시 경고 (기존 10GB→16GB 성능 최적화)
                 echo -e "  ${YELLOW}⚠️  실험간 GPU 메모리 높음: ${next_memory}MB - 추가 정리 실행${NC}"
                 cleanup_gpu_emergency
             else
@@ -612,8 +612,8 @@ for i in "${!experiments[@]}"; do
             cleanup_gpu
         fi
         
-        # 3. 스마트 대기
-        smart_wait 2000 360  # 2GB 아래로 대기, 최대 6분 (기존 5GB/4분→2GB/6분 강화)
+        # 3. 스마트 대기 (RTX 3090 최적화: 성능과 안전성 균형)
+        smart_wait 4000 300  # 4GB 아래로 대기, 최대 5분 (기존 2GB/6분→4GB/5분 성능 최적화)
     fi
 done
 
