@@ -1,12 +1,12 @@
 # mT5 XL-Sum RTX 3090 극한 최적화 실험 1단계 (수정된 버전)
 experiment_name: mt5_xlsum_ultimate_korean_qlora
 description: "mT5 XL-Sum RTX 3090 + Unsloth 극한 최적화 1단계 - 배치 8 + 시퀀스 1024"
-
 general:
   model_name: csebuetnlp/mT5_multilingual_XLSum
   data_path: ./data/
   train_path: ./data/train.csv
   val_path: ./data/dev.csv
+  test_path: ./data/test.csv  # 🔥 추론용 테스트 데이터 경로 추가
   model_type: seq2seq
   name: mt5_xlsum_ultimate_korean_qlora
 

@@ -7,6 +7,7 @@ general:
   data_path: ./data/
   train_path: ./data/train.csv
   val_path: ./data/dev.csv
+  test_path: ./data/test.csv  # 🔥 추론용 테스트 데이터 경로 추가
   model_type: seq2seq
   name: batch_optimization_extreme_rtx3090
 

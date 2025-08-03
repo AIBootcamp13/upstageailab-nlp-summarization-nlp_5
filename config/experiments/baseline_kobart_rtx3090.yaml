@@ -1,12 +1,12 @@
 # KoBART RTX 3090 극한 최적화 실험
 experiment_name: kobart_extreme_rtx3090
 description: "KoBART 베이스라인  RTX 3090 + Unsloth 극한 최적화 - 배치 16 + 시퀀스 1280"
-
 general:
   model_name: digit82/kobart-summarization
   data_path: ./data/
   train_path: ./data/train.csv
   val_path: ./data/dev.csv
+  test_path: ./data/test.csv  # 🔥 추론용 테스트 데이터 경로 추가
   model_type: seq2seq
   name: kobart_extreme_rtx3090
 
