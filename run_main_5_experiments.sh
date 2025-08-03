@@ -271,13 +271,13 @@ done
 # 실험 목록 (mT5 1개 + RTX 3090 극한 최적화 4개 = 총 5개)
 declare -a experiments=(
  # 💪 RTX 3090 극한 최적화 (간단한 순서로 배치)
- baseline_kobart_rtx3090.yaml|KoBART_baseline_RTX3090|45분
- high_learning_rate_rtx3090.yaml|HighLR_RTX3090|35분
- batch_optimization_rtx3090.yaml|BatchOpt_RTX3090|40분
- eenzeenee_t5_rtx3090.yaml|EenzeeneeT5_RTX3090|40분
+ "baseline_kobart_rtx3090.yaml|KoBART_baseline_RTX3090|45분"
+ "high_learning_rate_rtx3090.yaml|HighLR_RTX3090|35분"
+ "batch_optimization_rtx3090.yaml|BatchOpt_RTX3090|40분"
+ "eenzeenee_t5_rtx3090.yaml|EenzeeneeT5_RTX3090|40분"
 
  # 🔥 mT5 XLSum 한국어 도메인 적응 QLoRA (가장 복잡)
- mt5_xlsum_ultimate_korean_qlora.yaml|mT5_Korean_QLoRA|60분
+ "mt5_xlsum_ultimate_korean_qlora.yaml|mT5_Korean_QLoRA|60분"
 )
 
 # GPU 정보 출력 함수
