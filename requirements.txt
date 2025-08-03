@@ -21,6 +21,7 @@ rouge==1.0.1
 rouge-score==0.1.2
 nltk==3.8.1
 konlpy==0.6.0  # Korean NLP
+sentence-transformers==2.2.2  # For semantic similarity (used in backtranslation_evaluator)
 
 # Experiment Tracking
 tensorboard==2.15.1
@@ -30,9 +31,10 @@ tqdm==4.67.1  # Updated working version
 PyYAML==6.0.2  # Updated working version
 python-dotenv==1.0.0
 jsonlines==4.0.0
+pytz==2023.3  # Timezone handling (used in experiment_utils)
 
 # API & Web
-# openai==1.6.1  # For Solar API (제거됨)
+openai==1.6.1  # For Solar API (used in ensemble)
 aiohttp==3.12.14  # For async requests - updated
 requests==2.32.4  # Updated working version
 
