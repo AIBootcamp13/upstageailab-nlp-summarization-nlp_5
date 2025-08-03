@@ -259,13 +259,13 @@ done
 # 실험 목록 (mT5 1개 + RTX 3090 극한 최적화 4개 = 총 5개)
 declare -a experiments=(
  # 💪 RTX 3090 극한 최적화 (간단한 순서로 배치)
- baseline_kobart_rtx3090.yaml:💪_KoBART_베이스라인_RTX3090:45분
- high_learning_rate_rtx3090.yaml:💪_고성능_학습률_RTX3090:35분
- batch_optimization_rtx3090.yaml:💪_배치_최적화_RTX3090:40분
- eenzeenee_t5_rtx3090.yaml:💪_eenzeenee_T5_RTX3090:40분
+ baseline_kobart_rtx3090.yaml|KoBART_baseline_RTX3090|45분
+ high_learning_rate_rtx3090.yaml|HighLR_RTX3090|35분
+ batch_optimization_rtx3090.yaml|BatchOpt_RTX3090|40분
+ eenzeenee_t5_rtx3090.yaml|EenzeeneeT5_RTX3090|40분
 
  # 🔥 mT5 XLSum 한국어 도메인 적응 QLoRA (가장 복잡)
- mt5_xlsum_ultimate_korean_qlora.yaml:🚀_mT5_한국어_QLoRA_극한최적화:60분
+ mt5_xlsum_ultimate_korean_qlora.yaml|mT5_Korean_QLoRA|60분
 )
 
 # GPU 정보 출력 함수
@@ -346,7 +346,7 @@ COMPLETED=0
 
 # 각 실험 실행
 for i in "${!experiments[@]}"; do
-    IFS=':' read -r config_file exp_name exp_time <<<"${experiments[$i]}"
+    IFS='|' read -r config_file exp_name exp_time <<<"${experiments[$i]}"
 
     EXPERIMENT_NUM=$((i + 1))
     echo -e "${PURPLE}🔬 실험 ${EXPERIMENT_NUM}/${TOTAL_EXPERIMENTS}: ${exp_name}${NC}"
@@ -363,12 +363,8 @@ for i in "${!experiments[@]}"; do
     echo -e "${GREEN}🚀 실험 시작: ${EXP_START_TIME_STR}${NC}"
     echo
 
-    # 파일명에서 특수문자 제거 (공백과 이모지 대체)
-    exp_name_clean="${exp_name// /_}"
-    exp_name_clean="${exp_name_clean//🔥/_}"
-    exp_name_clean="${exp_name_clean//🔧/_}"
-    exp_name_clean="${exp_name_clean//🚀/_}"
-    exp_name_clean="${exp_name_clean//💪/_}"
+    # 안전한 로그 파일명 생성 (모든 특수문자 처리)
+    exp_name_clean=$(echo "$exp_name" | sed 's/[^a-zA-Z0-9_-]/_/g' | sed 's/__*/_/g' | sed 's/^_//;s/_$//')
     LOG_FILE="${LOG_DIR}/experiment_${EXPERIMENT_NUM}_${exp_name_clean}.log"
     # 실험 실행 (1에포크 모드 옵션 처리)
     EXPERIMENT_CMD="/opt/conda/bin/python3 code/auto_experiment_runner.py --config config/experiments/${config_file}"
