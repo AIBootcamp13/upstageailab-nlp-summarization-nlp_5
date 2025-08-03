@@ -40,10 +40,10 @@ enhanced_gpu_monitor() {
     
     if [ -n "$gpu_data" ]; then
         IFS=',' read -r memory_used memory_total gpu_util temperature <<< "$gpu_data"
-        memory_used=$(echo "$memory_used" | xargs)  # trim whitespace
-        memory_total=$(echo "$memory_total" | xargs)
-        gpu_util=$(echo "$gpu_util" | xargs)
-        temperature=$(echo "$temperature" | xargs)
+        memory_used=$(echo "$memory_used" | xargs | tr -d ',')  # trim whitespace and remove commas
+        memory_total=$(echo "$memory_total" | xargs | tr -d ',')  # trim whitespace and remove commas
+        gpu_util=$(echo "$gpu_util" | xargs | tr -d ',')
+        temperature=$(echo "$temperature" | xargs | tr -d ',')
         
         # 값이 숫자인지 확인 (소수점 포함)
         if ! [[ "$memory_used" =~ ^[0-9]+(\.[0-9]+)?$ ]] || ! [[ "$memory_total" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
@@ -104,7 +104,7 @@ smart_wait() {
     
     while true; do
         local current_memory
-        current_memory=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | xargs)
+        current_memory=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | xargs | tr -d ',')
         
         # nvidia-smi 실패 시 처리
         if [ -z "$current_memory" ]; then
@@ -178,7 +178,7 @@ handle_experiment_error() {
     
     # GPU 메모리 과부하 감지
     local current_memory
-    current_memory=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | xargs)
+    current_memory=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | xargs | tr -d ',')
     
     # nvidia-smi 실패 시 기본값 사용
     if [ -z "$current_memory" ]; then
@@ -301,6 +301,10 @@ cleanup_gpu() {
     # GPU 상태 확인
     echo -e "${BLUE}📊 정리 전 GPU 상태:${NC}"
     nvidia-smi --query-gpu=memory.used,memory.total,utilization.gpu --format=csv,noheader,nounits | while read -r used total util; do
+        # 쉼표 제거
+        used=$(echo "$used" | tr -d ',')
+        total=$(echo "$total" | tr -d ',')
+        util=$(echo "$util" | tr -d ',')
         echo "GPU 메모리: ${used}MB/${total}MB (사용률: ${util}%)"
         # 소수점 값을 정수로 변환 후 비교
         used_int=$(echo "$used" | cut -d'.' -f1)
@@ -348,6 +352,10 @@ gc.collect()
     # 정리 후 GPU 상태 재확인
     echo -e "${BLUE}📊 정리 후 GPU 상태:${NC}"
     nvidia-smi --query-gpu=memory.used,memory.total,utilization.gpu --format=csv,noheader,nounits | while read -r used total util; do
+        # 쉼표 제거
+        used=$(echo "$used" | tr -d ',')
+        total=$(echo "$total" | tr -d ',')
+        util=$(echo "$util" | tr -d ',')
         echo "GPU 메모리: ${used}MB/${total}MB (사용률: ${util}%)"
         # 소수점 값을 정수로 변환 후 비교
         used_int=$(echo "$used" | cut -d'.' -f1)
