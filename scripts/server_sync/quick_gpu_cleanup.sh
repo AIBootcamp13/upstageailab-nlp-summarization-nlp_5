@@ -8,11 +8,8 @@ set -euo pipefail
 # PATH 설정
 export PATH="/usr/bin:/usr/local/bin:$PATH"
 
-# nvidia-smi 경로 확인
+# nvidia-smi 절대 경로 설정
 NVIDIA_SMI="/usr/bin/nvidia-smi"
-if [ ! -x "$NVIDIA_SMI" ]; then
-    NVIDIA_SMI=$(which nvidia-smi 2>/dev/null || echo "nvidia-smi")
-fi
 
 # 색상 정의
 RED='\033[0;31m'

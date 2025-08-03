@@ -27,6 +27,9 @@ START_TIME=$(date +%s)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# nvidia-smi 절대 경로 설정
+NVIDIA_SMI="/usr/bin/nvidia-smi"
+
 # 로그 파일 설정
 LOG_FILE="$PROJECT_ROOT/logs/gpu_optimizer_$(date '+%Y%m%d_%H%M%S').log"
 mkdir -p "$(dirname "$LOG_FILE")"
@@ -55,10 +58,10 @@ check_gpu_status() {
     echo -e "${BLUE}📊 $title${NC}"
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     
-    if command -v nvidia-smi &> /dev/null; then
+    if command -v "$NVIDIA_SMI" &> /dev/null; then
         # GPU 메모리 사용량 파싱
         local gpu_info
-        gpu_info=$(nvidia-smi --query-gpu=memory.used,memory.total,temperature.gpu,utilization.gpu --format=csv,noheader,nounits)
+        gpu_info=$($NVIDIA_SMI --query-gpu=memory.used,memory.total,temperature.gpu,utilization.gpu --format=csv,noheader,nounits)
         
         if [ -n "$gpu_info" ]; then
             local memory_used memory_total temperature utilization
@@ -97,7 +100,7 @@ check_gpu_status() {
             return 3
         fi
     else
-        log_error "nvidia-smi를 찾을 수 없습니다"
+        log_error "$NVIDIA_SMI를 찾을 수 없습니다"
         return 3
     fi
 }
@@ -120,7 +123,7 @@ cleanup_python_processes() {
         
         # GPU 사용 프로세스 확인
         local gpu_processes
-        gpu_processes=$(nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader 2>/dev/null || true)
+        gpu_processes=$($NVIDIA_SMI --query-compute-apps=pid,process_name,used_memory --format=csv,noheader 2>/dev/null || true)
         
         if [ -n "$gpu_processes" ]; then
             echo -e "\n${RED}🎮 GPU 사용 프로세스:${NC}"
