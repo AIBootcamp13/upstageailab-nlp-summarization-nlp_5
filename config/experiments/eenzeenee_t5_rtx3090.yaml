@@ -126,3 +126,30 @@ generation:
   no_repeat_ngram_size: 3             # 반복 방지
   early_stopping: true                # 조기 중단
   do_sample: false                    # 결정론적 생성
+
+# baseline.py 호환 - 추론 설정
+inference:
+  ckt_path: "model_ckt_path"
+  result_path: "./prediction/"
+  batch_size: 32
+  
+  # baseline.py 호환 - 생성 설정
+  no_repeat_ngram_size: 2
+  early_stopping: true
+  generate_max_length: 100
+  num_beams: 4
+  
+  # baseline.py 호환 - 특수 토큰 제거
+  remove_tokens: 
+    - "<usr>"
+    - "<s>"
+    - "</s>"
+    - "<pad>"
+    - "#Person1#"
+    - "#Person2#"
+    - "#Person3#"
+    - "#PhoneNumber#"
+    - "#Address#"
+    - "#PassportNumber#"
+  
+  output_format: "csv"
