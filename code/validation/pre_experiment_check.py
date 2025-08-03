@@ -26,12 +26,17 @@ from validation.memory_validation import estimate_memory_requirements, auto_fix_
 
 def setup_logging():
     """로깅 설정"""
+    # validation_logs 디렉토리 경로를 프로젝트 루트 기준으로 설정
+    log_dir = project_root / "validation_logs"
+    log_dir.mkdir(exist_ok=True)  # 디렉토리가 없으면 생성
+    log_file = log_dir / "pre_experiment_check.log"
+    
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
             logging.StreamHandler(),
-            logging.FileHandler('validation_logs/pre_experiment_check.log')
+            logging.FileHandler(str(log_file))
         ]
     )
 
@@ -130,7 +135,7 @@ def main():
     logger.info("🚀 실험 전 검증 시작")
     
     # 로그 디렉토리 생성
-    os.makedirs("validation_logs", exist_ok=True)
+    (project_root / "validation_logs").mkdir(exist_ok=True)
     
     # GPU 메모리 정리 (요청시)
     if args.cleanup:
@@ -196,7 +201,7 @@ def main():
                 save_config(final_config, str(output_path))
         
         # 5. 검증 결과 저장
-        result_path = "validation_logs/last_validation_result.json"
+        result_path = project_root / "validation_logs" / "last_validation_result.json"
         with open(result_path, 'w', encoding='utf-8') as f:
             json.dump(validation_results, f, indent=2, ensure_ascii=False, default=str)
         
