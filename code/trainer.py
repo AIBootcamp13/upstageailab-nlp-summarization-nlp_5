@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple, Union
 from dataclasses import dataclass, field
 import warnings
+import gc  # 메모리 정리를 위한 import
 
 warnings.filterwarnings("ignore")
 
@@ -467,6 +468,19 @@ class DialogueSummarizationTrainer:
         Returns:
             학습 결과
         """
+        # 🧹 실험 전 GPU 메모리 정리 (RTX 3090 연속 실험을 위해)
+        logger.info("🧹 실험 전 메모리 정리 시작...")
+        try:
+            if torch.cuda.is_available():
+                # CUDA 메모리 정리
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+                logger.info("✅ CUDA 메모리 정리 완료")
+            # Python 가비지 컴렉션
+            gc.collect()
+        except Exception as e:
+            logger.warning(f"⚠️ 메모리 정리 중 오류: {e}")
+        
         # 실험 연속성 추적 시작
         from utils.experiment_continuity import get_continuity_manager
         continuity_manager = get_continuity_manager()

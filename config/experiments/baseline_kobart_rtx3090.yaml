@@ -20,7 +20,7 @@ input_prefix: ""
 tokenizer:
   bos_token: <s>
   eos_token: </s>
-  encoder_max_len: 1280              # KoBART 극한 최적화 768→1280
+  encoder_max_len: 512               # KoBART 토큰 범위 문제 해결을 위해 1280→512로 안전하게 조정
   decoder_max_len: 200               # 충분한 요약 길이 150→200
   special_tokens:
     - '#Person1#'

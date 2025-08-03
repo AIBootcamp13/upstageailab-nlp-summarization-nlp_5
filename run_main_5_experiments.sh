@@ -366,6 +366,7 @@ enhanced_gpu_monitor "실험 전"
 declare -a results=()
 TOTAL_EXPERIMENTS=${#experiments[@]}
 COMPLETED=0
+FAILED=0                    # 실패 횟수 초기화
 
 # 각 실험 실행
 for i in "${!experiments[@]}"; do
@@ -389,6 +390,21 @@ for i in "${!experiments[@]}"; do
     # 안전한 로그 파일명 생성 (모든 특수문자 처리)
     exp_name_clean=$(echo "$exp_name" | sed 's/[^a-zA-Z0-9_-]/_/g' | sed 's/__*/_/g' | sed 's/^_//;s/_$//')
     LOG_FILE="${LOG_DIR}/experiment_${EXPERIMENT_NUM}_${exp_name_clean}.log"
+    # 실험 전 검증 실행
+    echo -e "${CYAN}🔍 실험 전 검증 중: ${config_file}${NC}"
+    
+    # 검증 스크립트 실행
+    VALIDATION_CMD="python3 code/validation/pre_experiment_check.py --config config/experiments/${config_file} --auto-fix --cleanup"
+    
+    if ! eval "$VALIDATION_CMD"; then
+        echo -e "${RED}❌ 실험 전 검증 실패: $exp_name${NC}"
+        echo -e "${YELLOW}⚠️  문제를 해결한 후 다시 시도하세요.${NC}"
+        FAILED=$((FAILED + 1))
+        continue
+    fi
+    
+    echo -e "${GREEN}✅ 실험 전 검증 통과${NC}"
+    
     # 실험 실행 (1에포크 모드 옵션 처리)
     EXPERIMENT_CMD="python3 code/auto_experiment_runner.py --configs config/experiments/${config_file}"
 

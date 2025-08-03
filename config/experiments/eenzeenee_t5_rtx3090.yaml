@@ -18,8 +18,10 @@ model:
 input_prefix: "dialogue summarization in korean: "
 
 tokenizer:
-  bos_token: <pad>
-  eos_token: </s>
+  eos_token: "</s>"       # T5 종료 토큰
+  unk_token: "<unk>"      # T5 unknown 토큰
+  pad_token: "<pad>"      # T5 패딩 토큰
+  # T5는 BOS 토큰 사용하지 않음
   encoder_max_len: 1024              # T5-base 극한 최적화 768→1024
   decoder_max_len: 200               # 충분한 요약 길이 150→200
   special_tokens:
@@ -47,8 +49,8 @@ training:
   eval_steps: 150                     # 더 자주 평가
   
   # 🔥 RTX 3090 T5-base 극한 최적화 배치
-  per_device_train_batch_size: 20     # T5-base는 작아 더 큰 배치 가능 12→20
-  per_device_eval_batch_size: 32      # 평가시 더 큰 배치 24→32
+  per_device_train_batch_size: 8      # 메모리 부족 문제 해결을 위해 20→8로 안전하게 조정
+  per_device_eval_batch_size: 16       # 평가시 메모리 절약을 위해 32→16으로 조정
   gradient_accumulation_steps: 2      # 유효 배치 40
   
   # 🎯 T5 극한 최적화 학습 파라미터
@@ -133,20 +135,20 @@ inference:
   result_path: "./prediction/"
   batch_size: 32
   
-  # baseline.py 호환 - 생성 설정
-  no_repeat_ngram_size: 2
-  early_stopping: true
-  generate_max_length: 100
-  num_beams: 4
+  # generation 설정과 일치시킨 최적화 설정
+  no_repeat_ngram_size: 3             # generation과 동일
+  early_stopping: true               # generation과 동일  
+  generate_max_length: 200            # generation과 동일
+  num_beams: 10                       # generation과 동일
   
   # baseline.py 호환 - 특수 토큰 제거
   remove_tokens: 
-    - "<usr>"
-    - "<s>"
-    - "</s>"
-    - "<pad>"
-    - "#Person1#"
-    - "#Person2#"
+    - "<usr>"        # baseline.py 호환
+    - "</s>"         # T5 종료 토큰
+    - "<pad>"        # T5 패딩 토큰
+    - "<unk>"        # unknown 토큰
+    - "#Person1#"    # 특수 토큰들
+    - "#Person2#" 
     - "#Person3#"
     - "#PhoneNumber#"
     - "#Address#"

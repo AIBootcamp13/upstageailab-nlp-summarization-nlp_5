@@ -16,11 +16,13 @@ model:
 
 # 🔥 극한 최적화 한국어 대화 요약 특화 prefix
 input_prefix: "dialogue summarization in korean: "
-
 tokenizer:
-  bos_token: <pad>
-  eos_token: </s>
+  eos_token: "</s>"       # mT5 종료 토큰
+  unk_token: "<unk>"      # mT5 unknown 토큰  
+  pad_token: "<pad>"      # mT5 패딩 토큰
+  # mT5는 BOS 토큰 사용하지 않음
   encoder_max_len: 1024              # 1단계: 512→1024 확장
+  decoder_max_len: 200               # 1단계: 128→200 확장
   decoder_max_len: 200               # 1단계: 128→200 확장
   special_tokens:
     - '#Person1#'
@@ -134,4 +136,4 @@ inference:
   num_beams: 12                       # generation과 동일값
   batch_size: 8                       # 추론 배치 크기 (안전하게 설정)
   result_path: "./prediction/"        # baseline.py와 동일
-  remove_tokens: ['<pad>', '</s>', '<unk>', '<s>']  # 정리용 토큰들
+  remove_tokens: ['<pad>', '</s>', '<unk>']  # mT5 올바른 제거 토큰들 (<s>는 유지)
