@@ -5,6 +5,15 @@
 
 set -euo pipefail
 
+# PATH 설정
+export PATH="/usr/bin:/usr/local/bin:$PATH"
+
+# nvidia-smi 경로 확인
+NVIDIA_SMI="/usr/bin/nvidia-smi"
+if [ ! -x "$NVIDIA_SMI" ]; then
+    NVIDIA_SMI=$(which nvidia-smi 2>/dev/null || echo "nvidia-smi")
+fi
+
 # 색상 정의
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -16,7 +25,7 @@ echo -e "${CYAN}🔥 빠른 GPU 메모리 정리${NC}"
 
 # 1. 현재 상태 확인
 echo "현재 GPU 상태:"
-nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader,nounits | while IFS=',' read -r used total; do
+$NVIDIA_SMI --query-gpu=memory.used,memory.total --format=csv,noheader,nounits | while IFS=',' read -r used total; do
     used=$(echo "$used" | xargs)
     total=$(echo "$total" | xargs)
     percent=$((used * 100 / total))
@@ -65,7 +74,7 @@ fi
 
 # 4. 최종 상태 확인
 echo -e "\n${GREEN}📊 정리 후 GPU 상태:${NC}"
-nvidia-smi --query-gpu=memory.used,memory.total,temperature.gpu --format=csv,noheader,nounits | while IFS=',' read -r used total temp; do
+$NVIDIA_SMI --query-gpu=memory.used,memory.total,temperature.gpu --format=csv,noheader,nounits | while IFS=',' read -r used total temp; do
     used=$(echo "$used" | xargs)
     total=$(echo "$total" | xargs)
     temp=$(echo "$temp" | xargs)
