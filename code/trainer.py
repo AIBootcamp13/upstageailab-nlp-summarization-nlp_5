@@ -1325,6 +1325,7 @@ if __name__ == "__main__":
     parser.add_argument("--test-data", type=str, help="Test data path")
     parser.add_argument("--sweep", action="store_true", help="Run in sweep mode")
     parser.add_argument("--one-epoch", action="store_true", help="Run only one epoch for quick testing")
+    parser.add_argument("--disable-eval", action="store_true", help="Disable evaluation (for one-epoch mode)")
 
     args = parser.parse_args()
 
