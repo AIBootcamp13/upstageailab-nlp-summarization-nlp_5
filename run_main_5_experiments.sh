@@ -69,16 +69,16 @@ enhanced_gpu_monitor() {
         echo "  ⚡ GPU 활용률: ${gpu_util}%"
         echo "  🔓 사용 가능: ${memory_free}MB"
         
-        # 경고 사항 처리 (RTX 3090 최적화 임계값: 안전성과 성능의 균형)
-        if [ "$memory_used" -gt 21000 ]; then
-            echo -e "  ${RED}⚠️  위험: GPU 메모리 과부하 상태 (21GB 초과, 여유 3GB)${NC}"
+        # 경고 사항 처리 (RTX 3090 최적화: 실제 경험 기반 성능 최대화)
+        if [ "$memory_used" -gt 22500 ]; then
+            echo -e "  ${RED}⚠️  위험: GPU 메모리 과부하 상태 (22.5GB 초과, 여유 2GB)${NC}"
             return 1
-        elif [ "$memory_used" -gt 19000 ]; then
-            echo -e "  ${YELLOW}⚠️  경고: GPU 메모리 임계 수준 (19GB 초과, 여유 5GB)${NC}"
-        elif [ "$memory_used" -gt 16000 ]; then
-            echo -e "  ${CYAN}ℹ️  주의: GPU 메모리 사용량 높음 (16GB 초과, 여유 8GB)${NC}"
-        elif [ "$memory_used" -lt 4000 ]; then
-            echo -e "  ${GREEN}✅ 안전: GPU 메모리 여유량 충분 (4GB 미만)${NC}"
+        elif [ "$memory_used" -gt 20000 ]; then
+            echo -e "  ${YELLOW}⚠️  경고: GPU 메모리 임계 수준 (20GB 초과, 여유 4.5GB)${NC}"
+        elif [ "$memory_used" -gt 17000 ]; then
+            echo -e "  ${CYAN}ℹ️  주의: GPU 메모리 사용량 높음 (17GB 초과, 여유 7.5GB)${NC}"
+        elif [ "$memory_used" -lt 5000 ]; then
+            echo -e "  ${GREEN}✅ 안전: GPU 메모리 여유량 충분 (5GB 미만)${NC}"
         fi
         
         # 온도가 숫자인지 확인 후 비교 (소수점 처리)
