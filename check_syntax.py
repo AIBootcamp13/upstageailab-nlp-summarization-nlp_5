@@ -5,9 +5,8 @@ auto_experiment_runner.py 구문 검사
 
 import sys
 import ast
-
 try:
-    with open('/Users/jayden/Developer/Projects/upstageailab-nlp-summarization-nlp_5/nlp-sum-lyj/code/auto_experiment_runner.py', 'r') as f:
+    with open('/Users/jayden/Developer/Projects/nlp-5/nlp-sum-lyj/code/auto_experiment_runner.py', 'r') as f:
         code = f.read()
     
     # 구문 분석

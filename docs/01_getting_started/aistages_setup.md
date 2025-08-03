@@ -122,16 +122,16 @@ cd ~/
 # AIStages의 HOME 경로: /data/ephemeral/home/
 
 # Fork한 레포지토리 Clone
-git clone https://github.com/[본인_깃헙_계정]/upstageailab-nlp-summarization-nlp_5.git
+git clone https://github.com/[본인_깃헙_계정]/nlp-5.git
 
 # 프로젝트 디렉토리로 이동
-cd upstageailab-nlp-summarization-nlp_5
+cd nlp-5
 ```
 
 ### 4.3 Upstream 설정
 ```bash
 # 팀 레포지토리를 upstream으로 설정
-git remote add upstream https://github.com/AIBootcamp13/upstageailab-nlp-summarization-nlp_5.git
+git remote add upstream https://github.com/AIBootcamp13/nlp-5.git
 
 # Push 방지 설정 (실수 방지)
 git remote set-url --push upstream no-push
@@ -186,7 +186,7 @@ uv --version
 #### 최신 기술 스택 설치
 ```bash
 # 프로젝트 폴더로 이동
-cd ~/upstageailab-nlp-summarization-nlp_5/nlp-sum-lyj
+cd ~/nlp-5/nlp-sum-lyj
 
 # conda 가상환경에 최신 라이브러리 설치
 uv pip install -r requirements.txt
@@ -244,7 +244,7 @@ jupyter notebook src/configs/generate_config.ipynb
 
 #### 6.2.1 프로젝트 경로
 ```yaml
-project_dir: "/data/ephemeral/home/upstageailab-nlp-summarization-nlp_5"
+project_dir: "/data/ephemeral/home/nlp-5"
 output_dir: "./outputs/exp_baseline_001"
 ```
 

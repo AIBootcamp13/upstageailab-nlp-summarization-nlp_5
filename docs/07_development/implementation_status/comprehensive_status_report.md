@@ -36,7 +36,7 @@
 - **예시**: 
   ```python
   # 현재 문제가 있는 코드
-  project_dir = "/data/ephemeral/home/upstageailab-nlp-summarization-nlp_5/"
+  project_dir = "/data/ephemeral/home/nlp-5/"
   ```
 
 #### 2.2 MPS 디바이스 미지원 🔴

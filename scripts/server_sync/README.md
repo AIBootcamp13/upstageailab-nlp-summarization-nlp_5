@@ -179,30 +179,30 @@ cp config.conf.template config.conf
 # =================================================================
 
 # 로컬 맥 프로젝트 경로 (각자 다름 - 반드시 수정)
-LOCAL_BASE="/Users/YOUR_USERNAME/Developer/Projects/upstageailab-nlp-summarization-nlp_5/nlp-sum-lyj"
+LOCAL_BASE="/Users/YOUR_USERNAME/Developer/Projects/nlp-5/nlp-sum-lyj"
 
 # AIStages 서버 프로젝트 경로 (각자 다름 - 반드시 수정)  
-REMOTE_BASE="/data/ephemeral/home/upstageailab-nlp-summarization-nlp_5"
+REMOTE_BASE="/data/ephemeral/home/nlp-5"
 ```
 
 #### 2.3 팀원별 설정 예시
 
 **팀장 (jayden) 설정:**
 ```bash
-LOCAL_BASE="/Users/jayden/Developer/Projects/upstageailab-nlp-summarization-nlp_5/nlp-sum-lyj"
-REMOTE_BASE="/data/ephemeral/home/upstageailab-nlp-summarization-nlp_5"
+LOCAL_BASE="/Users/jayden/Developer/Projects/nlp-5/nlp-sum-lyj"
+REMOTE_BASE="/data/ephemeral/home/nlp-5"
 ```
 
 **팀원 A 설정 예시:**
 ```bash
 LOCAL_BASE="/Users/teamA/Documents/nlp-project/nlp-sum-lyj"  
-REMOTE_BASE="/data/ephemeral/home/upstageailab-nlp-summarization-nlp_5"
+REMOTE_BASE="/data/ephemeral/home/nlp-5"
 ```
 
 **팀원 B 설정 예시:**
 ```bash
 LOCAL_BASE="/Users/teamB/workspace/nlp-summarization/nlp-sum-lyj"
-REMOTE_BASE="/data/ephemeral/home/upstageailab-nlp-summarization-nlp_5"
+REMOTE_BASE="/data/ephemeral/home/nlp-5"
 ```
 
 ### 📁 중요한 경로 확인 방법

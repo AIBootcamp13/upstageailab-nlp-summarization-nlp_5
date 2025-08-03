@@ -316,7 +316,7 @@ uv sync
 ```bash
 # 프로젝트 클론
 git clone https://github.com/AIBootcamp13/upstageailab-nlp-summarization-nlp_5.git
-cd upstageailab-nlp-summarization-nlp_5/nlp-sum-lyj
+cd nlp-5/nlp-sum-lyj
 
 # uv로 환경 설정 (기존 방법보다 20배 빠름!)
 uv venv .venv

@@ -8,7 +8,7 @@ REMOTE_USER="root"
 REMOTE_HOST="aistages"
 REMOTE_PORT="32145"
 REMOTE_BASE="/data/ephemeral/home/upstageailab-nlp-summarization-nlp_5"
-LOCAL_BASE="/Users/jayden/Developer/Projects/upstageailab-nlp-summarization-nlp_5/nlp-sum-lyj"
+LOCAL_BASE="/Users/jayden/Developer/Projects/nlp-5/nlp-sum-lyj"
 
 # 색상 정의
 RED='\033[0;31m'
