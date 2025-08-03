@@ -444,16 +444,14 @@ class AutoExperimentRunner:
             
             # CSV 관리자를 통한 결과 등록
             if hasattr(self, 'csv_manager') and self.csv_manager:
-                self.csv_manager.register_submission(
+                # submission_path에서 DataFrame 읽어오기
+                submission_df = pd.read_csv(submission_path)
+                self.csv_manager.save_experiment_submission(
                     experiment_name=experiment_id,
-                    submission_path=submission_path,
-                    model_info={
-                        "model_name": config.get('general', {}).get('model_name', 'unknown'),
-                        "architecture": config.get('model', {}).get('architecture', 'unknown'),
-                        "checkpoint": str(checkpoint_path)
-                    }
+                    result_df=submission_df,
+                    config=config,
+                    metrics=results_info.get('metrics', {})
                 )
-            
             # experiment_index.csv 업데이트
             self._update_experiment_index(
                 experiment_id=experiment_id,
