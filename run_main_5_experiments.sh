@@ -433,18 +433,13 @@ for i in "${!experiments[@]}"; do
         
         # 현재 시간 기준으로 최근 생성된 폴더 찾기
         today_pattern="$(date +%Y%m%d)"
-        # 시간순으로 정렬하여 가장 최근 폴더 찾기
-        if ls -td ./prediction/*_"$today_pattern"* 2>/dev/null | head -1 >/dev/null; then
-            latest_exp_folder=$(ls -td ./prediction/*_"$today_pattern"* 2>/dev/null | head -1)
-            if [ -n "$latest_exp_folder" ] && [ -f "$latest_exp_folder/output.csv" ]; then
-                echo -e "  📤 실험별 제출: ${latest_exp_folder}/output.csv"
-            else
-                echo -e "  ⚠️  실험별 제출 파일을 찾을 수 없습니다"
-            fi
+        # find를 사용하여 더 안전하게 폴더 찾기
+        latest_exp_folder=$(find ./prediction -maxdepth 1 -name "*_${today_pattern}*" -type d 2>/dev/null | sort -r | head -1)
+        if [ -n "$latest_exp_folder" ] && [ -f "$latest_exp_folder/output.csv" ]; then
+            echo -e "  📄 실험별 제출: ${latest_exp_folder}/output.csv"
         else
-            echo -e "  ⚠️  오늘 날짜의 실험 폴더를 찾을 수 없습니다"
+            echo -e "  ⚠️  실험별 제출 파일을 찾을 수 없습니다"
         fi
-        
         # 최신 파일 확인
         if [ -f "./prediction/latest_output.csv" ]; then
             echo -e "  📤 최신 제출: ./prediction/latest_output.csv"

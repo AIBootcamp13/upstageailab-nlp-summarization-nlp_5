@@ -947,6 +947,26 @@ class DialogueSummarizationTrainer:
                     logger.warning("기본 KoBART 토크나이저로 폴백")
                     self.tokenizer = AutoTokenizer.from_pretrained("digit82/kobart-summarization")
 
+            # 🔥 baseline.py 호환 special_tokens 처리 추가
+            special_tokens_config = self.config.get("tokenizer", {}).get("special_tokens", [])
+            if special_tokens_config:
+                logger.info(f"Adding {len(special_tokens_config)} special tokens: {special_tokens_config}")
+                
+                # baseline.py와 동일한 방식으로 special_tokens 추가
+                special_tokens_dict = {'additional_special_tokens': special_tokens_config}
+                num_added_tokens = self.tokenizer.add_special_tokens(special_tokens_dict)
+                
+                logger.info(f"✅ Added {num_added_tokens} special tokens to tokenizer")
+                logger.info(f"   New vocab size: {len(self.tokenizer)}")
+                
+                # tokenizer 변경사항을 self에 저장 (모델 로딩 시 사용)
+                self._special_tokens_added = True
+                self._new_vocab_size = len(self.tokenizer)
+            else:
+                logger.info("No special tokens defined in config")
+                self._special_tokens_added = False
+                self._new_vocab_size = None
+
             # 특수 토큰 설정 (필요시)
             model_architecture = self.config.get("model", {}).get("architecture", "")
             if model_architecture in ["kogpt2", "gpt2"]:
@@ -1061,6 +1081,19 @@ class DialogueSummarizationTrainer:
             )
 
             self.model = model
+            
+            # 🔥 baseline.py 호환 special_tokens 처리: unsloth 모델에서도 resize_token_embeddings 호출
+            if hasattr(self, '_special_tokens_added') and self._special_tokens_added:
+                logger.info(f"Resizing unsloth model embeddings for special tokens: {self._new_vocab_size}")
+                # unsloth FastLanguageModel에서는 직접 또는 base_model을 통해 접근
+                if hasattr(self.model, 'resize_token_embeddings'):
+                    self.model.resize_token_embeddings(self._new_vocab_size)
+                elif hasattr(self.model, 'base_model') and hasattr(self.model.base_model, 'resize_token_embeddings'):
+                    self.model.base_model.resize_token_embeddings(self._new_vocab_size)
+                else:
+                    logger.warning("⚠️ unsloth 모델에서 resize_token_embeddings 메서드를 찾을 수 없음")
+                logger.info("✅ unsloth model embeddings resized for special tokens")
+            
             logger.info("✅ unsloth 모델 로딩 성공! 메모리 사용량 75% 감소 예상")
 
         except Exception as e:
@@ -1133,7 +1166,18 @@ class DialogueSummarizationTrainer:
                 raise ImportError("PEFT 라이브러리를 찾을 수 없습니다")
 
             self.model = model
-
+            
+            # 🔥 baseline.py 호환 special_tokens 처리: QLoRA 모델에서도 resize_token_embeddings 호출
+            if hasattr(self, '_special_tokens_added') and self._special_tokens_added:
+                logger.info(f"Resizing QLoRA model embeddings for special tokens: {self._new_vocab_size}")
+                # QLoRA/PEFT 모델에서는 base_model에 접근해야 함
+                if hasattr(self.model, 'resize_token_embeddings'):
+                    self.model.resize_token_embeddings(self._new_vocab_size)
+                elif hasattr(self.model, 'base_model') and hasattr(self.model.base_model, 'resize_token_embeddings'):
+                    self.model.base_model.resize_token_embeddings(self._new_vocab_size)
+                else:
+                    logger.warning("⚠️ QLoRA 모델에서 resize_token_embeddings 메서드를 찾을 수 없음")
+                logger.info("✅ QLoRA model embeddings resized for special tokens")
         except ImportError:
             logger.error("❌ bitsandbytes 또는 peft 라이브러리가 설치되지 않음")
             logger.info("폴백 모드: 표준 모델 로딩")
@@ -1173,8 +1217,14 @@ class DialogueSummarizationTrainer:
             )
         else:
             raise ValueError(f"Unsupported architecture: {architecture}")
-    
-            logger.info("✅ 표준 모델 로딩 성공")
+        
+        # 🔥 baseline.py 호환 special_tokens 처리: resize_token_embeddings 호출
+        if hasattr(self, '_special_tokens_added') and self._special_tokens_added:
+            logger.info(f"Resizing model embeddings for special tokens: {self._new_vocab_size}")
+            self.model.resize_token_embeddings(self._new_vocab_size)
+            logger.info("✅ Model embeddings resized for special tokens")
+        
+        logger.info("✅ 표준 모델 로딩 성공")
     
 
     def _get_model_specific_config(self, architecture: str, checkpoint: str) -> Dict[str, Any]:

@@ -27,7 +27,6 @@ from utils.path_utils import PathManager, path_manager
 from utils.device_utils import get_optimal_device, setup_device_config
 from utils.experiment_utils import ExperimentTracker, ModelRegistry
 from utils.csv_results_saver import CSVResultsSaver
-from utils import load_config
 # 🆕 추가: 체크포인트 탐색기와 CSV 관리자
 from utils.checkpoint_finder import CheckpointFinder
 from utils.competition_csv_manager import CompetitionCSVManager

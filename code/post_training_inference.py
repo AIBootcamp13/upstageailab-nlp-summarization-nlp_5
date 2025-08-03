@@ -165,36 +165,35 @@ class PostTrainingInference:
             config_copy, preprocessor, tokenizer
         )
         
-        # 모델별 prefix 처리
-        if self.model_config.get('use_prefix', False):
-            prefix = self.model_config.get('prefix', '')
-            if prefix:
-                # 이미 토큰화된 데이터이므로 원본 데이터를 다시 처리
-                test_df = pd.read_csv(test_file)
-                dialogues = test_df['dialogue'].tolist()
-                
-                # prefix 추가
-                dialogues_with_prefix = [f"{prefix}{d}" for d in dialogues]
-                
-                # 다시 토큰화
-                test_tokenized_encoder_inputs = tokenizer(
-                    dialogues_with_prefix,
-                    return_tensors="pt",
-                    padding=True,
-                    add_special_tokens=True,
-                    truncation=True,
-                    max_length=self.config['tokenizer']['encoder_max_len'],
-                    return_token_type_ids=False
-                )
-                
-                # Dataset 재생성
-                test_encoder_inputs_dataset = DatasetForInference(
-                    test_tokenized_encoder_inputs,
-                    test_data['fname'].tolist(),
-                    len(dialogues)
-                )
-                
-                print(f"Applied prefix: {prefix[:50]}...")
+        # 모델별 prefix 처리 - 설정 파일의 input_prefix 직접 사용
+        input_prefix = self.config.get('input_prefix', '')
+        if input_prefix and input_prefix.strip():  # 빈 문자열이 아닌 경우만
+            # 이미 토크나이지된 데이터이므로 원본 데이터를 다시 처리
+            test_df = pd.read_csv(test_file)
+            dialogues = test_df['dialogue'].tolist()
+            
+            # prefix 추가
+            dialogues_with_prefix = [f"{input_prefix}{d}" for d in dialogues]
+            
+            # 다시 토크나이지
+            test_tokenized_encoder_inputs = tokenizer(
+                dialogues_with_prefix,
+                return_tensors="pt",
+                padding=True,
+                add_special_tokens=True,
+                truncation=True,
+                max_length=self.config['tokenizer']['encoder_max_len'],
+                return_token_type_ids=False
+            )
+            
+            # Dataset 재생성
+            test_encoder_inputs_dataset = DatasetForInference(
+                test_tokenized_encoder_inputs,
+                test_data['fname'].tolist(),
+                len(dialogues)
+            )
+            
+            print(f"Applied prefix: '{input_prefix}' to {len(dialogues)} samples")
         
         return test_data, test_encoder_inputs_dataset
     
