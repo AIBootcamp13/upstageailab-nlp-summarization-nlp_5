@@ -1305,6 +1305,12 @@ def create_trainer(config: Union[str, Dict[str, Any]], sweep_mode: bool = False,
         config_dict["training"]["num_train_epochs"] = 1
         logger.info(f"🚀 1에포크 모드 활성화: {original_epochs}에포크 → 1에포크로 단축")
     
+    # 평가 비활성화 모드 적용
+    if disable_eval:
+        config_dict["training"]["do_eval"] = False
+        config_dict["training"]["evaluation_strategy"] = "no"
+        logger.info(f"🚫 평가 비활성화: do_eval=False, evaluation_strategy=no")
+    
     # 트레이너 생성
     trainer = DialogueSummarizationTrainer(config=config_dict, sweep_mode=sweep_mode)
 
@@ -1329,19 +1335,19 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # WandB 초기화 (비 Sweep 모드)
-    if not args.sweep:
-        # 기존 세션 정리
-        if wandb.run is not None:
-            wandb.finish()
-    
-        wandb.init(
-            project="nlp-dialogue-summarization",
-            name="manual_training",
-            config={"manual_run": True},
-            reinit=True,
-            resume="never",
-        )
+    # WandB 초기화 (비 Sweep 모드) - auto_experiment_runner에서 처리하므로 주석 처리
+    # if not args.sweep:
+    #     # 기존 세션 정리
+    #     if wandb.run is not None:
+    #         wandb.finish()
+    # 
+    #     wandb.init(
+    #         project="nlp-dialogue-summarization",
+    #         name="manual_training",
+    #         config={"manual_run": True},
+    #         reinit=True,
+    #         resume="never",
+    #     )
     
     # 트레이너 생성 및 학습
     trainer = create_trainer(args.config, sweep_mode=args.sweep, one_epoch_mode=args.one_epoch, disable_eval=args.disable_eval)

@@ -132,7 +132,7 @@ class PostTrainingInference:
     
     def _load_model_and_tokenizer(self, device):
         """모델과 토크나이저 로드 - 다중 모델 지원"""
-        from transformers import AutoTokenizer, BartForConditionalGeneration
+        from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
         
         # 모델명에서 원본 토크나이저 경로 추출
         model_name = self.config['general']['model_name']

@@ -419,7 +419,7 @@ class AutoExperimentRunner:
         import torch
         import torch
         from datetime import datetime
-        from .post_training_inference import PostTrainingInference
+        from post_training_inference import PostTrainingInference
         
         try:
             # GPU 메모리 정리
@@ -450,7 +450,7 @@ class AutoExperimentRunner:
                     experiment_name=experiment_id,
                     result_df=submission_df,
                     config=config,
-                    metrics=results_info.get('metrics', {})
+                    metrics={}
                 )
             # experiment_index.csv 업데이트
             self._update_experiment_index(

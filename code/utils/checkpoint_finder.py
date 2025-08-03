@@ -3,7 +3,7 @@
 체크포인트 탐색 유틸리티
 
 학습된 모델의 체크포인트를 정확한 경로에서 찾아주는 유틸리티입니다.
-실제 체크포인트 저장 구조: outputs/dialogue_summarization_*/checkpoints/checkpoint-*
+실제 체크포인트 저장 구조: outputs/{experiment_name}_{timestamp}/checkpoints/checkpoint-*
 """
 
 import logging
@@ -89,13 +89,14 @@ class CheckpointFinder:
             return None
     
     def _find_experiment_directories(self) -> List[Path]:
-        """dialogue_summarization_* 패턴으로 실험 디렉토리 찾기"""
+        """outputs/* 패턴으로 실험 디렉토리 찾기"""
         experiment_dirs = []
         
-        # dialogue_summarization_* 패턴
-        pattern = "dialogue_summarization_*"
-        dirs = list(self.base_output_dir.glob(pattern))
-        experiment_dirs.extend([d for d in dirs if d.is_dir()])
+        # outputs/* 패턴으로 모든 실험 디렉토리 찾기
+        if self.base_output_dir.exists():
+            for item in self.base_output_dir.iterdir():
+                if item.is_dir():
+                    experiment_dirs.append(item)
         
         # 시간순 정렬 (최신이 먼저)
         experiment_dirs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
