@@ -4,9 +4,9 @@ description: "고성능 학습률 RTX 3090 + Unsloth 극한 최적화 - 배치 1
 
 general:
   model_name: digit82/kobart-summarization
-  data_path: data/
-  train_path: data/train.csv
-  val_path: data/dev.csv
+  data_path: ./data/
+  train_path: ./data/train.csv
+  val_path: ./data/dev.csv
   model_type: seq2seq
   name: high_learning_rate_extreme_rtx3090
 

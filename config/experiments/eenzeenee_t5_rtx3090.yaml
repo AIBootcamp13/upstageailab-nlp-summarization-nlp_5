@@ -4,9 +4,9 @@ description: "eenzeenee T5 한국어 요약 모델 RTX 3090 + Unsloth 극한 최
 
 general:
   model_name: eenzeenee/t5-base-korean-summarization
-  data_path: data/
-  train_path: data/train.csv
-  val_path: data/dev.csv
+  data_path: ./data/
+  train_path: ./data/train.csv
+  val_path: ./data/dev.csv
   model_type: seq2seq
   name: eenzeenee_t5_extreme_rtx3090
 
@@ -14,14 +14,13 @@ model:
   architecture: t5
   checkpoint: eenzeenee/t5-base-korean-summarization
 
-# 🔥 T5 극한 최적화 한국어 요약 prefix
-input_prefix: "dialogue summarization in korean: "
-
+# 🔥 T5 극한 최적화 한국어 요약 prefix (정확한 eenzeenee 모델 prefix 사용)
+input_prefix: "summarize: "
 tokenizer:
   eos_token: "</s>"       # T5 종료 토큰
   unk_token: "<unk>"      # T5 unknown 토큰
   pad_token: "<pad>"      # T5 패딩 토큰
-  # T5는 BOS 토큰 사용하지 않음
+  bos_token: ""            # T5는 BOS 토큰 사용하지 않음 (빈 문자열)
   encoder_max_len: 1024              # T5-base 극한 최적화 768→1024
   decoder_max_len: 200               # 충분한 요약 길이 150→200
   special_tokens:

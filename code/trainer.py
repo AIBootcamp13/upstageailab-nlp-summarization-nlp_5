@@ -310,11 +310,17 @@ class DialogueSummarizationTrainer:
 
             if self.tokenizer is None:
                 raise ValueError("Tokenizer failed to load")
-            bos_token = self.tokenizer.bos_token
-            eos_token = self.tokenizer.eos_token
+            
+            # config에서 BOS/EOS 토큰 가져오기 (T5/mT5 호환)
+            bos_token = self.config.get('tokenizer', {}).get('bos_token', self.tokenizer.bos_token or '')
+            eos_token = self.config.get('tokenizer', {}).get('eos_token', self.tokenizer.eos_token or '</s>')
 
+            # prefix 적용 (T5/mT5 모델용)
+            input_prefix = self.config.get('input_prefix', '')
+            
             for dialogue, summary in zip(train_df["dialogue"], train_df["summary"]):
-                encoder_input = dialogue
+                # prefix 적용
+                encoder_input = f"{input_prefix}{dialogue}" if input_prefix else dialogue
                 decoder_input = f"{bos_token} {summary}"
                 decoder_output = f"{summary} {eos_token}"
 
@@ -376,11 +382,16 @@ class DialogueSummarizationTrainer:
             decoder_inputs = []
             decoder_outputs = []
 
-            bos_token = self.tokenizer.bos_token
-            eos_token = self.tokenizer.eos_token
-
+            # config에서 BOS/EOS 토큰 가져오기 (T5/mT5 호환)
+            bos_token = self.config.get('tokenizer', {}).get('bos_token', self.tokenizer.bos_token or '')
+            eos_token = self.config.get('tokenizer', {}).get('eos_token', self.tokenizer.eos_token or '</s>')
+            
+            # prefix 적용 (T5/mT5 모델용)
+            input_prefix = self.config.get('input_prefix', '')
+            
             for dialogue, summary in zip(val_df["dialogue"], val_df["summary"]):
-                encoder_input = dialogue
+                # prefix 적용
+                encoder_input = f"{input_prefix}{dialogue}" if input_prefix else dialogue
                 decoder_input = f"{bos_token} {summary}"
                 decoder_output = f"{summary} {eos_token}"
 
@@ -436,10 +447,17 @@ class DialogueSummarizationTrainer:
             # pandas로 CSV 읽기
             test_df = pd.read_csv(test_path)
             test_df = test_df[["fname", "dialogue"]]  # test는 summary 없음
-
-            # 토크나이징 (encoder만)
+            
+            # prefix 적용 (T5/mT5 모델용)
+            input_prefix = self.config.get('input_prefix', '')
+            if input_prefix:
+                dialogue_texts = [f"{input_prefix}{dialogue}" for dialogue in test_df["dialogue"].tolist()]
+            else:
+                dialogue_texts = test_df["dialogue"].tolist()
+            
+            # 토큰나이징 (encoder만)
             tokenized_encoder = self.tokenizer(
-                test_df["dialogue"].tolist(),
+                dialogue_texts,
                 return_tensors="pt",
                 padding=True,
                 truncation=True,
