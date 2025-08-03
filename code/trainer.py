@@ -1281,7 +1281,7 @@ class DialogueSummarizationTrainer:
         logger.info(f"Results saved to {self.results_dir}")
 
 
-def create_trainer(config: Union[str, Dict[str, Any]], sweep_mode: bool = False, one_epoch_mode: bool = False) -> DialogueSummarizationTrainer:
+def create_trainer(config: Union[str, Dict[str, Any]], sweep_mode: bool = False, one_epoch_mode: bool = False, disable_eval: bool = False) -> DialogueSummarizationTrainer:
     """
     트레이너 생성 편의 함수
     
@@ -1344,7 +1344,7 @@ if __name__ == "__main__":
         )
     
     # 트레이너 생성 및 학습
-    trainer = create_trainer(args.config, sweep_mode=args.sweep, one_epoch_mode=args.one_epoch)
+    trainer = create_trainer(args.config, sweep_mode=args.sweep, one_epoch_mode=args.one_epoch, disable_eval=args.disable_eval)
 
     # 데이터 준비
     datasets = trainer.prepare_data(train_path=args.train_data, val_path=args.val_data, test_path=args.test_data)
