@@ -1004,6 +1004,12 @@ class DialogueSummarizationTrainer:
 
         # QLoRA 설정 확인
         qlora_config = self.config.get("qlora", {})
+        
+        # 🔍 디버깅: 설정 값 상세 로깅
+        logger.info(f"🔍 QLora 전체 설정: {qlora_config}")
+        logger.info(f"🔍 use_unsloth 원본값: {qlora_config.get('use_unsloth')}")
+        logger.info(f"🔍 use_qlora 원본값: {qlora_config.get('use_qlora')}")
+        
         use_unsloth = qlora_config.get("use_unsloth", False) and UNSLOTH_AVAILABLE
         use_qlora = qlora_config.get("use_qlora", False)
 
