@@ -101,7 +101,7 @@ calculate_directory_size() {
     
     if [[ "$is_remote" == "true" ]]; then
         # 원격 디렉토리 크기
-        ssh "$REMOTE_HOST" "du -sh '$dir_path' 2>/dev/null | cut -f1" 2>/dev/null || echo "0B"
+        ssh "$REMOTE_HOST" "du -sh \"$dir_path\" 2>/dev/null | cut -f1" 2>/dev/null || echo "0B"
     else
         # 로컬 디렉토리 크기
         if [[ -d "$dir_path" ]]; then
@@ -119,7 +119,7 @@ count_files() {
     
     if [[ "$is_remote" == "true" ]]; then
         # 원격 파일 개수
-        ssh "$REMOTE_HOST" "find '$dir_path' -type f 2>/dev/null | wc -l" 2>/dev/null || echo "0"
+        ssh "$REMOTE_HOST" "find \"$dir_path\" -type f 2>/dev/null | wc -l" 2>/dev/null || echo "0"
     else
         # 로컬 파일 개수
         if [[ -d "$dir_path" ]]; then
@@ -139,7 +139,6 @@ cleanup_local_results() {
     log_info "로컬 실험 결과 분석 중..."
     
     local total_files=0
-    local total_size="0B"
     
     echo
     log_info "=== 로컬 삭제 대상 분석 ==="
@@ -150,8 +149,10 @@ cleanup_local_results() {
         local dir_path="${dir_info#*:}"
         local full_path="${LOCAL_BASE}/${dir_path}"
         
-        local size=$(calculate_directory_size "$full_path" false)
-        local files=$(count_files "$full_path" false)
+        local size
+        size=$(calculate_directory_size "$full_path" false)
+        local files
+        files=$(count_files "$full_path" false)
         
         echo "📁 $dir_type: $size ($files 파일)"
         total_files=$((total_files + files))
@@ -181,9 +182,9 @@ cleanup_local_results() {
         local dir_path="${dir_info#*:}"
         local full_path="${LOCAL_BASE}/${dir_path}"
         
-        if [[ -d "$full_path" ]]; then
+        if [[ -d "$full_path" ]] && [[ -n "$full_path" ]]; then
             log_info "$dir_type 디렉토리 삭제 중..."
-            rm -rf "$full_path"/* 2>/dev/null || true
+            rm -rf "${full_path:?}"/* 2>/dev/null || true
             log_success "✅ $dir_type 삭제 완료"
         else
             log_info "$dir_type 디렉토리가 존재하지 않습니다"
@@ -199,9 +200,9 @@ cleanup_local_results() {
     )
     
     for pattern in "${additional_files[@]}"; do
-        if ls $pattern 1> /dev/null 2>&1; then
-            log_info "추가 파일 삭제: $(basename $pattern)"
-            rm -f $pattern
+        if ls "$pattern" 1> /dev/null 2>&1; then
+            log_info "추가 파일 삭제: $(basename "$pattern")"
+            rm -f "$pattern"
         fi
     done
     
@@ -230,8 +231,10 @@ cleanup_remote_results() {
         local dir_path="${dir_info#*:}"
         local full_path="${REMOTE_BASE}/${dir_path}"
         
-        local size=$(calculate_directory_size "$full_path" true)
-        local files=$(count_files "$full_path" true)
+        local size
+        size=$(calculate_directory_size "$full_path" true)
+        local files
+        files=$(count_files "$full_path" true)
         
         echo "📁 $dir_type: $size ($files 파일)"
         total_files=$((total_files + files))
@@ -262,12 +265,12 @@ cleanup_remote_results() {
         local full_path="${REMOTE_BASE}/${dir_path}"
         
         log_info "$dir_type 디렉토리 삭제 중..."
-        ssh "$REMOTE_HOST" "if [ -d '$full_path' ]; then rm -rf '$full_path'/* 2>/dev/null || true; echo '$dir_type 삭제 완료'; else echo '$dir_type 디렉토리가 존재하지 않습니다'; fi"
+        ssh "$REMOTE_HOST" "if [ -d \"$full_path\" ]; then rm -rf \"$full_path\"/* 2>/dev/null || true; echo '$dir_type 삭제 완료'; else echo '$dir_type 디렉토리가 존재하지 않습니다'; fi"
     done
     
     # 추가 정리 파일들
     log_info "추가 파일들 삭제 중..."
-    ssh "$REMOTE_HOST" "cd '$REMOTE_BASE' && rm -f benchmark_*.log mt5_training*.log *.tmp .synced_experiments 2>/dev/null || true"
+    ssh "$REMOTE_HOST" "cd \"$REMOTE_BASE\" && rm -f benchmark_*.log mt5_training*.log *.tmp .synced_experiments 2>/dev/null || true"
     
     log_success "🎉 원격 서버 실험 결과 삭제 완료!"
 }

@@ -81,8 +81,8 @@ for dir_info in "${DIRS_TO_CLEAN[@]}"; do
     dir_path="${dir_info#*:}"
     full_path="${LOCAL_BASE}/${dir_path}"
     
-    if [[ -d "$full_path" ]]; then
-        rm -rf "$full_path"/* 2>/dev/null || true
+    if [[ -d "$full_path" ]] && [[ -n "$full_path" ]]; then
+        rm -rf "${full_path:?}"/* 2>/dev/null || true
         log_success "$(basename "$full_path") 삭제 완료"
     fi
 done
@@ -100,11 +100,11 @@ if ssh "$REMOTE_HOST" "echo '연결 확인'" >/dev/null 2>&1; then
         dir_path="${dir_info#*:}"
         full_path="${REMOTE_BASE}/${dir_path}"
         
-        ssh "$REMOTE_HOST" "if [ -d '$full_path' ]; then rm -rf '$full_path'/* 2>/dev/null || true; fi" 2>/dev/null || true
+        ssh "$REMOTE_HOST" "if [ -d \"$full_path\" ]; then rm -rf \"$full_path\"/* 2>/dev/null || true; fi" 2>/dev/null || true
     done
     
     # 추가 파일 삭제
-    ssh "$REMOTE_HOST" "cd '$REMOTE_BASE' && rm -f benchmark_*.log mt5_training*.log *.tmp .synced_experiments 2>/dev/null || true"
+    ssh "$REMOTE_HOST" "cd \"$REMOTE_BASE\" && rm -f benchmark_*.log mt5_training*.log *.tmp .synced_experiments 2>/dev/null || true"
     
     log_success "원격 서버 삭제 완료"
 else

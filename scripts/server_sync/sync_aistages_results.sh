@@ -90,49 +90,50 @@ for dir_info in "${DIRS_TO_SYNC[@]}"; do
     dir_path="${dir_info#*:}"
     log_info "  - $dir_type: $dir_path"
 done
+
 # =================================================================
 # 유틸리티 함수들
 # =================================================================
 
 # 서버 연결 테스트
+test_server_connection() {
+    log_info "서버 연결 테스트 중..."
+    
+    if ssh "$REMOTE_HOST" "echo '연결 성공'" >/dev/null 2>&1; then
+        log_success "서버 연결 확인됨"
+        return 0
+    else
+        log_error "서버에 연결할 수 없습니다: $REMOTE_HOST"
+        return 1
+    fi
+}
+
 # 디렉토리 생성
 setup_directories() {
     log_info "로컬 디렉토리 설정 중..."
     
-    # 핵심 디렉토리들 (항상 생성)
-    mkdir -p "$LOCAL_OUTPUTS_DIR"
-    mkdir -p "$LOCAL_LOGS_DIR"
-    mkdir -p "$LOCAL_PREDICTION_DIR"
+    # LOCAL_BASE 디렉토리 존재 확인
+    if [[ ! -d "$LOCAL_BASE" ]]; then
+        log_error "로컬 베이스 디렉토리가 존재하지 않습니다: $LOCAL_BASE"
+        exit 1
+    fi
     
-    # 선택적 디렉토리들 (동기화 설정에 따라 생성)
-    [[ "${SYNC_CHECKPOINTS:-true}" == "true" ]] && mkdir -p "$LOCAL_CHECKPOINTS_DIR"
-    [[ "${SYNC_MODELS:-false}" == "true" ]] && mkdir -p "$LOCAL_MODELS_DIR"
-    [[ "${SYNC_WANDB:-true}" == "true" ]] && mkdir -p "$LOCAL_WANDB_DIR"
-    [[ "${SYNC_VALIDATION_LOGS:-true}" == "true" ]] && mkdir -p "$LOCAL_VALIDATION_LOGS_DIR"
-    [[ "${SYNC_ANALYSIS_RESULTS:-true}" == "true" ]] && mkdir -p "$LOCAL_ANALYSIS_RESULTS_DIR"
-    [[ "${SYNC_FINAL_SUBMISSION:-true}" == "true" ]] && mkdir -p "$LOCAL_FINAL_SUBMISSION_DIR"
-    [[ "${SYNC_DATA:-false}" == "true" ]] && mkdir -p "$LOCAL_DATA_DIR"
-    
-    # 서버 연결 테스트
-    test_server_connection() {
-        log_info "서버 연결 테스트 중..."
+    # 동기화 대상 디렉토리들을 LOCAL_BASE 기준으로 생성
+    for dir_info in "${DIRS_TO_SYNC[@]}"; do
+        local dir_type="${dir_info%%:*}"
+        local dir_path="${dir_info#*:}"
+        local full_path="$LOCAL_BASE/$dir_path"
         
-        if ssh "$REMOTE_HOST" "echo '연결 성공'" >/dev/null 2>&1; then
-            log_success "서버 연결 확인됨"
-            return 0
-        else
-            log_error "서버에 연결할 수 없습니다: $REMOTE_HOST"
-            return 1
+        if [[ -n "$dir_path" ]]; then
+            mkdir -p "$full_path"
+            log_info "디렉토리 생성: $full_path"
         fi
-    }
-setup_directories() {
-    log_info "로컬 디렉토리 설정 중..."
-    
-    mkdir -p "$LOCAL_OUTPUTS_DIR"
-    mkdir -p "$LOCAL_LOGS_DIR"
-    mkdir -p "$LOCAL_PREDICTION_DIR"
+    done
     
     log_success "로컬 디렉토리 생성 완료"
+}
+
+# 원격 실험 목록 가져오기
 get_remote_experiment_list() {
     log_info "서버에서 동기화 대상 디렉토리 검색 중..."
     
@@ -162,6 +163,7 @@ get_remote_experiment_list() {
     done
 }
 
+# 단일 디렉토리 동기화
 sync_single_directory() {
     local dir_type="$1"  # 디렉토리 타입
     local dir_name="$2"  # 디렉토리 이름 (. 이면 전체)
@@ -231,11 +233,13 @@ sync_single_directory() {
         else
             log_error "❌ $dir_type/$dir_name 동기화 실패"
         fi
-        fi
-        }
-        
-        # 동기화 결과 보고서 생성
-        generate_sync_report() {
+        return 1
+    fi
+}
+
+# 동기화 결과 보고서 생성
+generate_sync_report() {
+    local report_file="$LOCAL_BASE/sync_report_$(date +%Y%m%d_%H%M%S).txt"
     
     log_info "동기화 보고서 생성 중..."
     
@@ -249,14 +253,14 @@ AIStages 실험 결과 동기화 보고서
 
 동기화된 outputs 디렉토리들:
 EOF
-    
-    if [[ -d "$LOCAL_OUTPUTS_DIR" ]]; then
-        find "$LOCAL_OUTPUTS_DIR" -maxdepth 1 -type d -name '*_*' 2>/dev/null | while read -r local_dir; do
+
+    # Outputs 디렉토리 정보
+    if [[ -d "$LOCAL_BASE/outputs" ]]; then
+        find "$LOCAL_BASE/outputs" -maxdepth 1 -type d -name '*_*' 2>/dev/null | while read -r local_dir; do
             if [[ -d "$local_dir" ]]; then
                 local exp_name=$(basename "$local_dir")
                 local file_count=$(find "$local_dir" -type f 2>/dev/null | wc -l)
                 local total_size=$(du -sh "$local_dir" 2>/dev/null | cut -f1)
-                
                 echo "- $exp_name ($file_count 파일, $total_size)" >> "$report_file"
             fi
         done
@@ -266,14 +270,14 @@ EOF
 
 동기화된 logs 디렉토리들:
 EOF
-    
-    if [[ -d "$LOCAL_LOGS_DIR" ]]; then
-        find "$LOCAL_LOGS_DIR" -maxdepth 1 -type d -name '*_*' 2>/dev/null | while read -r local_dir; do
+
+    # Logs 디렉토리 정보
+    if [[ -d "$LOCAL_BASE/logs" ]]; then
+        find "$LOCAL_BASE/logs" -maxdepth 1 -type d -name '*_*' 2>/dev/null | while read -r local_dir; do
             if [[ -d "$local_dir" ]]; then
                 local exp_name=$(basename "$local_dir")
                 local file_count=$(find "$local_dir" -type f 2>/dev/null | wc -l)
                 local total_size=$(du -sh "$local_dir" 2>/dev/null | cut -f1)
-                
                 echo "- $exp_name ($file_count 파일, $total_size)" >> "$report_file"
             fi
         done
@@ -284,27 +288,11 @@ EOF
 동기화된 prediction 디렉토리 (채점용 파일들):
 EOF
     
-    if [[ -d "$LOCAL_PREDICTION_DIR" ]]; then
-        local csv_count=$(find "$LOCAL_PREDICTION_DIR" -name '*.csv' 2>/dev/null | wc -l)
-        local total_size=$(du -sh "$LOCAL_PREDICTION_DIR" 2>/dev/null | cut -f1)
+    # Prediction 디렉토리 정보
+    if [[ -d "$LOCAL_BASE/prediction" ]]; then
+        local csv_count=$(find "$LOCAL_BASE/prediction" -name '*.csv' 2>/dev/null | wc -l)
+        local total_size=$(du -sh "$LOCAL_BASE/prediction" 2>/dev/null | cut -f1)
         echo "- 채점용 CSV 파일: $csv_count개, 전체 크기: $total_size" >> "$report_file"
-        
-        # 중요 파일들 나열
-        if [[ -f "$LOCAL_PREDICTION_DIR/latest_output.csv" ]]; then
-            echo "  - 최신 채점 파일: latest_output.csv" >> "$report_file"
-        fi
-        if [[ -f "$LOCAL_PREDICTION_DIR/experiment_index.csv" ]]; then
-            echo "  - 실험 인덱스: experiment_index.csv" >> "$report_file"
-        fi
-        
-        # 실험별 디렉토리들
-        find "$LOCAL_PREDICTION_DIR" -maxdepth 1 -type d -name '*_*' 2>/dev/null | while read -r local_dir; do
-            if [[ -d "$local_dir" ]]; then
-                local exp_name=$(basename "$local_dir")
-                local file_count=$(find "$local_dir" -type f 2>/dev/null | wc -l)
-                echo "  - 실험: $exp_name ($file_count 파일)" >> "$report_file"
-            fi
-        done
     fi
     
     cat >> "$report_file" << EOF
@@ -315,14 +303,14 @@ EOF
     log_success "동기화 보고서 저장 완료: $report_file"
     
     # 요약 표시
-    echo
     log_info "=== 동기화 요약 ==="
-    local outputs_count=$(find "$LOCAL_OUTPUTS_DIR" -maxdepth 1 -type d -name '*_*' 2>/dev/null | wc -l)
-    local logs_count=$(find "$LOCAL_LOGS_DIR" -maxdepth 1 -type d -name '*_*' 2>/dev/null | wc -l)
-    local prediction_csv_count=$(find "$LOCAL_PREDICTION_DIR" -name '*.csv' 2>/dev/null | wc -l)
-    local outputs_size=$(du -sh "$LOCAL_OUTPUTS_DIR" 2>/dev/null | cut -f1 || echo "0B")
-    local logs_size=$(du -sh "$LOCAL_LOGS_DIR" 2>/dev/null | cut -f1 || echo "0B")
-    local prediction_size=$(du -sh "$LOCAL_PREDICTION_DIR" 2>/dev/null | cut -f1 || echo "0B")
+    
+    local outputs_count=$(find "$LOCAL_BASE/outputs" -maxdepth 1 -type d -name '*_*' 2>/dev/null | wc -l)
+    local logs_count=$(find "$LOCAL_BASE/logs" -maxdepth 1 -type d -name '*_*' 2>/dev/null | wc -l)
+    local prediction_csv_count=$(find "$LOCAL_BASE/prediction" -name '*.csv' 2>/dev/null | wc -l)
+    local outputs_size=$(du -sh "$LOCAL_BASE/outputs" 2>/dev/null | cut -f1 || echo "0B")
+    local logs_size=$(du -sh "$LOCAL_BASE/logs" 2>/dev/null | cut -f1 || echo "0B")
+    local prediction_size=$(du -sh "$LOCAL_BASE/prediction" 2>/dev/null | cut -f1 || echo "0B")
     
     echo "Outputs 디렉토리: $outputs_count개, 크기: $outputs_size"
     echo "Logs 디렉토리: $logs_count개, 크기: $logs_size"
