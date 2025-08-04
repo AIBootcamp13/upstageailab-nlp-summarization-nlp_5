@@ -250,7 +250,10 @@ class DialogueSummarizationTrainer:
 
         # 로그 디렉토리 설정
         self.log_dir = path_manager.get_log_path(experiment_name)
-
+        
+        # 캐시 디렉토리 설정
+        self.cache_dir = path_manager.ensure_dir(Path("./hf_cache"))
+        
         # 파일 핸들러 추가 (output_dir이 설정된 후)
         self._add_file_handler()
 
@@ -1000,8 +1003,6 @@ class DialogueSummarizationTrainer:
         model_checkpoint = self.config.get("model", {}).get(
             "checkpoint", self.config.get("general", {}).get("model_name", "")
         )
-        architecture = self.config.get("model", {}).get("architecture", "bart")
-
         # QLoRA 설정 확인
         qlora_config = self.config.get("qlora", {})
         
@@ -1012,14 +1013,20 @@ class DialogueSummarizationTrainer:
         
         use_unsloth = qlora_config.get("use_unsloth", False) and UNSLOTH_AVAILABLE
         use_qlora = qlora_config.get("use_qlora", False)
-
+        
         logger.info(f"Loading model: {model_checkpoint} ({architecture})")
         logger.info(f"QLoRA enabled: {use_qlora}, unsloth enabled: {use_unsloth}")
-
-        if use_unsloth and architecture in ["kobart", "bart", "t5", "mt5"]:
+        logger.info(f"QLoRA enabled: {use_qlora}, unsloth enabled: {use_unsloth}")
+        
+        # mT5는 Unsloth 호환성 문제로 QLoRA만 사용
+        if architecture == "mt5" and use_unsloth:
+            logger.info("📝 mT5는 Unsloth와 호환성 문제로 QLoRA로 대체")
+            use_unsloth = False  # mT5에 대해 Unsloth 비활성화
+            use_qlora = True     # QLoRA는 유지
+        
+        if use_unsloth and architecture in ["kobart", "bart", "t5"]:
             # unsloth로 모델 로딩 (최대 75% 메모리 감소)
             self._load_model_with_unsloth(model_checkpoint, qlora_config)
-
         elif use_qlora:
             # 일반 QLoRA 모델 로딩
             self._load_model_with_qlora(model_checkpoint, architecture, qlora_config)

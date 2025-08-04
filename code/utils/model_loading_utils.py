@@ -380,7 +380,7 @@ def _execute_model_loading(model_class: Type[PreTrainedModel],
     log_structured(
         level="INFO",
         message=f"PyTorch 호환성 강화 모델 로딩 시작: {model_name}",
-        data={"model_name": model_name, "safetensors": True}
+        metadata={"model_name": model_name, "safetensors": True}
     )
     
     try:
@@ -393,10 +393,10 @@ def _execute_model_loading(model_class: Type[PreTrainedModel],
         log_structured(
             level="INFO",
             message=f"✅ 모델 로딩 성공: {model_name}",
-            data={
+            metadata={
                 "model_name": model_name,
                 "loading_duration": load_time,
-                "safetensors": True
+                "safetensors_used": True
             }
         )
         
@@ -407,7 +407,7 @@ def _execute_model_loading(model_class: Type[PreTrainedModel],
         log_structured(
             level="ERROR",
             message=error_msg,
-            data={"model_name": model_name, "error": str(e)}
+            metadata={"model_name": model_name, "error": str(e)}
         )
         raise
 
