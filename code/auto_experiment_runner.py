@@ -26,6 +26,10 @@ try:
 except ImportError:
     print("⚠️ python-dotenv가 설치되지 않음: pip install python-dotenv")
 
+# DeepSpeed 비활성화 (초기 단계에서 설정)
+os.environ["DEEPSPEED_DISABLE"] = "true"
+os.environ["USE_DEEPSPEED"] = "false"
+
 # 프로젝트 루트 디렉토리를 Python 경로에 추가
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))

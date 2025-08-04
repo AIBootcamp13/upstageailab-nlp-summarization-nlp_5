@@ -25,6 +25,10 @@ except ImportError:
 
 warnings.filterwarnings("ignore")
 
+# DeepSpeed 비활성화 (초기 단계에서 설정)
+os.environ["DEEPSPEED_DISABLE"] = "true"
+os.environ["USE_DEEPSPEED"] = "false"
+
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -544,6 +548,8 @@ class DialogueSummarizationTrainer:
                 # 환경 변수 설정
                 os.environ["WANDB_LOG_MODEL"] = "false"  # mT5는 크기가 커서 로컬만 저장
                 os.environ["TOKENIZERS_PARALLELISM"] = "true"
+                os.environ["DEEPSPEED_DISABLE"] = "true"  # DeepSpeed 강제 비활성화
+                os.environ["USE_DEEPSPEED"] = "false"
 
                 # 견고한 WandB 초기화 (네트워크 실패 시 오프라인 모드 자동 전환)
                 from utils.wandb_utils import safe_setup_wandb_for_experiment
