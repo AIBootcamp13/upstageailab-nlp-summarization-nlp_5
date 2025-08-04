@@ -356,67 +356,53 @@ def safe_load_model(model_class: Type[PreTrainedModel],
 
 
 def _execute_model_loading(model_class: Type[PreTrainedModel], 
-                          model_name: str, 
-                          kwargs: Dict[str, Any]) -> PreTrainedModel:
+                           model_name: str, 
+                           kwargs: Dict[str, Any]) -> PreTrainedModel:
     """
-    실제 모델 로딩 실행 (내부 함수)
+    실제 모델 로딩 실행 (내부 함수) - PyTorch 호환성 강화
     """
     start_time = time.time()
     
+    # 🔧 PyTorch 호환성 강화: safetensors 강제 사용
+    kwargs_safe = kwargs.copy()
+    kwargs_safe.update({
+        'use_safetensors': True,        # safetensors 강제 사용
+        'trust_remote_code': True,      # 신뢰할 수 있는 코드
+        'torch_dtype': torch.bfloat16,  # 안전한 데이터 타입
+    })
+    
     log_structured(
         level="INFO",
-        message=f"모델 로딩 시작: {model_name}",
-        component="model_loading_utils",
-        function="safe_load_model",
-        metadata={"model_name": model_name, "model_class": model_class.__name__}
+        message=f"PyTorch 호환성 강화 모델 로딩 시작: {model_name}",
+        data={"model_name": model_name, "safetensors": True}
     )
     
     try:
         # RobustModelLoader를 통한 안전한 로딩
-        result = _robust_model_loader.safe_from_pretrained(model_class, model_name, **kwargs)
+        result = _robust_model_loader.safe_from_pretrained(model_class, model_name, **kwargs_safe)
         
         # 성공 시 성능 메트릭 로깅
-        loading_duration = time.time() - start_time
-        log_performance_metric(
-            metric_name="model_loading_duration",
-            value=loading_duration,
-            unit="seconds",
-            component="model_loading_utils"
-        )
+        load_time = time.time() - start_time
         
         log_structured(
             level="INFO",
-            message=f"모델 로딩 완료: {model_name}",
-            component="model_loading_utils",
-            function="safe_load_model",
-            metadata={
+            message=f"✅ 모델 로딩 성공: {model_name}",
+            data={
                 "model_name": model_name,
-                "loading_duration": loading_duration,
-                "success": True
+                "loading_duration": load_time,
+                "safetensors": True
             }
         )
         
         return result
         
     except Exception as e:
-        # 에러 발생 시 통합 에러 처리로 전달
-        loading_duration = time.time() - start_time
-        
+        error_msg = f"모델 로딩 실패: {model_name} - {str(e)}"
         log_structured(
             level="ERROR",
-            message=f"모델 로딩 실패: {model_name}",
-            component="model_loading_utils",
-            function="safe_load_model",
-            metadata={
-                "model_name": model_name,
-                "loading_duration": loading_duration,
-                "success": False,
-                "error": str(e)
-            }
-        )
-        
-        # 원본 에러 재발생 (safe_execute에서 처리됨)
-        raise e
+            message=error_msg,
+            data={"model_name": model_name, "error": str(e)}
+        raise
 
 
 def safe_load_tokenizer(model_name: str, **kwargs) -> PreTrainedTokenizer:

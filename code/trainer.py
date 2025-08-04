@@ -1189,45 +1189,53 @@ class DialogueSummarizationTrainer:
 
     def _load_model_standard(self, model_checkpoint: str, architecture: str) -> None:
         """
-        표준 모델 로딩 (기존 방식)
+        표준 모델 로딩 (PyTorch 호환성 강화)
     
         Args:
             model_checkpoint: 모델 체크포인트 경로
-            architecture: 모델 아키텍처
+            architecture: 모델 아키텍쳐
         """
-        logger.info("📚 표준 모델 로딩 중...")
+        logger.info("📚 PyTorch 호환성 강화 표준 모델 로딩 중...")
     
+        # 🔧 PyTorch 호환성 강화 설정
+        model_kwargs = {
+            'use_safetensors': True,        # safetensors 강제 사용
+            'trust_remote_code': True,      # 신뢰할 수 있는 코드
+            'torch_dtype': torch.bfloat16,  # 안전한 데이터 타입
+            'cache_dir': self.cache_dir,    # 캐시 디렉토리
+        }
+        
         # 안전한 모델 로딩 (네트워크 실패 시 캐시 활용)
         from utils.model_loading_utils import safe_load_model
-        
-        # 모델 아키텍처에 따른 로딩
-        if architecture in ["kobart", "bart", "t5", "mt5"]:
-            # 시퀀스-투-시퀀스 모델
+        try:
             self.model = safe_load_model(
                 AutoModelForSeq2SeqLM,
-                model_checkpoint, 
-                torch_dtype=torch.float16 if self.config["training"].get("fp16") else torch.float32
+                model_checkpoint,
+                **model_kwargs
             )
-        elif architecture in ["kogpt2", "gpt2", "gpt-neo"]:
-            # 인과 언어 모델
-            self.model = safe_load_model(
-                AutoModelForCausalLM,
-                model_checkpoint, 
-                torch_dtype=torch.float16 if self.config["training"].get("fp16") else torch.float32
-            )
-        else:
-            raise ValueError(f"Unsupported architecture: {architecture}")
+            if self.model is None:
+                raise ValueError(f"모델 로딩 실패: {model_checkpoint}")
+                
+            logger.info(f"✅ 표준 모델 로딩 성공: {model_checkpoint}")
+            
+            # GPU로 이동
+            self.model = self.model.to(self.device)
+            logger.info(f"✅ 모델을 {self.device}로 이동 완료")
         
-        # 🔥 baseline.py 호환 special_tokens 처리: resize_token_embeddings 호출
-        if hasattr(self, '_special_tokens_added') and self._special_tokens_added:
-            logger.info(f"Resizing model embeddings for special tokens: {self._new_vocab_size}")
-            self.model.resize_token_embeddings(self._new_vocab_size)
-            logger.info("✅ Model embeddings resized for special tokens")
-        
-        logger.info("✅ 표준 모델 로딩 성공")
+        except Exception as e:
+            logger.error(f"❌ 표준 모델 로딩 실패: {e}")
+            raise RuntimeError(f"모델 로딩 완전 실패: {model_checkpoint}")
     
-
-    def _get_model_specific_config(self, architecture: str, checkpoint: str) -> Dict[str, Any]:
+        # 스페셜 토큰용 임베딩 크기 조정
+        logger.info(f"Resizing model embeddings for special tokens: {self._new_vocab_size}")
+        try:
+            self.model.resize_token_embeddings(self._new_vocab_size)
+            logger.info("✅ Standard model embeddings resized for special tokens")
+        except Exception as e:
+            logger.warning(f"⚠️  임베딩 크기 조정 실패: {e}")
+            logger.info("이란은 정상적일 수 있습니다 (몇뫭 모델에서는 지원되지 않음)")
+            
+        logger.info("✅ 표준 모델 로딩 완료")
         """모델별 특수 설정 반환"""
         config = {}
 
