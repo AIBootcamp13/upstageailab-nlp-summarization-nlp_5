@@ -1003,6 +1003,8 @@ class DialogueSummarizationTrainer:
         model_checkpoint = self.config.get("model", {}).get(
             "checkpoint", self.config.get("general", {}).get("model_name", "")
         )
+        architecture = self.config.get("model", {}).get("architecture", "bart")
+        
         # QLoRA 설정 확인
         qlora_config = self.config.get("qlora", {})
         
