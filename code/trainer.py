@@ -120,27 +120,39 @@ class WandbCallback(TrainerCallback):
     
     def on_save(self, args, state: TrainerState, control: TrainerControl, **kwargs):
         """체크포인트 저장 전 JSON 직렬화 문제 해결"""
-        # tokenizer JSON 직렬화 문제 해결
+        # tokenizer JSON 직렬화 문제 해결 (강력한 재귀적 정리)
         import numpy as np
         if hasattr(self.trainer_instance, 'tokenizer') and self.trainer_instance.tokenizer:
             tokenizer = self.trainer_instance.tokenizer
             
-            # init_kwargs 정리
-            if hasattr(tokenizer, 'init_kwargs') and tokenizer.init_kwargs:
-                for key, value in list(tokenizer.init_kwargs.items()):
-                    if isinstance(value, np.dtype):
-                        tokenizer.init_kwargs[key] = str(value)
-                        logger.info(f"🛠️  Fixed JSON serialization on save: {key} = {value} -> {str(value)}")
+            def clean_recursive(obj):
+                if isinstance(obj, np.dtype):
+                    return str(obj)
+                elif isinstance(obj, dict):
+                    return {k: clean_recursive(v) for k, v in obj.items()}
+                elif isinstance(obj, (list, tuple)):
+                    return type(obj)(clean_recursive(item) for item in obj)
+                else:
+                    return obj
             
-            # 추가적인 속성들 정리
-            for attr_name in ['vocab', 'special_tokens_map', 'added_tokens_encoder', 'added_tokens_decoder']:
+            # tokenizer의 모든 주요 속성들을 재귀적으로 정리
+            critical_attrs = [
+                'init_kwargs', 'vocab', 'special_tokens_map', 'added_tokens_encoder', 
+                'added_tokens_decoder', '_tokenizer', 'backend_tokenizer'
+            ]
+            
+            for attr_name in critical_attrs:
                 if hasattr(tokenizer, attr_name):
-                    attr = getattr(tokenizer, attr_name)
-                    if isinstance(attr, dict):
-                        for key, value in list(attr.items()):
-                            if isinstance(value, np.dtype):
-                                attr[key] = str(value)
-                                logger.info(f"🛠️  Fixed JSON serialization in {attr_name}: {key} = {value} -> {str(value)}")
+                    try:
+                        attr_value = getattr(tokenizer, attr_name)
+                        if attr_value is not None:
+                            cleaned_value = clean_recursive(attr_value)
+                            setattr(tokenizer, attr_name, cleaned_value)
+                            logger.info(f"🧹 [SAVE] Cleaned tokenizer.{attr_name} for JSON serialization")
+                    except Exception as e:
+                        logger.debug(f"⚠️ [SAVE] Could not clean {attr_name}: {e}")
+            
+            logger.info("✅ [SAVE] Tokenizer completely cleaned for JSON serialization")
 
     def on_evaluate(self, args, state: TrainerState, control: TrainerControl, metrics: Dict[str, float], **kwargs):
         """평가 시 WandB에 메트릭 로깅"""
@@ -1006,13 +1018,37 @@ class DialogueSummarizationTrainer:
                 logger.info(f"✅ Added {num_added_tokens} special tokens to tokenizer")
                 logger.info(f"   New vocab size: {len(self.tokenizer)}")
                 
-                # JSON 직렬화 문제 해결: numpy.dtype 객체를 문자열로 변환
+                # JSON 직렬화 문제 해결: numpy.dtype 객체를 문자열로 변환 (강력한 재귀적 정리)
                 import numpy as np
-                if hasattr(self.tokenizer, 'init_kwargs') and self.tokenizer.init_kwargs:
-                    for key, value in list(self.tokenizer.init_kwargs.items()):
-                        if isinstance(value, np.dtype):
-                            self.tokenizer.init_kwargs[key] = str(value)
-                            logger.info(f"🛠️  Fixed JSON serialization: {key} = {value} -> {str(value)}")
+                
+                def clean_recursive(obj):
+                    if isinstance(obj, np.dtype):
+                        return str(obj)
+                    elif isinstance(obj, dict):
+                        return {k: clean_recursive(v) for k, v in obj.items()}
+                    elif isinstance(obj, (list, tuple)):
+                        return type(obj)(clean_recursive(item) for item in obj)
+                    else:
+                        return obj
+                
+                # tokenizer의 모든 주요 속성들을 재귀적으로 정리
+                critical_attrs = [
+                    'init_kwargs', 'vocab', 'special_tokens_map', 'added_tokens_encoder', 
+                    'added_tokens_decoder', '_tokenizer', 'backend_tokenizer'
+                ]
+                
+                for attr_name in critical_attrs:
+                    if hasattr(self.tokenizer, attr_name):
+                        try:
+                            attr_value = getattr(self.tokenizer, attr_name)
+                            if attr_value is not None:
+                                cleaned_value = clean_recursive(attr_value)
+                                setattr(self.tokenizer, attr_name, cleaned_value)
+                                logger.info(f"🧹 Cleaned tokenizer.{attr_name} for JSON serialization")
+                        except Exception as e:
+                            logger.debug(f"⚠️ Could not clean {attr_name}: {e}")
+                
+                logger.info("✅ Tokenizer completely cleaned for JSON serialization")
                 
                 # tokenizer 변경사항을 self에 저장 (모델 로딩 시 사용)
                 self._special_tokens_added = True
