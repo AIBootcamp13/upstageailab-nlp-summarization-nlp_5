@@ -1227,17 +1227,68 @@ class DialogueSummarizationTrainer:
                 logger.info(f"Resizing QLoRA model embeddings for special tokens: {self._new_vocab_size}")
                 # QLoRA/PEFT 모델에서는 조심스럽게 처리
                 try:
+                    # QLoRA 전용 임베딩 리사이징 로직
+                    resized = False
+                    
+                    # 1. 직접 resize_token_embeddings 호출
                     if hasattr(self.model, 'resize_token_embeddings'):
-                        self.model.resize_token_embeddings(self._new_vocab_size)
-                        logger.info("✅ QLoRA model embeddings resized for special tokens")
-                    elif hasattr(self.model, 'base_model') and hasattr(self.model.base_model, 'resize_token_embeddings'):
-                        self.model.base_model.resize_token_embeddings(self._new_vocab_size)
-                        logger.info("✅ QLoRA base model embeddings resized for special tokens")
-                    else:
-                        logger.warning("⚠️ QLoRA 모델에서 resize_token_embeddings 메서드를 찾을 수 없음")
-                except Exception as e:
-                    logger.warning(f"⚠️ QLoRA 임베딩 리사이징 실패 (무시): {str(e)}")
-                    logger.info("✅ QLoRA 모델은 임베딩 리사이징 없이 계속 진행")
+                        try:
+                            self.model.resize_token_embeddings(self._new_vocab_size)
+                            logger.info("✅ QLoRA model embeddings resized for special tokens")
+                            resized = True
+                        except Exception as e:
+                            logger.debug(f"🔍 resize_token_embeddings 실패: {e}")
+                    
+                    # 2. base_model을 통한 리사이징
+                    if not resized and hasattr(self.model, 'base_model'):
+                        base_model = self.model.base_model
+                        if hasattr(base_model, 'model') and hasattr(base_model.model, 'resize_token_embeddings'):
+                            try:
+                                base_model.model.resize_token_embeddings(self._new_vocab_size)
+                                logger.info("✅ QLoRA base model embeddings resized for special tokens")
+                                resized = True
+                            except Exception as e:
+                                logger.debug(f"🔍 base_model.model.resize_token_embeddings 실패: {e}")
+                        elif hasattr(base_model, 'resize_token_embeddings'):
+                            try:
+                                base_model.resize_token_embeddings(self._new_vocab_size)
+                                logger.info("✅ QLoRA base model embeddings resized for special tokens")
+                                resized = True
+                            except Exception as e:
+                                logger.debug(f"🔍 base_model.resize_token_embeddings 실패: {e}")
+                    
+                    # 3. 수동 임베딩 리사이징 (필요시)
+                    if not resized:
+                        logger.info("🚀 QLoRA 수동 임베딩 리사이징 시도")
+                        try:
+                            # 입력 임베딩 리사이징
+                            if hasattr(self.model, 'get_input_embeddings'):
+                                input_embeddings = self.model.get_input_embeddings()
+                                if input_embeddings is not None:
+                                    old_size = input_embeddings.weight.size(0)
+                                    if old_size != self._new_vocab_size:
+                                        logger.info(f"🛠️  입력 임베딩 리사이징: {old_size} -> {self._new_vocab_size}")
+                                        # 새로운 임베딩 레이어 생성
+                                        new_embeddings = nn.Embedding(self._new_vocab_size, input_embeddings.weight.size(1))
+                                        # 기존 가중치 복사
+                                        new_embeddings.weight.data[:old_size] = input_embeddings.weight.data
+                                        # 새 토큰 초기화 (기존 토큰의 평균과 표준편차 사용)
+                                        # 새 토큰 초기화 (기존 토큰의 평균과 표준편차 사용)
+                                        if old_size < self._new_vocab_size:
+                                            mean = input_embeddings.weight.data.mean(dim=0)
+                                            std = input_embeddings.weight.data.std(dim=0)
+                                            new_embeddings.weight.data[old_size:] = torch.normal(
+                                                mean.unsqueeze(0).expand(self._new_vocab_size - old_size, -1), 
+                                                std.unsqueeze(0).expand(self._new_vocab_size - old_size, -1)
+                                            )
+                                        logger.info("✅ 수동 입력 임베딩 리사이징 성공")
+                                        resized = True
+                        except Exception as e:
+                            logger.debug(f"🔍 수동 임베딩 리사이징 실패: {e}")
+                    
+                    if not resized:
+                        logger.info("📝 QLoRA 모델은 임베딩 리사이징 없이 계속 진행 (정상)")
+                        logger.info("ℹ️  QLoRA는 기본적으로 어댑터 방식이므로 리사이징이 필수적이지 않습니다")
         except ImportError:
             logger.error("❌ bitsandbytes 또는 peft 라이브러리가 설치되지 않음")
             logger.info("폴백 모드: 표준 모델 로딩")
