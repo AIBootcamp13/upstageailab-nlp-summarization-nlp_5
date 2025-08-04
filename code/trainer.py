@@ -604,13 +604,14 @@ class DialogueSummarizationTrainer:
         def compute_metrics(eval_preds: Tuple[np.ndarray, np.ndarray]) -> Dict[str, float]:
             """
             학습 중 평가 단계에서 ROUGE 메트릭을 계산하는 중첩 함수
-
+        
             Args:
                 eval_preds: (predictions, labels) 튜플
-
+        
             Returns:
                 ROUGE 점수들을 포함한 딕셔너리
             """
+            import numpy as np  # 중첩 함수에서 numpy import 필요
             preds, labels = eval_preds
 
             # 🛡️ 안전한 토큰 디코딩 (IndexError 방지)
