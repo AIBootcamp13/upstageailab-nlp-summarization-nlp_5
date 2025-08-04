@@ -33,42 +33,79 @@ fi
 
 source "$CONFIG_FILE"
 
-# 경로 설정
-LOCAL_OUTPUTS_DIR="${LOCAL_BASE}/${OUTPUTS_SUBDIR:-outputs}"
-LOCAL_LOGS_DIR="${LOCAL_BASE}/${LOGS_SUBDIR:-logs}"
-LOCAL_WANDB_DIR="${LOCAL_BASE}/${WANDB_SUBDIR:-wandb}"
-LOCAL_MODELS_DIR="${LOCAL_BASE}/${MODELS_SUBDIR:-models}"
-LOCAL_DATA_DIR="${LOCAL_BASE}/${DATA_SUBDIR:-data}"
+# 필수 설정 검증
+if [[ -z "$LOCAL_BASE" ]] || [[ -z "$REMOTE_BASE" ]] || [[ -z "$REMOTE_HOST" ]]; then
+    log_error "필수 설정이 누락되었습니다. config.conf 파일을 확인하세요."
+    exit 1
+fi
 
-REMOTE_OUTPUTS_DIR="${REMOTE_BASE}/${OUTPUTS_SUBDIR:-outputs}"
-REMOTE_LOGS_DIR="${REMOTE_BASE}/${LOGS_SUBDIR:-logs}"
-REMOTE_WANDB_DIR="${REMOTE_BASE}/${WANDB_SUBDIR:-wandb}"
-REMOTE_MODELS_DIR="${REMOTE_BASE}/${MODELS_SUBDIR:-models}"
-REMOTE_DATA_DIR="${REMOTE_BASE}/${DATA_SUBDIR:-data}"
+# =================================================================
+# 삭제 대상 경로 설정 (비어있으면 제외)
+# =================================================================
+
+# 삭제 대상 디렉토리들을 배열로 정의
+DIRS_TO_CLEAN=()
+
+# 경로가 비어있지 않은 디렉토리들만 삭제 대상에 추가
+[[ -n "${OUTPUTS_PATH}" ]] && DIRS_TO_CLEAN+=("outputs:${OUTPUTS_PATH}")
+[[ -n "${LOGS_PATH}" ]] && DIRS_TO_CLEAN+=("logs:${LOGS_PATH}")
+[[ -n "${CHECKPOINTS_PATH}" ]] && DIRS_TO_CLEAN+=("checkpoints:${CHECKPOINTS_PATH}")
+[[ -n "${MODELS_PATH}" ]] && DIRS_TO_CLEAN+=("models:${MODELS_PATH}")
+[[ -n "${WANDB_PATH}" ]] && DIRS_TO_CLEAN+=("wandb:${WANDB_PATH}")
+[[ -n "${VALIDATION_LOGS_PATH}" ]] && DIRS_TO_CLEAN+=("validation_logs:${VALIDATION_LOGS_PATH}")
+[[ -n "${ANALYSIS_RESULTS_PATH}" ]] && DIRS_TO_CLEAN+=("analysis_results:${ANALYSIS_RESULTS_PATH}")
+[[ -n "${FINAL_SUBMISSION_PATH}" ]] && DIRS_TO_CLEAN+=("final_submission:${FINAL_SUBMISSION_PATH}")
+# DATA_PATH와 PREDICTION_PATH는 안전상 삭제 대상에서 제외 (중요한 데이터)
 
 echo "🗑️  빠른 실험 결과 삭제 도구"
 echo "=================================="
 
-# 로컬 삭제 (데이터 파일 제외)
+# 삭제 대상 디렉토리 표시
+if [[ ${#DIRS_TO_CLEAN[@]} -eq 0 ]]; then
+    log_info "삭제할 디렉토리가 설정되지 않았습니다."
+    exit 0
+fi
+
+log_info "삭제 대상: ${#DIRS_TO_CLEAN[@]}개 디렉토리"
+for dir_info in "${DIRS_TO_CLEAN[@]}"; do
+    dir_type="${dir_info%%:*}"
+    dir_path="${dir_info#*:}"
+    log_info "  - $dir_type: $dir_path"
+done
+echo
+
+# 로컬 삭제
 log_info "로컬 실험 결과 삭제 중..."
-for dir in "$LOCAL_OUTPUTS_DIR" "$LOCAL_LOGS_DIR" "$LOCAL_WANDB_DIR" "$LOCAL_MODELS_DIR"; do
-    if [[ -d "$dir" ]]; then
-        rm -rf "$dir"/* 2>/dev/null || true
-        log_success "$(basename "$dir") 삭제 완료"
+for dir_info in "${DIRS_TO_CLEAN[@]}"; do
+    dir_type="${dir_info%%:*}"
+    dir_path="${dir_info#*:}"
+    full_path="${LOCAL_BASE}/${dir_path}"
+    
+    if [[ -d "$full_path" ]]; then
+        rm -rf "$full_path"/* 2>/dev/null || true
+        log_success "$(basename "$full_path") 삭제 완료"
     fi
 done
 
 # 추가 파일 삭제
 rm -f "$LOCAL_BASE"/benchmark_*.log "$LOCAL_BASE"/mt5_training*.log "$LOCAL_BASE"/sync_report_*.txt "$LOCAL_BASE"/.synced_experiments 2>/dev/null || true
-# 원격 삭제 (데이터 파일 제외)
+
+# 원격 삭제
 log_info "원격 서버 실험 결과 삭제 중..."
 if ssh "$REMOTE_HOST" "echo '연결 확인'" >/dev/null 2>&1; then
-    ssh "$REMOTE_HOST" "
-        cd '$REMOTE_BASE' || exit 1
-        rm -rf '$REMOTE_OUTPUTS_DIR'/* '$REMOTE_LOGS_DIR'/* '$REMOTE_WANDB_DIR'/* '$REMOTE_MODELS_DIR'/* 2>/dev/null || true
-        rm -f benchmark_*.log mt5_training*.log *.tmp .synced_experiments 2>/dev/null || true
-        echo '원격 서버 삭제 완료'
-    "
+    
+    # 각 디렉토리별 삭제
+    for dir_info in "${DIRS_TO_CLEAN[@]}"; do
+        dir_type="${dir_info%%:*}"
+        dir_path="${dir_info#*:}"
+        full_path="${REMOTE_BASE}/${dir_path}"
+        
+        ssh "$REMOTE_HOST" "if [ -d '$full_path' ]; then rm -rf '$full_path'/* 2>/dev/null || true; fi" 2>/dev/null || true
+    done
+    
+    # 추가 파일 삭제
+    ssh "$REMOTE_HOST" "cd '$REMOTE_BASE' && rm -f benchmark_*.log mt5_training*.log *.tmp .synced_experiments 2>/dev/null || true"
+    
     log_success "원격 서버 삭제 완료"
 else
     log_warning "원격 서버에 연결할 수 없습니다"

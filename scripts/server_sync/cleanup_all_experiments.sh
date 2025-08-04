@@ -64,18 +64,31 @@ if [[ -z "$LOCAL_BASE" ]] || [[ -z "$REMOTE_BASE" ]] || [[ -z "$REMOTE_HOST" ]];
     exit 1
 fi
 
-# 경로 설정
-LOCAL_OUTPUTS_DIR="${LOCAL_BASE}/${OUTPUTS_SUBDIR:-outputs}"
-LOCAL_LOGS_DIR="${LOCAL_BASE}/${LOGS_SUBDIR:-logs}"
-LOCAL_WANDB_DIR="${LOCAL_BASE}/${WANDB_SUBDIR:-wandb}"
-LOCAL_MODELS_DIR="${LOCAL_BASE}/${MODELS_SUBDIR:-models}"
-LOCAL_DATA_DIR="${LOCAL_BASE}/${DATA_SUBDIR:-data}"
+# =================================================================
+# 삭제 대상 경로 설정 (비어있으면 제외)
+# =================================================================
 
-REMOTE_OUTPUTS_DIR="${REMOTE_BASE}/${OUTPUTS_SUBDIR:-outputs}"
-REMOTE_LOGS_DIR="${REMOTE_BASE}/${LOGS_SUBDIR:-logs}"
-REMOTE_WANDB_DIR="${REMOTE_BASE}/${WANDB_SUBDIR:-wandb}"
-REMOTE_MODELS_DIR="${REMOTE_BASE}/${MODELS_SUBDIR:-models}"
-REMOTE_DATA_DIR="${REMOTE_BASE}/${DATA_SUBDIR:-data}"
+# 삭제 대상 디렉토리들을 배열로 정의
+DIRS_TO_CLEAN=()
+
+# 경로가 비어있지 않은 디렉토리들만 삭제 대상에 추가
+[[ -n "${OUTPUTS_PATH}" ]] && DIRS_TO_CLEAN+=("outputs:${OUTPUTS_PATH}")
+[[ -n "${LOGS_PATH}" ]] && DIRS_TO_CLEAN+=("logs:${LOGS_PATH}")
+[[ -n "${CHECKPOINTS_PATH}" ]] && DIRS_TO_CLEAN+=("checkpoints:${CHECKPOINTS_PATH}")
+[[ -n "${MODELS_PATH}" ]] && DIRS_TO_CLEAN+=("models:${MODELS_PATH}")
+[[ -n "${WANDB_PATH}" ]] && DIRS_TO_CLEAN+=("wandb:${WANDB_PATH}")
+[[ -n "${VALIDATION_LOGS_PATH}" ]] && DIRS_TO_CLEAN+=("validation_logs:${VALIDATION_LOGS_PATH}")
+[[ -n "${ANALYSIS_RESULTS_PATH}" ]] && DIRS_TO_CLEAN+=("analysis_results:${ANALYSIS_RESULTS_PATH}")
+[[ -n "${FINAL_SUBMISSION_PATH}" ]] && DIRS_TO_CLEAN+=("final_submission:${FINAL_SUBMISSION_PATH}")
+# DATA_PATH와 PREDICTION_PATH는 안전상 삭제 대상에서 제외 (중요한 데이터)
+
+# 삭제 대상 디렉토리 로그 출력
+log_info "삭제 대상 디렉토리: ${#DIRS_TO_CLEAN[@]}개"
+for dir_info in "${DIRS_TO_CLEAN[@]}"; do
+    dir_type="${dir_info%%:*}"
+    dir_path="${dir_info#*:}"
+    log_info "  - $dir_type: $dir_path"
+done
 
 # =================================================================
 # 유틸리티 함수들
@@ -125,29 +138,24 @@ count_files() {
 cleanup_local_results() {
     log_info "로컬 실험 결과 분석 중..."
     
-    # 각 디렉토리별 정보 수집
-    local outputs_size=$(calculate_directory_size "$LOCAL_OUTPUTS_DIR" false)
-    local logs_size=$(calculate_directory_size "$LOCAL_LOGS_DIR" false)
-    local wandb_size=$(calculate_directory_size "$LOCAL_WANDB_DIR" false)
-    local models_size=$(calculate_directory_size "$LOCAL_MODELS_DIR" false)
-    local data_size=$(calculate_directory_size "$LOCAL_DATA_DIR" false)
-    
-    local outputs_files=$(count_files "$LOCAL_OUTPUTS_DIR" false)
-    local logs_files=$(count_files "$LOCAL_LOGS_DIR" false)
-    local wandb_files=$(count_files "$LOCAL_WANDB_DIR" false)
-    local models_files=$(count_files "$LOCAL_MODELS_DIR" false)
-    local data_files=$(count_files "$LOCAL_DATA_DIR" false)
+    local total_files=0
+    local total_size="0B"
     
     echo
     log_info "=== 로컬 삭제 대상 분석 ==="
-    echo "📁 Outputs: $outputs_size ($outputs_files 파일)"
-    echo "📁 Logs: $logs_size ($logs_files 파일)"
-    echo "📁 WandB: $wandb_size ($wandb_files 파일)"
-    echo "📁 Models: $models_size ($models_files 파일)"
-    echo "📁 Data: $data_size ($data_files 파일) - 보존됨"
     
-    # 전체 합계 (데이터 파일 제외)
-    local total_files=$((outputs_files + logs_files + wandb_files + models_files))
+    # 각 디렉토리별 정보 수집 및 출력
+    for dir_info in "${DIRS_TO_CLEAN[@]}"; do
+        local dir_type="${dir_info%%:*}"
+        local dir_path="${dir_info#*:}"
+        local full_path="${LOCAL_BASE}/${dir_path}"
+        
+        local size=$(calculate_directory_size "$full_path" false)
+        local files=$(count_files "$full_path" false)
+        
+        echo "📁 $dir_type: $size ($files 파일)"
+        total_files=$((total_files + files))
+    done
     
     if [[ $total_files -eq 0 ]]; then
         log_info "로컬에 삭제할 실험 결과가 없습니다."
@@ -167,17 +175,18 @@ cleanup_local_results() {
     
     log_info "로컬 실험 결과 삭제 시작..."
     
-    # 각 디렉토리 삭제 (데이터 파일 제외)
-    for dir_info in "outputs:$LOCAL_OUTPUTS_DIR" "logs:$LOCAL_LOGS_DIR" "wandb:$LOCAL_WANDB_DIR" "models:$LOCAL_MODELS_DIR"; do
-        local dir_name="${dir_info%%:*}"
-        local dir_path="${dir_info##*:}"
+    # 각 디렉토리 삭제
+    for dir_info in "${DIRS_TO_CLEAN[@]}"; do
+        local dir_type="${dir_info%%:*}"
+        local dir_path="${dir_info#*:}"
+        local full_path="${LOCAL_BASE}/${dir_path}"
         
-        if [[ -d "$dir_path" ]]; then
-            log_info "$dir_name 디렉토리 삭제 중..."
-            rm -rf "$dir_path"/* 2>/dev/null || true
-            log_success "✅ $dir_name 삭제 완료"
+        if [[ -d "$full_path" ]]; then
+            log_info "$dir_type 디렉토리 삭제 중..."
+            rm -rf "$full_path"/* 2>/dev/null || true
+            log_success "✅ $dir_type 삭제 완료"
         else
-            log_info "$dir_name 디렉토리가 존재하지 않습니다"
+            log_info "$dir_type 디렉토리가 존재하지 않습니다"
         fi
     done
     
@@ -210,29 +219,23 @@ cleanup_remote_results() {
     
     log_info "원격 실험 결과 분석 중..."
     
-    # 각 디렉토리별 정보 수집
-    local outputs_size=$(calculate_directory_size "$REMOTE_OUTPUTS_DIR" true)
-    local logs_size=$(calculate_directory_size "$REMOTE_LOGS_DIR" true)
-    local wandb_size=$(calculate_directory_size "$REMOTE_WANDB_DIR" true)
-    local models_size=$(calculate_directory_size "$REMOTE_MODELS_DIR" true)
-    local data_size=$(calculate_directory_size "$REMOTE_DATA_DIR" true)
-    
-    local outputs_files=$(count_files "$REMOTE_OUTPUTS_DIR" true)
-    local logs_files=$(count_files "$REMOTE_LOGS_DIR" true)
-    local wandb_files=$(count_files "$REMOTE_WANDB_DIR" true)
-    local models_files=$(count_files "$REMOTE_MODELS_DIR" true)
-    local data_files=$(count_files "$REMOTE_DATA_DIR" true)
+    local total_files=0
     
     echo
     log_info "=== 원격 서버 삭제 대상 분석 ==="
-    echo "📁 Outputs: $outputs_size ($outputs_files 파일)"
-    echo "📁 Logs: $logs_size ($logs_files 파일)"
-    echo "📁 WandB: $wandb_size ($wandb_files 파일)"
-    echo "📁 Models: $models_size ($models_files 파일)"
-    echo "📁 Data: $data_size ($data_files 파일) - 보존됨"
     
-    # 전체 합계 (데이터 파일 제외)
-    local total_files=$((outputs_files + logs_files + wandb_files + models_files))
+    # 각 디렉토리별 정보 수집 및 출력
+    for dir_info in "${DIRS_TO_CLEAN[@]}"; do
+        local dir_type="${dir_info%%:*}"
+        local dir_path="${dir_info#*:}"
+        local full_path="${REMOTE_BASE}/${dir_path}"
+        
+        local size=$(calculate_directory_size "$full_path" true)
+        local files=$(count_files "$full_path" true)
+        
+        echo "📁 $dir_type: $size ($files 파일)"
+        total_files=$((total_files + files))
+    done
     
     if [[ $total_files -eq 0 ]]; then
         log_info "원격 서버에 삭제할 실험 결과가 없습니다."
@@ -252,13 +255,14 @@ cleanup_remote_results() {
     
     log_info "원격 서버 실험 결과 삭제 시작..."
     
-    # 각 디렉토리 삭제 (데이터 파일 제외)
-    for dir_info in "outputs:$REMOTE_OUTPUTS_DIR" "logs:$REMOTE_LOGS_DIR" "wandb:$REMOTE_WANDB_DIR" "models:$REMOTE_MODELS_DIR"; do
-        local dir_name="${dir_info%%:*}"
-        local dir_path="${dir_info##*:}"
+    # 각 디렉토리 삭제
+    for dir_info in "${DIRS_TO_CLEAN[@]}"; do
+        local dir_type="${dir_info%%:*}"
+        local dir_path="${dir_info#*:}"
+        local full_path="${REMOTE_BASE}/${dir_path}"
         
-        log_info "$dir_name 디렉토리 삭제 중..."
-        ssh "$REMOTE_HOST" "if [ -d '$dir_path' ]; then rm -rf '$dir_path'/* 2>/dev/null || true; echo '$dir_name 삭제 완료'; else echo '$dir_name 디렉토리가 존재하지 않습니다'; fi"
+        log_info "$dir_type 디렉토리 삭제 중..."
+        ssh "$REMOTE_HOST" "if [ -d '$full_path' ]; then rm -rf '$full_path'/* 2>/dev/null || true; echo '$dir_type 삭제 완료'; else echo '$dir_type 디렉토리가 존재하지 않습니다'; fi"
     done
     
     # 추가 정리 파일들
@@ -285,7 +289,7 @@ main() {
     echo -e "${YELLOW}삭제 대상:${NC}"
     echo "- 로컬: $LOCAL_BASE"
     echo "- 원격: $REMOTE_HOST:$REMOTE_BASE"
-    echo "- 디렉토리: outputs, logs, wandb, models (데이터 파일 제외)"
+    echo "- 디렉토리: ${#DIRS_TO_CLEAN[@]}개 설정된 폴더 (prediction, data 제외)"
     echo
     
     read -p "정말로 계속하시겠습니까? (yes 입력 필요): " -r

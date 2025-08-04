@@ -64,32 +64,67 @@ AUTO_CLEANUP=${AUTO_CLEANUP:-false}
 DRY_RUN=${DRY_RUN:-false}
 SKIP_CONFIRMATION=${SKIP_CONFIRMATION:-true}  # 기본적으로 확인 건너뛰기
 
-# 경로 설정
-LOCAL_OUTPUTS_DIR="${LOCAL_BASE}/${OUTPUTS_SUBDIR:-outputs}"
-LOCAL_LOGS_DIR="${LOCAL_BASE}/${LOGS_SUBDIR:-logs}"
-LOCAL_PREDICTION_DIR="${LOCAL_BASE}/${PREDICTION_SUBDIR:-prediction}"
-REMOTE_OUTPUTS_DIR="${REMOTE_BASE}/${OUTPUTS_SUBDIR:-outputs}"
-REMOTE_LOGS_DIR="${REMOTE_BASE}/${LOGS_SUBDIR:-logs}"
-REMOTE_PREDICTION_DIR="${REMOTE_BASE}/${PREDICTION_SUBDIR:-prediction}"
+# =================================================================
+# 동기화 대상 경로 설정 (비어있으면 제외)
+# =================================================================
 
+# 동기화 대상 디렉토리들을 배열로 정의
+DIRS_TO_SYNC=()
+
+# 경로가 비어있지 않은 디렉토리들만 동기화 대상에 추가
+[[ -n "${OUTPUTS_PATH}" ]] && DIRS_TO_SYNC+=("outputs:${OUTPUTS_PATH}")
+[[ -n "${LOGS_PATH}" ]] && DIRS_TO_SYNC+=("logs:${LOGS_PATH}")
+[[ -n "${PREDICTION_PATH}" ]] && DIRS_TO_SYNC+=("prediction:${PREDICTION_PATH}")
+[[ -n "${CHECKPOINTS_PATH}" ]] && DIRS_TO_SYNC+=("checkpoints:${CHECKPOINTS_PATH}")
+[[ -n "${MODELS_PATH}" ]] && DIRS_TO_SYNC+=("models:${MODELS_PATH}")
+[[ -n "${WANDB_PATH}" ]] && DIRS_TO_SYNC+=("wandb:${WANDB_PATH}")
+[[ -n "${VALIDATION_LOGS_PATH}" ]] && DIRS_TO_SYNC+=("validation_logs:${VALIDATION_LOGS_PATH}")
+[[ -n "${ANALYSIS_RESULTS_PATH}" ]] && DIRS_TO_SYNC+=("analysis_results:${ANALYSIS_RESULTS_PATH}")
+[[ -n "${FINAL_SUBMISSION_PATH}" ]] && DIRS_TO_SYNC+=("final_submission:${FINAL_SUBMISSION_PATH}")
+[[ -n "${DATA_PATH}" ]] && DIRS_TO_SYNC+=("data:${DATA_PATH}")
+
+# 동기화 대상 디렉토리 로그 출력
+log_info "동기화 대상 디렉토리: ${#DIRS_TO_SYNC[@]}개"
+for dir_info in "${DIRS_TO_SYNC[@]}"; do
+    dir_type="${dir_info%%:*}"
+    dir_path="${dir_info#*:}"
+    log_info "  - $dir_type: $dir_path"
+done
 # =================================================================
 # 유틸리티 함수들
 # =================================================================
 
 # 서버 연결 테스트
-test_server_connection() {
-    log_info "서버 연결 테스트 중..."
-    
-    if ssh "$REMOTE_HOST" "echo '연결 성공'" >/dev/null 2>&1; then
-        log_success "서버 연결 확인됨"
-        return 0
-    else
-        log_error "서버에 연결할 수 없습니다: $REMOTE_HOST"
-        return 1
-    fi
-}
-
 # 디렉토리 생성
+setup_directories() {
+    log_info "로컬 디렉토리 설정 중..."
+    
+    # 핵심 디렉토리들 (항상 생성)
+    mkdir -p "$LOCAL_OUTPUTS_DIR"
+    mkdir -p "$LOCAL_LOGS_DIR"
+    mkdir -p "$LOCAL_PREDICTION_DIR"
+    
+    # 선택적 디렉토리들 (동기화 설정에 따라 생성)
+    [[ "${SYNC_CHECKPOINTS:-true}" == "true" ]] && mkdir -p "$LOCAL_CHECKPOINTS_DIR"
+    [[ "${SYNC_MODELS:-false}" == "true" ]] && mkdir -p "$LOCAL_MODELS_DIR"
+    [[ "${SYNC_WANDB:-true}" == "true" ]] && mkdir -p "$LOCAL_WANDB_DIR"
+    [[ "${SYNC_VALIDATION_LOGS:-true}" == "true" ]] && mkdir -p "$LOCAL_VALIDATION_LOGS_DIR"
+    [[ "${SYNC_ANALYSIS_RESULTS:-true}" == "true" ]] && mkdir -p "$LOCAL_ANALYSIS_RESULTS_DIR"
+    [[ "${SYNC_FINAL_SUBMISSION:-true}" == "true" ]] && mkdir -p "$LOCAL_FINAL_SUBMISSION_DIR"
+    [[ "${SYNC_DATA:-false}" == "true" ]] && mkdir -p "$LOCAL_DATA_DIR"
+    
+    # 서버 연결 테스트
+    test_server_connection() {
+        log_info "서버 연결 테스트 중..."
+        
+        if ssh "$REMOTE_HOST" "echo '연결 성공'" >/dev/null 2>&1; then
+            log_success "서버 연결 확인됨"
+            return 0
+        else
+            log_error "서버에 연결할 수 없습니다: $REMOTE_HOST"
+            return 1
+        fi
+    }
 setup_directories() {
     log_info "로컬 디렉토리 설정 중..."
     
@@ -98,80 +133,63 @@ setup_directories() {
     mkdir -p "$LOCAL_PREDICTION_DIR"
     
     log_success "로컬 디렉토리 생성 완료"
-}
-
-# 단순화된 원격 실험 목록 가져오기
 get_remote_experiment_list() {
-    log_info "서버에서 실험 디렉토리 검색 중..."
+    log_info "서버에서 동기화 대상 디렉토리 검색 중..."
     
-    # outputs 디렉토리 검색 (단순화)
-    local outputs_list=""
-    if ssh "$REMOTE_HOST" "[ -d '$REMOTE_OUTPUTS_DIR' ]" 2>/dev/null; then
-        outputs_list=$(ssh "$REMOTE_HOST" "ls -1 '$REMOTE_OUTPUTS_DIR' 2>/dev/null" | grep "_" || true)
-    fi
-    
-    # logs 디렉토리 검색 (단순화)
-    local logs_list=""
-    if ssh "$REMOTE_HOST" "[ -d '$REMOTE_LOGS_DIR' ]" 2>/dev/null; then
-        logs_list=$(ssh "$REMOTE_HOST" "ls -1 '$REMOTE_LOGS_DIR' 2>/dev/null" | grep "_" || true)
-    fi
-    
-    # prediction 디렉토리 검색 (채점용 파일들 - 중요!)
-    local prediction_files=""
-    if ssh "$REMOTE_HOST" "[ -d '$REMOTE_PREDICTION_DIR' ]" 2>/dev/null; then
-        prediction_files=$(ssh "$REMOTE_HOST" "find '$REMOTE_PREDICTION_DIR' -maxdepth 1 -type f -name '*.csv' 2>/dev/null" | xargs -I {} basename {} || true)
-        # 디렉토리도 검색
-        local prediction_dirs=$(ssh "$REMOTE_HOST" "ls -1 '$REMOTE_PREDICTION_DIR' 2>/dev/null" | grep "_" || true)
-    fi
-    
-    # 결과 출력
-    if [[ -n "$outputs_list" ]]; then
-        echo "$outputs_list" | while read -r dir; do
-            echo "outputs:$dir"
-        done
-    fi
-    
-    if [[ -n "$logs_list" ]]; then
-        echo "$logs_list" | while read -r dir; do
-            echo "logs:$dir"
-        done
-    fi
-    
-    # prediction 디렉토리 전체 동기화 (가장 중요)
-    echo "prediction:."
+    # 동기화 대상 디렉토리별로 검색
+    for dir_info in "${DIRS_TO_SYNC[@]}"; do
+        local dir_type="${dir_info%%:*}"
+        local dir_path="${dir_info#*:}"
+        local remote_full_path="${REMOTE_BASE}/${dir_path}"
+        
+        # 원격 디렉토리 존재 여부 확인
+        if ssh "$REMOTE_HOST" "[ -d '$remote_full_path' ]" 2>/dev/null; then
+            # 디렉토리 내에 하위 디렉토리가 있는지 확인
+            local subdirs=$(ssh "$REMOTE_HOST" "find '$remote_full_path' -maxdepth 1 -type d -name '*_*' 2>/dev/null" | xargs -I {} basename {} 2>/dev/null || true)
+            
+            if [[ -n "$subdirs" ]]; then
+                # 하위 디렉토리들 출력
+                echo "$subdirs" | while read -r subdir; do
+                    [[ -n "$subdir" ]] && echo "$dir_type:$subdir"
+                done
+            fi
+            
+            # 전체 디렉토리도 동기화 (루트 파일들 포함)
+            echo "$dir_type:."
+        else
+            log_warning "⚠️  원격 $dir_type 디렉토리가 존재하지 않습니다: $remote_full_path"
+        fi
+    done
 }
 
-# 개별 디렉토리 동기화 (개선된 버전)
 sync_single_directory() {
-    local dir_type="$1"  # outputs, logs, 또는 prediction
-    local dir_name="$2"
+    local dir_type="$1"  # 디렉토리 타입
+    local dir_name="$2"  # 디렉토리 이름 (. 이면 전체)
     
-    local remote_dir
-    local local_dir
-    
-    if [[ "$dir_type" == "outputs" ]]; then
-        remote_dir="${REMOTE_OUTPUTS_DIR}/${dir_name}"
-        local_dir="${LOCAL_OUTPUTS_DIR}/${dir_name}"
-    elif [[ "$dir_type" == "logs" ]]; then
-        remote_dir="${REMOTE_LOGS_DIR}/${dir_name}"
-        local_dir="${LOCAL_LOGS_DIR}/${dir_name}"
-    elif [[ "$dir_type" == "prediction" ]]; then
-        if [[ "$dir_name" == "." ]]; then
-            # prediction 디렉토리 전체 동기화
-            remote_dir="$REMOTE_PREDICTION_DIR"
-            local_dir="$LOCAL_PREDICTION_DIR"
-            log_info "동기화 중: 채점용 prediction 디렉토리 전체"
-        else
-            remote_dir="${REMOTE_PREDICTION_DIR}/${dir_name}"
-            local_dir="${LOCAL_PREDICTION_DIR}/${dir_name}"
-            log_info "동기화 중: $dir_type/$dir_name"
+    # 동기화 대상에서 해당 디렉토리 정보 찾기
+    local dir_path=""
+    for dir_info in "${DIRS_TO_SYNC[@]}"; do
+        if [[ "${dir_info%%:*}" == "$dir_type" ]]; then
+            dir_path="${dir_info#*:}"
+            break
         fi
-    else
-        log_error "잘못된 디렉토리 타입: $dir_type"
+    done
+    
+    if [[ -z "$dir_path" ]]; then
+        log_error "잘못된 디렉토리 타입 또는 비활성화된 디렉토리: $dir_type"
         return 1
     fi
     
-    if [[ "$dir_type" != "prediction" ]] || [[ "$dir_name" != "." ]]; then
+    # 로컬 및 원격 경로 설정
+    if [[ "$dir_name" == "." ]]; then
+        # 전체 디렉토리 동기화
+        local_dir="${LOCAL_BASE}/${dir_path}"
+        remote_dir="${REMOTE_BASE}/${dir_path}"
+        log_info "동기화 중: $dir_type 디렉토리 전체"
+    else
+        # 하위 디렉토리 동기화
+        local_dir="${LOCAL_BASE}/${dir_path}/${dir_name}"
+        remote_dir="${REMOTE_BASE}/${dir_path}/${dir_name}"
         log_info "동기화 중: $dir_type/$dir_name"
     fi
     
@@ -183,29 +201,41 @@ sync_single_directory() {
         return 0
     fi
     
+    # 원격 디렉토리 존재 여부 확인
+    if ! ssh "$REMOTE_HOST" "[ -d '$remote_dir' ]" 2>/dev/null; then
+        if [[ "$dir_name" == "." ]]; then
+            log_warning "⚠️  원격 $dir_type 디렉토리가 존재하지 않습니다: $remote_dir"
+        else
+            log_warning "⚠️  원격 디렉토리가 존재하지 않습니다: $dir_type/$dir_name"
+        fi
+        return 1
+    fi
+    
     # rsync로 동기화 (개선된 옵션 - 기존 파일 유지)
     if rsync -avz --progress --update --ignore-existing \
         "$REMOTE_HOST:$remote_dir/" \
         "$local_dir/" 2>/dev/null; then
-        if [[ "$dir_type" == "prediction" ]] && [[ "$dir_name" == "." ]]; then
-            log_success "✅ 채점용 prediction 디렉토리 동기화 완료"
+        if [[ "$dir_name" == "." ]]; then
+            log_success "✅ $dir_type 디렉토리 동기화 완료"
         else
             log_success "✅ $dir_type/$dir_name 동기화 완료"
         fi
         return 0
     else
-        if [[ "$dir_type" == "prediction" ]] && [[ "$dir_name" == "." ]]; then
-            log_error "❌ 채점용 prediction 디렉토리 동기화 실패"
+        # 더 상세한 에러 정보 수집
+        local rsync_error_code=$?
+        log_error "❌ rsync 에러 코드: $rsync_error_code"
+        
+        if [[ "$dir_name" == "." ]]; then
+            log_error "❌ $dir_type 디렉토리 동기화 실패"
         else
             log_error "❌ $dir_type/$dir_name 동기화 실패"
         fi
-        return 1
-    fi
-}
-
-# 동기화 결과 보고서 생성
-generate_sync_report() {
-    local report_file="${LOCAL_BASE}/sync_report_$(date +%Y%m%d_%H%M%S).txt"
+        fi
+        }
+        
+        # 동기화 결과 보고서 생성
+        generate_sync_report() {
     
     log_info "동기화 보고서 생성 중..."
     
