@@ -1,180 +1,222 @@
 #!/bin/bash
 
-#####################################################################
-# AIStages 실험 결과 완전 삭제 스크립트
-# 
-# 용도: 로컬 및 원격 서버에서 실험 결과를 모두 삭제
-# 작성자: LYJ
-# 날짜: 2025-08-01
-# 
+# =================================================================
+# AIStages 실험 결과 정리 스크립트 (완전 삭제)
+# =================================================================
 # 경고: 이 스크립트는 모든 실험 결과를 영구적으로 삭제합니다!
-#####################################################################
+# 
+# 주요 기능:
+# - 로컬 및 원격 서버의 실험 결과 완전 삭제
+# - 3단계 안전 확인 절차
+# - 상세한 삭제 전 분석 및 사용자 확인
+# - prediction과 data 디렉토리는 보호
+# 
+# 사용법:
+#   ./scripts/server_sync/cleanup_all_experiments.sh
+# 
+# 작성자: Claude MCP
+# 수정일: 2025-08-04
+# =================================================================
 
-set -e  # 에러 발생 시 스크립트 중단
+set -euo pipefail
 
 # =================================================================
-# 설정 파일 로드
+# 설정 및 초기화
 # =================================================================
 
-# 스크립트 디렉토리 경로
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_FILE="${SCRIPT_DIR}/config.conf"
+CONF_FILE="$SCRIPT_DIR/config.conf"
 
-# 색상 코드
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-MAGENTA='\033[0;35m'
-NC='\033[0m' # No Color
-
-# 로깅 함수들
-log_info() {
-    echo -e "${BLUE}[정보]${NC} $1" >&2
-}
-
-log_success() {
-    echo -e "${GREEN}[성공]${NC} $1" >&2
-}
-
-log_warning() {
-    echo -e "${YELLOW}[경고]${NC} $1" >&2
-}
-
-log_error() {
-    echo -e "${RED}[에러]${NC} $1" >&2
-}
-
-log_danger() {
-    echo -e "${MAGENTA}[위험]${NC} $1" >&2
-}
-
-# 설정 파일 존재 여부 확인
-if [[ ! -f "$CONFIG_FILE" ]]; then
-    log_error "설정 파일을 찾을 수 없습니다: $CONFIG_FILE"
+# 설정 파일 확인 및 로드
+if [[ ! -f "$CONF_FILE" ]]; then
+    echo "❌ 설정 파일을 찾을 수 없습니다: $CONF_FILE"
+    echo "힌트: config.conf.template을 복사하여 config.conf로 이름을 변경하세요"
     exit 1
 fi
 
-# 설정 파일 로드
-source "$CONFIG_FILE"
-
-# 필수 설정 검증
-if [[ -z "$LOCAL_BASE" ]] || [[ -z "$REMOTE_BASE" ]] || [[ -z "$REMOTE_HOST" ]]; then
-    log_error "필수 설정이 누락되었습니다. config.conf 파일을 확인하세요."
-    exit 1
-fi
-
-# =================================================================
-# 삭제 대상 경로 설정 (비어있으면 제외)
-# =================================================================
-
-# 삭제 대상 디렉토리들을 배열로 정의
-DIRS_TO_CLEAN=()
-
-# 경로가 비어있지 않은 디렉토리들만 삭제 대상에 추가
-[[ -n "${OUTPUTS_PATH}" ]] && DIRS_TO_CLEAN+=("outputs:${OUTPUTS_PATH}")
-[[ -n "${LOGS_PATH}" ]] && DIRS_TO_CLEAN+=("logs:${LOGS_PATH}")
-[[ -n "${CHECKPOINTS_PATH}" ]] && DIRS_TO_CLEAN+=("checkpoints:${CHECKPOINTS_PATH}")
-[[ -n "${MODELS_PATH}" ]] && DIRS_TO_CLEAN+=("models:${MODELS_PATH}")
-[[ -n "${WANDB_PATH}" ]] && DIRS_TO_CLEAN+=("wandb:${WANDB_PATH}")
-[[ -n "${VALIDATION_LOGS_PATH}" ]] && DIRS_TO_CLEAN+=("validation_logs:${VALIDATION_LOGS_PATH}")
-[[ -n "${ANALYSIS_RESULTS_PATH}" ]] && DIRS_TO_CLEAN+=("analysis_results:${ANALYSIS_RESULTS_PATH}")
-[[ -n "${FINAL_SUBMISSION_PATH}" ]] && DIRS_TO_CLEAN+=("final_submission:${FINAL_SUBMISSION_PATH}")
-# DATA_PATH와 PREDICTION_PATH는 안전상 삭제 대상에서 제외 (중요한 데이터)
-
-# 삭제 대상 디렉토리 로그 출력
-log_info "삭제 대상 디렉토리: ${#DIRS_TO_CLEAN[@]}개"
-for dir_info in "${DIRS_TO_CLEAN[@]}"; do
-    dir_type="${dir_info%%:*}"
-    dir_path="${dir_info#*:}"
-    log_info "  - $dir_type: $dir_path"
-done
+# shellcheck source=scripts/server_sync/config.conf
+source "$CONF_FILE"
 
 # =================================================================
 # 유틸리티 함수들
 # =================================================================
 
-# 크기 계산 함수
-calculate_directory_size() {
-    local dir_path="$1"
-    local is_remote="$2"
+log_info() {
+    echo "ℹ️  $1"
+}
+
+log_success() {
+    echo "✅ $1"
+}
+
+log_warning() {
+    echo "⚠️  $1"
+}
+
+log_error() {
+    echo "❌ $1"
+}
+
+log_separator() {
+    echo "================================================================="
+}
+
+# 사용자 확인 함수
+confirm_action() {
+    local message="$1"
+    local response
     
-    if [[ "$is_remote" == "true" ]]; then
-        # 원격 디렉토리 크기
-        ssh "$REMOTE_HOST" "du -sh \"$dir_path\" 2>/dev/null | cut -f1" 2>/dev/null || echo "0B"
+    echo ""
+    log_warning "$message"
+    echo ""
+    read -rp "계속하시겠습니까? (yes/no): " response
+    
+    case "$response" in
+        yes|YES|Y|y)
+            return 0
+            ;;
+        *)
+            log_info "작업이 취소되었습니다."
+            exit 0
+            ;;
+    esac
+}
+
+# =================================================================
+# 분석 함수들
+# =================================================================
+
+# 디렉토리 크기 확인 (원격)
+get_remote_dir_size() {
+    local dir_path="$1"
+    if ssh "$REMOTE_HOST" "[ -d '$dir_path' ]" 2>/dev/null; then
+        ssh "$REMOTE_HOST" "du -sh '$dir_path' 2>/dev/null | cut -f1" 2>/dev/null || echo "0B"
     else
-        # 로컬 디렉토리 크기
-        if [[ -d "$dir_path" ]]; then
-            du -sh "$dir_path" 2>/dev/null | cut -f1 || echo "0B"
-        else
-            echo "0B"
-        fi
+        echo "없음"
     fi
 }
 
-# 파일 개수 계산 함수
-count_files() {
+# 디렉토리 크기 확인 (로컬)
+get_local_dir_size() {
     local dir_path="$1"
-    local is_remote="$2"
-    
-    if [[ "$is_remote" == "true" ]]; then
-        # 원격 파일 개수
-        ssh "$REMOTE_HOST" "find \"$dir_path\" -type f 2>/dev/null | wc -l" 2>/dev/null || echo "0"
+    if [[ -d "$dir_path" ]]; then
+        du -sh "$dir_path" 2>/dev/null | cut -f1 || echo "0B"
     else
-        # 로컬 파일 개수
-        if [[ -d "$dir_path" ]]; then
-            find "$dir_path" -type f 2>/dev/null | wc -l || echo "0"
-        else
-            echo "0"
-        fi
+        echo "없음"
+    fi
+}
+
+# 파일 개수 확인 (원격)
+get_remote_file_count() {
+    local dir_path="$1"
+    if ssh "$REMOTE_HOST" "[ -d '$dir_path' ]" 2>/dev/null; then
+        ssh "$REMOTE_HOST" "find '$dir_path' -type f 2>/dev/null | wc -l" 2>/dev/null || echo "0"
+    else
+        echo "0"
+    fi
+}
+
+# 파일 개수 확인 (로컬)
+get_local_file_count() {
+    local dir_path="$1"
+    if [[ -d "$dir_path" ]]; then
+        find "$dir_path" -type f 2>/dev/null | wc -l || echo "0"
+    else
+        echo "0"
     fi
 }
 
 # =================================================================
-# 삭제 함수들
+# 분석 및 확인 함수
+# =================================================================
+
+analyze_cleanup_impact() {
+    log_separator
+    log_info "삭제될 실험 결과 분석 중..."
+    log_separator
+    
+    # 삭제 대상 디렉토리 정의
+    local dirs_to_clean=(
+        "실험출력:outputs"
+        "학습로그:logs" 
+        "모델체크포인트:checkpoints"
+        "저장모델:models"
+        "검증로그:validation_logs"
+        "분석결과:analysis_results"
+        "최종제출:final_submission"
+        "WandB로그:wandb"
+    )
+    
+    local total_files_local=0
+    local total_files_remote=0
+    
+    printf "%-15s %-12s %-8s %-12s %-8s\n" "디렉토리" "로컬크기" "파일수" "원격크기" "파일수"
+    printf "%-15s %-12s %-8s %-12s %-8s\n" "---------------" "------------" "--------" "------------" "--------"
+    
+    for dir_info in "${dirs_to_clean[@]}"; do
+        local dir_type="${dir_info%%:*}"
+        local dir_path="${dir_info#*:}"
+        local local_full_path="${LOCAL_BASE}/${dir_path}"
+        local remote_full_path="${REMOTE_BASE}/${dir_path}"
+        
+        local local_size
+        local remote_size
+        local local_files
+        local remote_files
+        
+        local_size=$(get_local_dir_size "$local_full_path")
+        remote_size=$(get_remote_dir_size "$remote_full_path")
+        local_files=$(get_local_file_count "$local_full_path")
+        remote_files=$(get_remote_file_count "$remote_full_path")
+        
+        printf "%-15s %-12s %-8s %-12s %-8s\n" "$dir_type" "$local_size" "$local_files" "$remote_size" "$remote_files"
+        
+        # 숫자로 변환 가능한 경우만 합계에 추가
+        if [[ "$local_files" =~ ^[0-9]+$ ]]; then
+            total_files_local=$((total_files_local + local_files))
+        fi
+        if [[ "$remote_files" =~ ^[0-9]+$ ]]; then
+            total_files_remote=$((total_files_remote + remote_files))
+        fi
+    done
+    
+    log_separator
+    printf "%-15s %-12s %-8s %-12s %-8s\n" "총합계" "---" "$total_files_local" "---" "$total_files_remote"
+    log_separator
+    
+    # 추가 정리 파일들 확인
+    log_info "추가 정리 파일들:"
+    echo "  - benchmark_*.log, mt5_training*.log"
+    echo "  - sync_report_*.txt"
+    echo "  - .synced_experiments 파일들"
+    echo "  - Python 캐시 파일들 (__pycache__, *.pyc)"
+    
+    log_separator
+    log_warning "보호되는 디렉토리 (삭제되지 않음):"
+    echo "  - prediction/ (채점용 결과 파일)"
+    echo "  - data/ (데이터셋)"
+    log_separator
+}
+
+# =================================================================
+# 실제 삭제 함수들
 # =================================================================
 
 # 로컬 실험 결과 삭제
 cleanup_local_results() {
-    log_info "로컬 실험 결과 분석 중..."
-    
-    local total_files=0
-    
-    echo
-    log_info "=== 로컬 삭제 대상 분석 ==="
-    
-    # 각 디렉토리별 정보 수집 및 출력
-    for dir_info in "${DIRS_TO_CLEAN[@]}"; do
-        local dir_type="${dir_info%%:*}"
-        local dir_path="${dir_info#*:}"
-        local full_path="${LOCAL_BASE}/${dir_path}"
-        
-        local size
-        size=$(calculate_directory_size "$full_path" false)
-        local files
-        files=$(count_files "$full_path" false)
-        
-        echo "📁 $dir_type: $size ($files 파일)"
-        total_files=$((total_files + files))
-    done
-    
-    if [[ $total_files -eq 0 ]]; then
-        log_info "로컬에 삭제할 실험 결과가 없습니다."
-        return 0
-    fi
-    
-    echo
-    log_danger "⚠️  총 $total_files 개의 파일이 영구적으로 삭제됩니다!"
-    echo
-    read -p "정말로 로컬 실험 결과를 모두 삭제하시겠습니까? (DELETE 입력 필요): " -r
-    echo
-    
-    if [[ "$REPLY" != "DELETE" ]]; then
-        log_info "로컬 삭제가 취소되었습니다."
-        return 0
-    fi
-    
     log_info "로컬 실험 결과 삭제 시작..."
+    
+    # 삭제 대상 디렉토리
+    local DIRS_TO_CLEAN=(
+        "실험출력:outputs"
+        "학습로그:logs"
+        "모델체크포인트:checkpoints"
+        "저장모델:models"
+        "검증로그:validation_logs"
+        "분석결과:analysis_results"
+        "최종제출:final_submission"
+        "WandB로그:wandb"
+    )
     
     # 각 디렉토리 삭제
     for dir_info in "${DIRS_TO_CLEAN[@]}"; do
@@ -191,20 +233,56 @@ cleanup_local_results() {
         fi
     done
     
-    # 추가 정리 파일들
-    local additional_files=(
-        "$LOCAL_BASE/benchmark_*.log"
-        "$LOCAL_BASE/mt5_training*.log"
-        "$LOCAL_BASE/sync_report_*.txt"
-        "$LOCAL_BASE/.synced_experiments"
-    )
+    # 추가 정리 파일들 (config.conf 기반)
+    log_info "추가 정리 파일 처리 중..."
     
-    for pattern in "${additional_files[@]}"; do
-        if ls "$pattern" 1> /dev/null 2>&1; then
-            log_info "추가 파일 삭제: $(basename "$pattern")"
-            rm -f "$pattern"
+    # 벤치마크 로그 파일들
+    if [[ -n "$BENCHMARK_LOGS_PATTERN" ]]; then
+        if ls "$LOCAL_BASE/$BENCHMARK_LOGS_PATTERN" 1> /dev/null 2>&1; then
+            log_info "벤치마크 로그 파일 삭제: $BENCHMARK_LOGS_PATTERN"
+            rm -f "$LOCAL_BASE/$BENCHMARK_LOGS_PATTERN"
         fi
-    done
+    fi
+    
+    # 학습 로그 파일들
+    if [[ -n "$TRAINING_LOGS_PATTERN" ]]; then
+        if ls "$LOCAL_BASE/$TRAINING_LOGS_PATTERN" 1> /dev/null 2>&1; then
+            log_info "학습 로그 파일 삭제: $TRAINING_LOGS_PATTERN"
+            rm -f "$LOCAL_BASE/$TRAINING_LOGS_PATTERN"
+        fi
+    fi
+    
+    # 동기화 보고서 파일들
+    if [[ -n "$SYNC_REPORT_PATTERN" ]]; then
+        if ls "$LOCAL_BASE/$SYNC_REPORT_PATTERN" 1> /dev/null 2>&1; then
+            log_info "동기화 보고서 파일 삭제: $SYNC_REPORT_PATTERN"
+            rm -f "$LOCAL_BASE/$SYNC_REPORT_PATTERN"
+        fi
+    fi
+    
+    # 동기화 상태 추적 파일듡
+    if [[ -n "$SYNCED_EXPERIMENTS_FILE" ]]; then
+        local synced_files=(
+            "$LOCAL_BASE/$SYNCED_EXPERIMENTS_FILE"
+            "$LOCAL_BASE/outputs/$SYNCED_EXPERIMENTS_FILE"
+            "$LOCAL_BASE/logs/$SYNCED_EXPERIMENTS_FILE"
+        )
+        
+        for file in "${synced_files[@]}"; do
+            if [[ -f "$file" ]]; then
+                log_info "동기화 상태 파일 삭제: $(basename "$file")"
+                rm -f "$file"
+            fi
+        done
+    fi
+    
+    # Python 캐시 정리
+    if [[ "$CLEAN_PYTHON_CACHE" == "true" ]]; then
+        log_info "Python 캐시 파일 정리 중..."
+        find "$LOCAL_BASE" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+        find "$LOCAL_BASE" -name "*.pyc" -delete 2>/dev/null || true
+        log_success "✅ Python 캐시 정리 완룼"
+    fi
     
     log_success "🎉 로컬 실험 결과 삭제 완료!"
 }
@@ -213,50 +291,26 @@ cleanup_local_results() {
 cleanup_remote_results() {
     log_info "원격 서버 연결 테스트 중..."
     
-    if ! ssh "$REMOTE_HOST" "echo '연결 성공'" >/dev/null 2>&1; then
-        log_error "원격 서버에 연결할 수 없습니다: $REMOTE_HOST"
+    if ! ssh "$REMOTE_HOST" "echo '연결 확인'" >/dev/null 2>&1; then
+        log_error "원격 서버($REMOTE_HOST)에 연결할 수 없습니다."
+        log_info "SSH 키 설정을 확인하거나 수동으로 원격 서버를 정리해주세요."
         return 1
     fi
     
-    log_info "원격 실험 결과 분석 중..."
-    
-    local total_files=0
-    
-    echo
-    log_info "=== 원격 서버 삭제 대상 분석 ==="
-    
-    # 각 디렉토리별 정보 수집 및 출력
-    for dir_info in "${DIRS_TO_CLEAN[@]}"; do
-        local dir_type="${dir_info%%:*}"
-        local dir_path="${dir_info#*:}"
-        local full_path="${REMOTE_BASE}/${dir_path}"
-        
-        local size
-        size=$(calculate_directory_size "$full_path" true)
-        local files
-        files=$(count_files "$full_path" true)
-        
-        echo "📁 $dir_type: $size ($files 파일)"
-        total_files=$((total_files + files))
-    done
-    
-    if [[ $total_files -eq 0 ]]; then
-        log_info "원격 서버에 삭제할 실험 결과가 없습니다."
-        return 0
-    fi
-    
-    echo
-    log_danger "⚠️  원격 서버에서 총 $total_files 개의 파일이 영구적으로 삭제됩니다!"
-    echo
-    read -p "정말로 원격 서버의 실험 결과를 모두 삭제하시겠습니까? (DELETE 입력 필요): " -r
-    echo
-    
-    if [[ "$REPLY" != "DELETE" ]]; then
-        log_info "원격 서버 삭제가 취소되었습니다."
-        return 0
-    fi
-    
+    log_success "원격 서버 연결 성공"
     log_info "원격 서버 실험 결과 삭제 시작..."
+    
+    # 삭제 대상 디렉토리
+    local DIRS_TO_CLEAN=(
+        "실험출력:outputs"
+        "학습로그:logs"
+        "모델체크포인트:checkpoints"
+        "저장모델:models"
+        "검증로그:validation_logs"
+        "분석결과:analysis_results"
+        "최종제출:final_submission"
+        "WandB로그:wandb"
+    )
     
     # 각 디렉토리 삭제
     for dir_info in "${DIRS_TO_CLEAN[@]}"; do
@@ -265,12 +319,46 @@ cleanup_remote_results() {
         local full_path="${REMOTE_BASE}/${dir_path}"
         
         log_info "$dir_type 디렉토리 삭제 중..."
-        ssh "$REMOTE_HOST" "if [ -d \"$full_path\" ]; then rm -rf \"$full_path\"/* 2>/dev/null || true; echo '$dir_type 삭제 완료'; else echo '$dir_type 디렉토리가 존재하지 않습니다'; fi"
+        ssh "$REMOTE_HOST" "if [ -d '$full_path' ]; then rm -rf '$full_path'/* 2>/dev/null || true; echo '$dir_type 삭제 완료'; else echo '$dir_type 디렉토리가 존재하지 않습니다'; fi"
     done
     
-    # 추가 정리 파일들
-    log_info "추가 파일들 삭제 중..."
-    ssh "$REMOTE_HOST" "cd \"$REMOTE_BASE\" && rm -f benchmark_*.log mt5_training*.log *.tmp .synced_experiments 2>/dev/null || true"
+    # 추가 정리 파일들 (config.conf 기반)
+    log_info "원격 추가 파일 처리 중..."
+    
+    # 벤치마크 로그 파일들
+    if [[ -n "$BENCHMARK_LOGS_PATTERN" ]]; then
+        ssh "$REMOTE_HOST" "cd '$REMOTE_BASE' && rm -f $BENCHMARK_LOGS_PATTERN 2>/dev/null || true"
+        log_info "원격 벤치마크 로그 파일 삭제: $BENCHMARK_LOGS_PATTERN"
+    fi
+    
+    # 학습 로그 파일들
+    if [[ -n "$TRAINING_LOGS_PATTERN" ]]; then
+        ssh "$REMOTE_HOST" "cd '$REMOTE_BASE' && rm -f $TRAINING_LOGS_PATTERN 2>/dev/null || true"
+        log_info "원격 학습 로그 파일 삭제: $TRAINING_LOGS_PATTERN"
+    fi
+    
+    # 동기화 보고서 파일듡
+    if [[ -n "$SYNC_REPORT_PATTERN" ]]; then
+        ssh "$REMOTE_HOST" "cd '$REMOTE_BASE' && rm -f $SYNC_REPORT_PATTERN 2>/dev/null || true"
+        log_info "원격 동기화 보고서 파일 삭제: $SYNC_REPORT_PATTERN"
+    fi
+    
+    # 동기화 상태 추적 파일듡
+    if [[ -n "$SYNCED_EXPERIMENTS_FILE" ]]; then
+        ssh "$REMOTE_HOST" "cd '$REMOTE_BASE' && rm -f $SYNCED_EXPERIMENTS_FILE outputs/$SYNCED_EXPERIMENTS_FILE logs/$SYNCED_EXPERIMENTS_FILE 2>/dev/null || true"
+        log_info "원격 동기화 상태 파일 삭제: $SYNCED_EXPERIMENTS_FILE"
+    fi
+    
+    # 임시 파일듡 (기본 정리)
+    ssh "$REMOTE_HOST" "cd '$REMOTE_BASE' && rm -f *.tmp 2>/dev/null || true"
+    
+    # 원격 Python 캐시 정리  
+    if [[ "$CLEAN_PYTHON_CACHE" == "true" ]]; then
+        log_info "원격 Python 캐시 파일 정리 중..."
+        ssh "$REMOTE_HOST" "find '$REMOTE_BASE' -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true"
+        ssh "$REMOTE_HOST" "find '$REMOTE_BASE' -name '*.pyc' -delete 2>/dev/null || true"
+        log_success "✅ 원격 Python 캐시 정리 완룼"
+    fi
     
     log_success "🎉 원격 서버 실험 결과 삭제 완료!"
 }
@@ -280,102 +368,54 @@ cleanup_remote_results() {
 # =================================================================
 
 main() {
-    echo "======================================================"
-    echo "🗑️  AIStages 실험 결과 완전 삭제 도구"
-    echo "======================================================"
-    echo
-    log_danger "⚠️  경고: 이 도구는 모든 실험 결과를 영구적으로 삭제합니다!"
-    log_danger "⚠️  삭제된 데이터는 복구할 수 없습니다!"
-    echo
+    echo ""
+    log_separator
+    log_info "AIStages 실험 결과 완전 삭제 스크립트"
+    log_separator
+    echo ""
     
-    # 사용자 최종 확인
-    echo -e "${YELLOW}삭제 대상:${NC}"
-    echo "- 로컬: $LOCAL_BASE"
-    echo "- 원격: $REMOTE_HOST:$REMOTE_BASE"
-    echo "- 디렉토리: ${#DIRS_TO_CLEAN[@]}개 설정된 폴더 (prediction, data 제외)"
-    echo
+    log_warning "⚠️  중요: 이 스크립트는 모든 실험 결과를 영구적으로 삭제합니다!"
+    log_warning "⚠️  prediction/ 및 data/ 디렉토리는 보호됩니다."
+    echo ""
     
-    read -p "정말로 계속하시겠습니까? (yes 입력 필요): " -r
-    echo
+    # 1단계: 현재 상태 분석
+    analyze_cleanup_impact
     
-    if [[ "$REPLY" != "yes" ]]; then
-        log_info "작업이 취소되었습니다."
-        exit 0
-    fi
+    # 2단계: 첫 번째 확인
+    confirm_action "위의 모든 실험 결과가 영구적으로 삭제됩니다."
     
-    # 로컬 정리
-    if [[ "${CLEAN_LOCAL:-true}" == "true" ]]; then
-        cleanup_local_results
-        echo
-    fi
+    # 3단계: 두 번째 확인 (더 강한 경고)
+    echo ""
+    log_warning "🔥 마지막 경고: 삭제된 파일은 복구할 수 없습니다!"
+    log_warning "🔥 정말로 모든 실험 결과를 삭제하시겠습니까?"
+    confirm_action "최종 확인: 모든 실험 결과를 영구적으로 삭제합니다."
     
-    # 원격 정리  
-    if [[ "${CLEAN_REMOTE:-true}" == "true" ]]; then
-        cleanup_remote_results
-        echo
-    fi
+    # 4단계: 실제 삭제 실행
+    echo ""
+    log_separator
+    log_info "삭제 작업 시작..."
+    log_separator
+    
+    # 로컬 삭제
+    cleanup_local_results
+    echo ""
+    
+    # 원격 삭제
+    cleanup_remote_results
+    echo ""
     
     # 완료 메시지
-    echo "======================================================"
+    log_separator
     log_success "🎉 모든 실험 결과 삭제 완료!"
-    log_info "새로운 실험을 시작할 준비가 되었습니다."
-    echo "======================================================"
+    log_separator
+    echo ""
+    log_info "새로운 실험을 시작할 수 있습니다."
+    echo "  실험 시작: ./run_main_5_experiments.sh"
+    echo "  개별 실험: python -m code.main --config config.yaml"
+    echo ""
 }
-
-# =================================================================
-# 사용법 및 실행
-# =================================================================
-
-show_usage() {
-    echo "사용법: $0 [옵션]"
-    echo
-    echo "옵션:"
-    echo "  -h, --help          이 도움말 출력"
-    echo "  -l, --local-only    로컬만 삭제"
-    echo "  -r, --remote-only   원격 서버만 삭제"
-    echo "  -s, --server HOST   서버 주소 지정"
-    echo
-    echo "예시:"
-    echo "  $0                  # 로컬 + 원격 모두 삭제"
-    echo "  $0 --local-only     # 로컬만 삭제"
-    echo "  $0 --remote-only    # 원격 서버만 삭제"
-    echo
-    echo "⚠️  경고: 이 도구는 모든 실험 결과를 영구적으로 삭제합니다!"
-    echo
-}
-
-# 명령행 인자 처리
-CLEAN_LOCAL=true
-CLEAN_REMOTE=true
-
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        -h|--help)
-            show_usage
-            exit 0
-            ;;
-        -l|--local-only)
-            CLEAN_LOCAL=true
-            CLEAN_REMOTE=false
-            shift
-            ;;
-        -r|--remote-only)
-            CLEAN_LOCAL=false
-            CLEAN_REMOTE=true
-            shift
-            ;;
-        -s|--server)
-            REMOTE_HOST="$2"
-            log_info "서버 주소를 $2로 변경했습니다"
-            shift 2
-            ;;
-        *)
-            log_error "알 수 없는 옵션: $1"
-            show_usage
-            exit 1
-            ;;
-    esac
-done
 
 # 스크립트 실행
-main
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

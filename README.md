@@ -121,14 +121,24 @@ nlp-sum-lyj/
 ### 2. 데이터 증강
 - 동의어 치환
 - 문장 순서 변경
+
+### 3. 실험 정리 시스템
+- **자동 정리**: 로컬 및 원격 서버의 실험 결과 정리
+- **설정 기반**: config.conf를 통한 유연한 정리 옵션
+- **안전 보호**: prediction, data 디렉토리 보호
+- **Python 캐시 정리**: __pycache__ 및 *.pyc 파일 정리
+
+### 4. 데이터 증강 기법
+- 동의어 치환
+- 문장 순서 변경
 - 백트랜슬레이션 (한→영→한)
 
-### 3. 특수 토큰 가중치
+### 5. 특수 토큰 가중치
 - PII 토큰 2.5배 가중치
 - 화자 토큰 2.0배 가중치
 - 동적 가중치 조정
 
-### 4. 후처리 파이프라인
+### 6. 후처리 파이프라인
 - 중복 제거
 - 길이 최적화
 - 특수 토큰 검증
@@ -178,6 +188,31 @@ python code/auto_experiment_runner.py \
 ./run_solar_ensemble.sh
 ```
 
+### 실험 결과 정리
+
+실험 종료 후 디스크 공간 확보를 위해 정리 스크립트를 사용할 수 있습니다:
+
+```bash
+# 안전한 정리 (상세 분석 + 3단계 확인)
+./scripts/server_sync/cleanup_all_experiments.sh
+
+# 빠른 정리 (즐시 실행)
+./scripts/server_sync/quick_cleanup.sh
+```
+
+**정리 대상:**
+- `outputs/`, `logs/`, `checkpoints/`, `models/` 디렉토리
+- 벤치마크 로그 (`benchmark_*.log`)
+- 학습 로그 (`mt5_training*.log`) 
+- 동기화 파일 (`sync_report_*.txt`, `.synced_experiments`)
+- Python 캐시 (`__pycache__/`, `*.pyc`)
+
+**보호되는 디렉토리:**
+- `prediction/` (채점용 결과 파일)
+- `data/` (데이터셋)
+
+> ⚠️ **주의**: 정리 옵션은 `scripts/server_sync/config.conf`에서 설정할 수 있습니다. 각 파일 패턴을 비워두면("") 해당 파일들은 정리되지 않습니다.
+
 ### 개별 실험 실행
 
 ```bash
@@ -213,8 +248,50 @@ wandb login
 
 # 프로젝트 설정
 export WANDB_PROJECT="nlp-summarization"
-export WANDB_ENTITY="your-team"
 ```
+
+## ⚙️ 설정 관리
+
+### 정리 스크립트 설정 (config.conf)
+
+정리 스크립트의 동작은 `scripts/server_sync/config.conf` 파일을 통해 제어할 수 있습니다:
+
+```bash
+# config.conf.template을 복사하여 설정 파일 생성
+cp scripts/server_sync/config.conf.template scripts/server_sync/config.conf
+```
+
+**주요 정리 설정 옵션:**
+
+```bash
+# 벤치마크 로그 파일들 (설정하면 정리됨)
+BENCHMARK_LOGS_PATTERN="benchmark_*.log"        # 벤치마크 실행 로그 파일들
+
+# 학습 로그 파일들  
+TRAINING_LOGS_PATTERN="mt5_training*.log"       # MT5 학습 로그 파일들
+
+# 동기화 관련 파일들
+SYNC_REPORT_PATTERN="sync_report_*.txt"         # 동기화 보고서 파일들
+SYNCED_EXPERIMENTS_FILE=".synced_experiments"   # 동기화 상태 추적 파일
+
+# Python 캐시 정리 여부
+CLEAN_PYTHON_CACHE="true"                       # Python __pycache__ 및 *.pyc 파일 정리 여부
+```
+
+**설정 값 규칙:**
+- **빈 값 ("")**: 해당 파일들을 정리하지 않음
+- **패턴 설정**: 해당 패턴의 파일들을 자동으로 정리 대상에 포함
+- **"true"/"false"**: Python 캐시 정리 여부 결정
+
+**예시 설정:**
+```bash
+# 벤치마크 로그만 정리하고 나머지는 보존
+BENCHMARK_LOGS_PATTERN="benchmark_*.log"  # 정리함
+TRAINING_LOGS_PATTERN=""                  # 정리하지 않음
+CLEAN_PYTHON_CACHE="true"                 # Python 캐시는 정리
+```
+
+## 📚 참고 자료
 
 ## 📝 계획된 개선사항 상세
 
