@@ -56,11 +56,42 @@ class SafeSeq2SeqTrainer(Seq2SeqTrainer):
         """체크포인트 저장 전 JSON 직렬화 문제 해결"""
         print(f"🔧 SafeSeq2SeqTrainer._save 호출됨: {output_dir}")
         
-        # 저장 직전 tokenizer 완전 정리
-        self._clean_tokenizer_for_serialization()
+        # 최종 해결책: JSON 직렬화 전체를 보호
+        import json
+        import numpy as np
         
-        # 부모 클래스의 _save 메서드 호출
-        super()._save(output_dir, state_dict)
+        # 원본 json.dumps를 백업
+        original_json_dumps = json.dumps
+        
+        def safe_json_dumps(obj, **kwargs):
+            """모든 numpy.dtype를 처리하는 안전한 JSON 직렬화"""
+            def clean_for_json(o):
+                if isinstance(o, np.dtype):
+                    return str(o)
+                elif isinstance(o, dict):
+                    return {k: clean_for_json(v) for k, v in o.items()}
+                elif isinstance(o, (list, tuple)):
+                    return type(o)(clean_for_json(item) for item in o)
+                else:
+                    return o
+            
+            cleaned_obj = clean_for_json(obj)
+            return original_json_dumps(cleaned_obj, **kwargs)
+        
+        # json.dumps를 임시 교체
+        json.dumps = safe_json_dumps
+        
+        try:
+            # 저장 직전 tokenizer 완전 정리
+            self._clean_tokenizer_for_serialization()
+            
+            # 부모 클래스의 _save 메서드 호출
+            super()._save(output_dir, state_dict)
+            
+        finally:
+            # json.dumps 원복
+            json.dumps = original_json_dumps
+            print(f"✅ JSON 직렬화 보호 완료")
     
     def _clean_tokenizer_for_serialization(self):
         """토크나이저의 JSON 직렬화 문제를 해결하는 강력한 정리 함수 (mT5 모델 대응)"""
