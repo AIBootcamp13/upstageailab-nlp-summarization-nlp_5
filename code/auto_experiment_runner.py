@@ -24,14 +24,11 @@ try:
     from dotenv import load_dotenv
     load_dotenv()  # .env 파일에서 환경변수 로드
 except ImportError:
-    print("⚠️ python-dotenv가 설치되지 않음: pip install python-dotenv")
-# DeepSpeed 비활성화 (초기 단계에서 설정)
-os.environ["DEEPSPEED_DISABLE"] = "true"
-os.environ["USE_DEEPSPEED"] = "false"
-
-# DeepSpeed import 완전 차단
-import sys
-class FakeDeepSpeed:
+    # DeepSpeed 비활성화 (초기 단계에서 설정)
+    os.environ["DEEPSPEED_DISABLE"] = "true"
+    os.environ["USE_DEEPSPEED"] = "false"
+    os.environ["ACCELERATE_DEEPSPEED_DISABLED"] = "true"
+    os.environ["HF_DEEPSPEED_DISABLED"] = "true"
     def __getattr__(self, name):
         raise ImportError("DeepSpeed is intentionally disabled")
 

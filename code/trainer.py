@@ -24,17 +24,12 @@ except ImportError:
     print("⚠️ python-dotenv가 설치되지 않음: pip install python-dotenv")
 
 warnings.filterwarnings("ignore")
+
 # DeepSpeed 비활성화 (초기 단계에서 설정)
 os.environ["DEEPSPEED_DISABLE"] = "true"
 os.environ["USE_DEEPSPEED"] = "false"
-
-# DeepSpeed import 완전 차단
-import sys
-class FakeDeepSpeed:
-    def __getattr__(self, name):
-        raise ImportError("DeepSpeed is intentionally disabled")
-
-sys.modules['deepspeed'] = FakeDeepSpeed()
+os.environ["ACCELERATE_DEEPSPEED_DISABLED"] = "true"
+os.environ["HF_DEEPSPEED_DISABLED"] = "true"
 os.environ["USE_DEEPSPEED"] = "false"
 
 import torch
