@@ -1,4 +1,4 @@
-#!/opt/conda/bin/python3
+#!/opt/conda/envs/python311/bin/python3.11
 """
 실험 전 검증 스크립트
 

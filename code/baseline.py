@@ -1,4 +1,4 @@
-#!/opt/conda/bin/python3
+#!/opt/conda/envs/python311/bin/python3.11
 # coding: utf-8
 
 # # **💁🏻🗨️💁🏻‍♂️대화 요약 Baseline code**

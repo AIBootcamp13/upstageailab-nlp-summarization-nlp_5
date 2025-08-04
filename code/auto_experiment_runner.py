@@ -1,4 +1,4 @@
-#!/opt/conda/bin/python3
+#!/opt/conda/envs/python311/bin/python3.11
 """
 자동 실험 실행 시스템 (상대 경로 기준, MPS/CUDA 최적화)
 

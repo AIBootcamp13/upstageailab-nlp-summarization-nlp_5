@@ -1,4 +1,4 @@
-#!/opt/conda/bin/python3
+#!/opt/conda/envs/python311/bin/python3.11
 """
 추론 CLI 도구
 
