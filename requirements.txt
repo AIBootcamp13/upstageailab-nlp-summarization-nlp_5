@@ -10,7 +10,7 @@ datasets==3.6.0  # CRITICAL: Required for trainer.py - HuggingFace datasets
 evaluate==0.4.0
 pytorch_lightning==2.5.2
 unsloth==2025.7.8  # QLoRA support - WORKING VERSION
-peft==0.13.2  # CRITICAL: Required for QLoRA - Parameter Efficient Fine-Tuning
+peft==0.17.0  # CRITICAL: Required for QLoRA - Parameter Efficient Fine-Tuning
 
 # Data Processing
 pandas==2.3.1  # Updated working version
