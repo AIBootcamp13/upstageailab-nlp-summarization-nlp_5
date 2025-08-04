@@ -48,11 +48,11 @@ training:
   do_train: true
   evaluation_strategy: steps
   eval_steps: 100                     # 더 자주 평가
+  # 🔥 Unsloth 활성화로 메모리 효율성 극대화된 배치 설정
+  per_device_train_batch_size: 16      # Unsloth로 12→16 안전하게 증가
+  per_device_eval_batch_size: 24       # Unsloth로 16→24 안전하게 증가
+  gradient_accumulation_steps: 2       # 유효 배치 32 달성
   
-  # 🔥 1단계 극한 최적화 배치 설정
-  per_device_train_batch_size: 8      # 12→8 메모리 안전성 강화
-  per_device_eval_batch_size: 12      # 16→12 평가 배치 추가 축소
-  gradient_accumulation_steps: 3      # 유효 배치 24 유지
   
   # ⚡ 1단계 학습 파라미터
   num_train_epochs: 6                 # 최적화로 더 긴 학습
@@ -66,10 +66,11 @@ training:
   bf16: true                          # RTX 3090 + CUDA 12.2 최적
   tf32: true                          # Ampere 아키텍처 최적화
   gradient_checkpointing: true        # 메모리 절약을 위해 활성화
-  dataloader_num_workers: 8           # 16→8 메모리 절약
+  dataloader_num_workers: 24           # Unsloth로 8→24 I/O 성능 향상
   dataloader_pin_memory: true         # 251GB RAM 활용
   dataloader_persistent_workers: true # 워커 재사용
   group_by_length: true
+  remove_unused_columns: false        # 전체 정보 활용
   remove_unused_columns: false        # 전체 정보 활용
   
   # 🔥 Unsloth 특화 옵티마이저 설정
@@ -101,7 +102,7 @@ training:
 
 # 🔥 RTX 3090 + Unsloth 극한 최적화 1단계 QLoRA
 qlora:
-  use_unsloth: false
+  use_unsloth: true   # ✅ CRITICAL: Unsloth 활성화로 30-70% 메모리 절약
   use_qlora: true
   lora_rank: 64                       # 128→64 메모리 안전성 강화
   lora_alpha: 128                     # 256→128 메모리 안전성 강화
@@ -111,13 +112,14 @@ qlora:
   bnb_4bit_compute_dtype: "bfloat16"   # RTX 3090 + CUDA 12.2 최적
   bnb_4bit_quant_type: "nf4"
   bnb_4bit_use_double_quant: true
-
-wandb:
+  bnb_4bit_use_double_quant: true
+  
+  wandb:
   entity: lyjune37-juneictlab
   project: nlp-5
-  name: mt5_xlsum_extreme_stage1_rtx3090_fixed
-  tags: [mT5, XL-Sum, RTX3090, extreme_stage1, Unsloth, batch8, seq1024, fixed]
-  notes: "mT5 XL-Sum RTX 3090 + Unsloth 극한 최적화 1단계 - 배치 8, 시퀀스 1024, LoRA 64 (안정성 강화)"
+  name: mt5_xlsum_unsloth_optimized_rtx3090
+  tags: [mT5, XL-Sum, RTX3090, Unsloth, QLoRA, batch16, seq1024, optimized]
+  notes: "mT5 XL-Sum RTX 3090 + Unsloth 최적화 - 배치 16/24, 시퀀스 1024, Unsloth QLoRA"
 
 # 🏆 mT5 원본 모델 최적화 생성 설정
 generation:
