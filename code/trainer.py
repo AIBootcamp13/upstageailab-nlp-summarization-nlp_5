@@ -63,9 +63,28 @@ class SafeSeq2SeqTrainer(Seq2SeqTrainer):
         super()._save(output_dir, state_dict)
     
     def _clean_tokenizer_for_serialization(self):
-        """tokenizer의 JSON 직렬화 문제를 해결하는 강력한 정리 함수"""
+        """토크나이저의 JSON 직렬화 문제를 해결하는 강력한 정리 함수 (mT5 모델 대응)"""
         import numpy as np
+        print(f"🧹 mT5 tokenizer 정리 시작")
         
+        # 핵심 해결책: processing_class의 init_kwargs에서 numpy.dtype 직접 제거
+        if hasattr(self, 'processing_class') and self.processing_class and hasattr(self.processing_class, 'init_kwargs'):
+            print(f"⚙️ processing_class init_kwargs 직접 정리 중")
+            config = self.processing_class.init_kwargs.copy()
+            keys_to_remove = []
+            for key, value in list(config.items()):
+                if isinstance(value, np.dtype):
+                    config[key] = str(value)
+                    print(f"✅ {key}: numpy.dtype -> str")
+                elif callable(value) and not isinstance(value, type):
+                    keys_to_remove.append(key)
+                    print(f"✅ {key}: callable 객체 제거")
+            for key in keys_to_remove:
+                del config[key]
+            self.processing_class.init_kwargs = config
+            print(f"✅ processing_class init_kwargs 정리 완료: {len(keys_to_remove)}개 키 제거")
+        
+        # 기존 전체 tokenizer 정리 (추가 보안)
         # self.tokenizer와 self.processing_class 모두 정리
         tokenizers_to_clean = []
         if hasattr(self, 'tokenizer') and self.tokenizer:
