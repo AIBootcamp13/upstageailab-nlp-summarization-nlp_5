@@ -56,7 +56,7 @@ class SafeSeq2SeqTrainer(Seq2SeqTrainer):
         """체크포인트 저장 전 JSON 직렬화 문제 해결"""
         print(f"🔧 SafeSeq2SeqTrainer._save 호출됨: {output_dir}")
         
-        # 저장 직전 tokenizer 정리
+        # 저장 직전 tokenizer 완전 정리
         self._clean_tokenizer_for_serialization()
         
         # 부모 클래스의 _save 메서드 호출
@@ -65,69 +65,71 @@ class SafeSeq2SeqTrainer(Seq2SeqTrainer):
     def _clean_tokenizer_for_serialization(self):
         """토크나이저의 JSON 직렬화 문제를 해결하는 강력한 정리 함수 (mT5 모델 대응)"""
         import numpy as np
-        print(f"🧹 mT5 tokenizer 정리 시작")
+        print(f"🧹 모든 numpy.dtype 완전 삭제 시작")
         
-        # 핵심 해결책: processing_class의 init_kwargs에서 numpy.dtype 직접 제거
-        if hasattr(self, 'processing_class') and self.processing_class and hasattr(self.processing_class, 'init_kwargs'):
-            print(f"⚙️ processing_class init_kwargs 직접 정리 중")
-            config = self.processing_class.init_kwargs.copy()
-            keys_to_remove = []
-            for key, value in list(config.items()):
-                if isinstance(value, np.dtype):
-                    config[key] = str(value)
-                    print(f"✅ {key}: numpy.dtype -> str")
-                elif callable(value) and not isinstance(value, type):
-                    keys_to_remove.append(key)
-                    print(f"✅ {key}: callable 객체 제거")
-            for key in keys_to_remove:
-                del config[key]
-            self.processing_class.init_kwargs = config
-            print(f"✅ processing_class init_kwargs 정리 완료: {len(keys_to_remove)}개 키 제거")
+        # 강력한 해결책: 모든 numpy.dtype 완전 삭제
+        def remove_numpy_dtypes_recursive(obj, path="root"):
+            """재귀적으로 모든 numpy.dtype을 찾아서 완전 삭제"""
+            if isinstance(obj, dict):
+                keys_to_remove = []
+                for key, value in list(obj.items()):
+                    if isinstance(value, np.dtype):
+                        keys_to_remove.append(key)
+                        print(f"✅ {path}.{key}: numpy.dtype 완전 삭제")
+                    elif callable(value) and not isinstance(value, type):
+                        keys_to_remove.append(key)
+                        print(f"✅ {path}.{key}: callable 삭제")
+                    elif isinstance(value, (dict, list, tuple)):
+                        remove_numpy_dtypes_recursive(value, f"{path}.{key}")
+                
+                for key in keys_to_remove:
+                    del obj[key]
+                    
+            elif isinstance(obj, (list, tuple)):
+                for i, item in enumerate(obj):
+                    if isinstance(item, (dict, list, tuple)):
+                        remove_numpy_dtypes_recursive(item, f"{path}[{i}]")
         
-        # 기존 전체 tokenizer 정리 (추가 보안)
-        # self.tokenizer와 self.processing_class 모두 정리
-        tokenizers_to_clean = []
-        if hasattr(self, 'tokenizer') and self.tokenizer:
-            tokenizers_to_clean.append(self.tokenizer)
+        # 1. processing_class 완전 정리
         if hasattr(self, 'processing_class') and self.processing_class:
-            tokenizers_to_clean.append(self.processing_class)
-        
-        for tokenizer in tokenizers_to_clean:
-            def clean_recursive(obj):
-                """재귀적으로 JSON 직렬화 불가능한 객체를 정리"""
-                if isinstance(obj, np.dtype):
-                    return str(obj)
-                elif isinstance(obj, np.integer):
-                    return int(obj)
-                elif isinstance(obj, np.floating):
-                    return float(obj)
-                elif isinstance(obj, np.ndarray):
-                    return obj.tolist()
-                elif hasattr(obj, 'dtype'):  # numpy 타입이나 torch 타입
-                    return str(obj)
-                elif isinstance(obj, dict):
-                    return {k: clean_recursive(v) for k, v in obj.items()}
-                elif isinstance(obj, (list, tuple)):
-                    return type(obj)(clean_recursive(item) for item in obj)
-                else:
-                    return obj
+            print(f"⚙️ processing_class 완전 정리 중")
             
-            # tokenizer의 모든 속성을 재귀적으로 정리
+            # init_kwargs 정리
+            if hasattr(self.processing_class, 'init_kwargs') and self.processing_class.init_kwargs:
+                remove_numpy_dtypes_recursive(self.processing_class.init_kwargs, "init_kwargs")
+            
+            # 모든 주요 속성 정리
             critical_attrs = [
-                'init_kwargs', 'vocab', 'special_tokens_map', 'added_tokens_encoder', 
-                'added_tokens_decoder', '_tokenizer', 'backend_tokenizer'
+                'special_tokens_map', 'added_tokens_encoder', 'added_tokens_decoder',
+                'vocab', '_tokenizer', 'backend_tokenizer'
             ]
             
             for attr_name in critical_attrs:
-                if hasattr(tokenizer, attr_name):
+                if hasattr(self.processing_class, attr_name):
                     try:
-                        attr_value = getattr(tokenizer, attr_name)
+                        attr_value = getattr(self.processing_class, attr_name)
                         if attr_value is not None:
-                            cleaned_value = clean_recursive(attr_value)
-                            setattr(tokenizer, attr_name, cleaned_value)
-                    except Exception:
-                        pass  # 조용히 실패
-
+                            remove_numpy_dtypes_recursive(attr_value, f"processing_class.{attr_name}")
+                    except:
+                        pass
+        
+        # 2. tokenizer 완전 정리
+        if hasattr(self, 'tokenizer') and self.tokenizer:
+            print(f"⚙️ tokenizer 완전 정리 중")
+            
+            if hasattr(self.tokenizer, 'init_kwargs') and self.tokenizer.init_kwargs:
+                remove_numpy_dtypes_recursive(self.tokenizer.init_kwargs, "tokenizer.init_kwargs")
+            
+            for attr_name in critical_attrs:
+                if hasattr(self.tokenizer, attr_name):
+                    try:
+                        attr_value = getattr(self.tokenizer, attr_name)
+                        if attr_value is not None:
+                            remove_numpy_dtypes_recursive(attr_value, f"tokenizer.{attr_name}")
+                    except:
+                        pass
+        
+        print(f"✅ 모든 numpy.dtype 완전 삭제 완료")
 # QLoRA 및 unsloth 관련 import (선택적)
 try:
     from unsloth import FastLanguageModel
