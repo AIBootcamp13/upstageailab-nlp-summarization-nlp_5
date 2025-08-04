@@ -127,7 +127,7 @@ generation:
   no_repeat_ngram_size: 2             # mT5 원본 모델 권장값
   early_stopping: true                # 조기 중단
   do_sample: false                    # 결정론적 생성
-
+# 🚀 추가된 inference 섹션 (baseline.py 참조)
 inference:
   no_repeat_ngram_size: 2             # generation과 동일값
   early_stopping: true               # generation과 동일값
