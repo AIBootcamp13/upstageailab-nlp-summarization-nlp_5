@@ -11,6 +11,12 @@ HuggingFace 모델 로딩 안정성 강화 유틸리티
 """
 
 import os
+# 🔧 CVE-2025-32434 해결: safetensors 강제 사용
+os.environ['SAFETENSORS_FAST_GPU'] = '1'
+os.environ['HF_HUB_ENABLE_HF_TRANSFER'] = '1'
+os.environ['TRANSFORMERS_OFFLINE'] = '0'  # 온라인 모드 유지
+os.environ['TRANSFORMERS_CACHE'] = '/data/ephemeral/home/nlp-5/nlp-sum-lyj/hf_cache'
+
 import time
 import logging
 import socket

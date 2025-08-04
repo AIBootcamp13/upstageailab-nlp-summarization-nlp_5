@@ -1,6 +1,6 @@
-# mT5 XL-Sum Unsloth QLoRA 최적화 실험
-experiment_name: mt5_xlsum_unsloth_qlora
-description: "mT5 XL-Sum Unsloth + QLoRA 최적화 실험 - 배치 8/12"
+# mT5 XL-Sum PyTorch 호환성 강화 실험 (안전모드)
+experiment_name: mt5_xlsum_pytorch_compatible
+description: "mT5 XL-Sum PyTorch 호환성 강화 실험 - 안전모드 배치 8/12"
 general:
   model_name: csebuetnlp/mT5_multilingual_XLSum
   data_path: ./data/
@@ -8,12 +8,12 @@ general:
   val_path: ./data/dev.csv
   test_path: ./data/test.csv
   model_type: seq2seq
-  name: mt5_xlsum_unsloth_qlora
+  name: mt5_xlsum_pytorch_compatible
 
 model:
   architecture: mt5
   checkpoint: csebuetnlp/mT5_multilingual_XLSum
-  # 🔧 Unsloth 호환성 설정
+  # 🔧 PyTorch 호환성 강화 설정
   torch_dtype: bfloat16
   trust_remote_code: true
   use_safetensors: true              # safetensors 강제 사용
@@ -45,14 +45,14 @@ tokenizer:
     - '<dialogue>'
     - '</dialogue>'
 
-# 🔥 Unsloth + QLoRA 최적화 학습 설정
+# 🔥 PyTorch 호환성 강화 학습 설정
 training:
   do_eval: true
   do_train: true
   evaluation_strategy: steps
   eval_steps: 100
   
-  # Unsloth 최적화 배치 설정
+  # 안전성 강화된 배치 설정
   per_device_train_batch_size: 8       # 안전한 배치 크기
   per_device_eval_batch_size: 12       # 안전한 평가 배치
   gradient_accumulation_steps: 4       # 유효 배치 32 유지
@@ -85,7 +85,7 @@ training:
   logging_steps: 50
   save_strategy: steps
   save_steps: 200
-  save_total_limit: 3
+  save_total_limit: 3                  # 디스크 절약
   load_best_model_at_end: true
   early_stopping_patience: 5
   
@@ -102,25 +102,25 @@ training:
   report_to: wandb
   seed: 42
 
-# 🔥 RTX 3090 + Unsloth 최적화 QLoRA
+# 🔧 QLoRA 비활성화 (PyTorch 호환성) - 원래 설정 유지
 qlora:
-  use_unsloth: true   # ✅ CRITICAL: Unsloth 활성화로 30-70% 메모리 절약
-  use_qlora: true     # ✅ CRITICAL: QLoRA 활성화
-  lora_rank: 32                       # 64→32 메모리 안전성 강화
-  lora_alpha: 64                      # 128→64 메모리 안전성 강화
-  lora_dropout: 0.05                  # 0.01→0.05 드롭아웃 증가
-  target_modules: ["q", "k", "v", "o", "wi_0", "wi_1", "wo", "lm_head"]  # mT5 정확한 모듈명 (_proj 없음!)
-  load_in_4bit: true                  # 4비트 양자화 활성화
-  bnb_4bit_compute_dtype: "bfloat16"   # RTX 3090 + CUDA 12.2 최적
+  use_unsloth: false  # PyTorch 호환성을 위해 비활성화
+  use_qlora: false    # 안전성을 위해 비활성화
+  lora_rank: 32
+  lora_alpha: 64
+  lora_dropout: 0.05
+  target_modules: ["q", "k", "v", "o", "wi_0", "wi_1", "wo", "lm_head"]
+  load_in_4bit: false
+  bnb_4bit_compute_dtype: "bfloat16"
   bnb_4bit_quant_type: "nf4"
-  bnb_4bit_use_double_quant: true     # 이중 양자화 활성화
+  bnb_4bit_use_double_quant: false
 
 wandb:
   entity: lyjune37-juneictlab
   project: nlp-5
-  name: mt5_xlsum_unsloth_qlora
-  tags: [mT5, XL-Sum, RTX3090, Unsloth, QLoRA, batch8]
-  notes: "mT5 XL-Sum Unsloth + QLoRA 최적화 실험"
+  name: mt5_xlsum_pytorch_compatible
+  tags: [mT5, XL-Sum, RTX3090, PyTorch_Compatible, SafeMode, batch8]
+  notes: "mT5 XL-Sum PyTorch 호환성 강화 실험 - 안전모드"
 
 # 생성 설정
 generation:
