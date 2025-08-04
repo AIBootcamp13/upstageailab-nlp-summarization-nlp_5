@@ -1290,6 +1290,9 @@ class DialogueSummarizationTrainer:
                     if not resized:
                         logger.info("📝 QLoRA 모델은 임베딩 리사이징 없이 계속 진행 (정상)")
                         logger.info("ℹ️  QLoRA는 기본적으로 어댑터 방식이므로 리사이징이 필수적이지 않습니다")
+                    except Exception as resize_e:
+                    logger.debug(f"🔍 QLoRA 임베딩 리사이징 예외: {resize_e}")
+                    logger.info("📝 QLoRA 모델은 임베딩 리사이징 없이 계속 진행")
         except ImportError:
             logger.error("❌ bitsandbytes 또는 peft 라이브러리가 설치되지 않음")
             logger.info("폴백 모드: 표준 모델 로딩")
