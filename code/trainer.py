@@ -54,6 +54,8 @@ class SafeSeq2SeqTrainer(Seq2SeqTrainer):
     
     def _save(self, output_dir: str, state_dict=None):
         """체크포인트 저장 전 JSON 직렬화 문제 해결"""
+        print(f"🔧 SafeSeq2SeqTrainer._save 호출됨: {output_dir}")
+        
         # 저장 직전 tokenizer 정리
         self._clean_tokenizer_for_serialization()
         
