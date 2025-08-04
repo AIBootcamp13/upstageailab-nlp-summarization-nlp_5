@@ -408,6 +408,7 @@ def _execute_model_loading(model_class: Type[PreTrainedModel],
             level="ERROR",
             message=error_msg,
             data={"model_name": model_name, "error": str(e)}
+        )
         raise
 
 
