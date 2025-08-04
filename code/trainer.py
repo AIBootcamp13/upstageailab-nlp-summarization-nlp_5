@@ -66,17 +66,58 @@ class SafeSeq2SeqTrainer(Seq2SeqTrainer):
         def safe_json_dumps(obj, **kwargs):
             """모든 numpy.dtype를 처리하는 안전한 JSON 직렬화"""
             def clean_for_json(o):
-                if isinstance(o, np.dtype):
+                import numpy as np
+                try:
+                    # numpy.dtype 체크
+                    if isinstance(o, np.dtype):
+                        print(f"🔥 JSON에서 numpy.dtype 발견 및 제거: {o}")
+                        return str(o)
+                    # callable 체크
+                    elif callable(o) and not isinstance(o, type):
+                        print(f"🔥 JSON에서 callable 발견 및 제거: {type(o)}")
+                        return str(o)
+                    # hasattr dtype 체크
+                    elif hasattr(o, 'dtype') and hasattr(o.dtype, 'name'):
+                        print(f"🔥 JSON에서 dtype 속성 발견 및 제거: {type(o)}")
+                        return str(o)
+                    # dict 재귀 처리
+                    elif isinstance(o, dict):
+                        result = {}
+                        for k, v in o.items():
+                            try:
+                                cleaned_key = clean_for_json(k)
+                                cleaned_value = clean_for_json(v)
+                                result[cleaned_key] = cleaned_value
+                            except Exception as e:
+                                print(f"🔥 dict 키 {k} 정리 실패, 생략: {e}")
+                                continue
+                        return result
+                    # list/tuple 재귀 처리
+                    elif isinstance(o, (list, tuple)):
+                        try:
+                            cleaned_items = []
+                            for item in o:
+                                try:
+                                    cleaned_item = clean_for_json(item)
+                                    cleaned_items.append(cleaned_item)
+                                except Exception as e:
+                                    print(f"🔥 list item 정리 실패, 생략: {e}")
+                                    continue
+                            return type(o)(cleaned_items)
+                        except:
+                            return []
+                    else:
+                        return o
+                except Exception as e:
+                    print(f"🔥 객체 정리 중 예외 발생, 문자열로 변환: {e}")
                     return str(o)
-                elif isinstance(o, dict):
-                    return {k: clean_for_json(v) for k, v in o.items()}
-                elif isinstance(o, (list, tuple)):
-                    return type(o)(clean_for_json(item) for item in o)
-                else:
-                    return o
             
-            cleaned_obj = clean_for_json(obj)
-            return original_json_dumps(cleaned_obj, **kwargs)
+            try:
+                cleaned_obj = clean_for_json(obj)
+                return original_json_dumps(cleaned_obj, **kwargs)
+            except Exception as e:
+                print(f"🔥 JSON 직렬화 실패, 빈 dict 반환: {e}")
+                return original_json_dumps({}, **kwargs)
         
         # json.dumps를 임시 교체
         json.dumps = safe_json_dumps
