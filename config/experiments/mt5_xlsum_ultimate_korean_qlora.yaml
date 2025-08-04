@@ -122,6 +122,11 @@ wandb:
   tags: [mT5, XL-Sum, RTX3090, Unsloth, QLoRA, batch8]
   notes: "mT5 XL-Sum Unsloth + QLoRA 최적화 실험"
 
+# 평가 설정
+evaluation:
+  rouge_tokenize_korean: true
+  rouge_use_stemmer: true
+
 # 생성 설정
 generation:
   max_length: 84

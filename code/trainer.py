@@ -324,6 +324,39 @@ class DialogueSummarizationTrainer:
             use_korean_tokenizer=self.config.get("evaluation", {}).get("rouge_tokenize_korean", True),
             use_stemmer=self.config.get("evaluation", {}).get("rouge_use_stemmer", True),
         )
+        
+        # 초기화 완료 후 tokenizer 최종 정리 (JSON 직렬화 에러 예방)
+        if self.tokenizer:
+            import numpy as np
+            
+            def clean_recursive(obj):
+                if isinstance(obj, np.dtype):
+                    return str(obj)
+                elif isinstance(obj, dict):
+                    return {k: clean_recursive(v) for k, v in obj.items()}
+                elif isinstance(obj, (list, tuple)):
+                    return type(obj)(clean_recursive(item) for item in obj)
+                else:
+                    return obj
+            
+            # tokenizer의 모든 주요 속성들을 재귀적으로 정리
+            critical_attrs = [
+                'init_kwargs', 'vocab', 'special_tokens_map', 'added_tokens_encoder', 
+                'added_tokens_decoder', '_tokenizer', 'backend_tokenizer'
+            ]
+            
+            for attr_name in critical_attrs:
+                if hasattr(self.tokenizer, attr_name):
+                    try:
+                        attr_value = getattr(self.tokenizer, attr_name)
+                        if attr_value is not None:
+                            cleaned_value = clean_recursive(attr_value)
+                            setattr(self.tokenizer, attr_name, cleaned_value)
+                    except Exception:
+                        pass  # 조용히 실패
+            
+            logger.info("✅ [INIT] Tokenizer final cleanup completed")
+        
         logger.info("All components initialized successfully")
 
     def prepare_data(
@@ -745,14 +778,37 @@ class DialogueSummarizationTrainer:
             best_model_path = self.model_save_dir / "best_model"
             self.trainer.save_model(str(best_model_path))
             
-            # JSON 직렬화 문제 해결: save_pretrained 전에 numpy.dtype 정리
+            # JSON 직렬화 문제 해결: tokenizer 저장 전 강력한 재귀적 정리
             import numpy as np
-            if hasattr(self.tokenizer, 'init_kwargs') and self.tokenizer.init_kwargs:
-                for key, value in list(self.tokenizer.init_kwargs.items()):
-                    if isinstance(value, np.dtype):
-                        self.tokenizer.init_kwargs[key] = str(value)
-                        logger.info(f"🛠️  Fixed JSON serialization before save: {key} = {value} -> {str(value)}")
             
+            def clean_recursive(obj):
+                if isinstance(obj, np.dtype):
+                    return str(obj)
+                elif isinstance(obj, dict):
+                    return {k: clean_recursive(v) for k, v in obj.items()}
+                elif isinstance(obj, (list, tuple)):
+                    return type(obj)(clean_recursive(item) for item in obj)
+                else:
+                    return obj
+            
+            # tokenizer의 모든 주요 속성들을 재귀적으로 정리
+            critical_attrs = [
+                'init_kwargs', 'vocab', 'special_tokens_map', 'added_tokens_encoder', 
+                'added_tokens_decoder', '_tokenizer', 'backend_tokenizer'
+            ]
+            
+            for attr_name in critical_attrs:
+                if hasattr(self.tokenizer, attr_name):
+                    try:
+                        attr_value = getattr(self.tokenizer, attr_name)
+                        if attr_value is not None:
+                            cleaned_value = clean_recursive(attr_value)
+                            setattr(self.tokenizer, attr_name, cleaned_value)
+                            logger.info(f"🧹 [FINAL_SAVE] Cleaned tokenizer.{attr_name} for JSON serialization")
+                    except Exception as e:
+                        logger.debug(f"⚠️ [FINAL_SAVE] Could not clean {attr_name}: {e}")
+            
+            logger.info("✅ [FINAL_SAVE] Tokenizer completely cleaned for JSON serialization")
             self.tokenizer.save_pretrained(str(best_model_path))
 
             # 결과 정리
