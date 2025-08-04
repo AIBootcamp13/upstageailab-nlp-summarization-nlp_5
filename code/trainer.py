@@ -117,6 +117,18 @@ class WandbCallback(TrainerCallback):
     def __init__(self, trainer_instance: "DialogueSummarizationTrainer") -> None:
         self.trainer_instance = trainer_instance
         self.best_metrics = {}
+    
+    def on_save(self, args, state: TrainerState, control: TrainerControl, **kwargs):
+        """体克点保存 전 JSON 직렬화 문제 해결"""
+        # tokenizer JSON 직렬화 문제 해결
+        import numpy as np
+        if hasattr(self.trainer_instance, 'tokenizer') and self.trainer_instance.tokenizer:
+            tokenizer = self.trainer_instance.tokenizer
+            if hasattr(tokenizer, 'init_kwargs') and tokenizer.init_kwargs:
+                for key, value in list(tokenizer.init_kwargs.items()):
+                    if isinstance(value, np.dtype):
+                        tokenizer.init_kwargs[key] = str(value)
+                        logger.info(f"🛠️  Fixed JSON serialization on save: {key} = {value} -> {str(value)}")
 
     def on_evaluate(self, args, state: TrainerState, control: TrainerControl, metrics: Dict[str, float], **kwargs):
         """평가 시 WandB에 메트릭 로깅"""
@@ -707,6 +719,15 @@ class DialogueSummarizationTrainer:
             # 모델 저장
             best_model_path = self.model_save_dir / "best_model"
             self.trainer.save_model(str(best_model_path))
+            
+            # JSON 직렬화 문제 해결: save_pretrained 전에 numpy.dtype 정리
+            import numpy as np
+            if hasattr(self.tokenizer, 'init_kwargs') and self.tokenizer.init_kwargs:
+                for key, value in list(self.tokenizer.init_kwargs.items()):
+                    if isinstance(value, np.dtype):
+                        self.tokenizer.init_kwargs[key] = str(value)
+                        logger.info(f"🛠️  Fixed JSON serialization before save: {key} = {value} -> {str(value)}")
+            
             self.tokenizer.save_pretrained(str(best_model_path))
 
             # 결과 정리
