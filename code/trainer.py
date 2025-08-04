@@ -48,6 +48,60 @@ from transformers import (
     PreTrainedTokenizer,
 )
 
+
+class SafeSeq2SeqTrainer(Seq2SeqTrainer):
+    """JSON 직렬화 문제를 해결하기 위한 안전한 Seq2SeqTrainer"""
+    
+    def _save(self, output_dir: str, state_dict=None):
+        """체크포인트 저장 전 JSON 직렬화 문제 해결"""
+        # 저장 직전 tokenizer 정리
+        self._clean_tokenizer_for_serialization()
+        
+        # 부모 클래스의 _save 메서드 호출
+        super()._save(output_dir, state_dict)
+    
+    def _clean_tokenizer_for_serialization(self):
+        """tokenizer의 JSON 직렬화 문제를 해결하는 강력한 정리 함수"""
+        import numpy as np
+        
+        if hasattr(self, 'tokenizer') and self.tokenizer:
+            tokenizer = self.tokenizer
+            
+            def clean_recursive(obj):
+                """재귀적으로 JSON 직렬화 불가능한 객체를 정리"""
+                if isinstance(obj, np.dtype):
+                    return str(obj)
+                elif isinstance(obj, np.integer):
+                    return int(obj)
+                elif isinstance(obj, np.floating):
+                    return float(obj)
+                elif isinstance(obj, np.ndarray):
+                    return obj.tolist()
+                elif hasattr(obj, 'dtype'):  # numpy 타입이나 torch 타입
+                    return str(obj)
+                elif isinstance(obj, dict):
+                    return {k: clean_recursive(v) for k, v in obj.items()}
+                elif isinstance(obj, (list, tuple)):
+                    return type(obj)(clean_recursive(item) for item in obj)
+                else:
+                    return obj
+            
+            # tokenizer의 모든 속성을 재귀적으로 정리
+            critical_attrs = [
+                'init_kwargs', 'vocab', 'special_tokens_map', 'added_tokens_encoder', 
+                'added_tokens_decoder', '_tokenizer', 'backend_tokenizer'
+            ]
+            
+            for attr_name in critical_attrs:
+                if hasattr(tokenizer, attr_name):
+                    try:
+                        attr_value = getattr(tokenizer, attr_name)
+                        if attr_value is not None:
+                            cleaned_value = clean_recursive(attr_value)
+                            setattr(tokenizer, attr_name, cleaned_value)
+                    except Exception:
+                        pass  # 조용히 실패
+
 # QLoRA 및 unsloth 관련 import (선택적)
 try:
     from unsloth import FastLanguageModel
@@ -740,7 +794,7 @@ class DialogueSummarizationTrainer:
             )
 
         # 트레이너 생성
-        self.trainer = Seq2SeqTrainer(
+        self.trainer = SafeSeq2SeqTrainer(
             model=self.model,
             args=training_args,
             data_collator=data_collator,
