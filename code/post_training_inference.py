@@ -53,6 +53,34 @@ class PostTrainingInference:
         
         logger.info(f"Initializing PostTrainingInference for {experiment_name}")
         logger.info(f"Model: {model_name}, Architecture: {self.model_config.get('architecture')}")
+        
+        # eenzeenee 모델용 NLTK 초기화
+        if 'eenzeenee' in model_name.lower():
+            self._setup_nltk_for_eenzeenee()
+    
+    def _setup_nltk_for_eenzeenee(self):
+        """
+        eenzeenee 모델용 NLTK punkt tokenizer 설정
+        """
+        try:
+            import nltk
+            
+            logger.info("🔧 eenzeenee 모델용 NLTK punkt tokenizer 초기화 중...")
+            
+            # punkt tokenizer가 이미 다운로드되어 있는지 확인
+            try:
+                nltk.data.find('tokenizers/punkt')
+                logger.info("✅ NLTK punkt tokenizer 이미 설치됨")
+            except LookupError:
+                logger.info("💾 NLTK punkt tokenizer 다운로드 중...")
+                nltk.download('punkt', quiet=True)
+                logger.info("✅ NLTK punkt tokenizer 다운로드 완료")
+                
+        except ImportError:
+            logger.error("❌ NLTK가 설치되지 않았습니다. 'pip install nltk' 로 설치하세요.")
+            raise
+        except Exception as e:
+            logger.warning(f"⚠️ NLTK 설정 중 오류 발생: {e}")
     
     def run_test_inference(self, test_file: str) -> str:
         """

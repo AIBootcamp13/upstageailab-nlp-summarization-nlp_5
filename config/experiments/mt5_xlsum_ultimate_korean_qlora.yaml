@@ -88,11 +88,11 @@ training:
   
   # 🏆 1단계 극한 최적화 생성 설정
   predict_with_generate: true
-  generation_num_beams: 12            # 6→12 범위 확장
-  generation_max_length: 200          # 128→200 증가
-  generation_min_length: 15           # 10→15 최소 길이 증가
-  generation_length_penalty: 0.7      # 길이 패널티 추가
-  generation_no_repeat_ngram_size: 3  # 반복 방지 강화
+  generation_num_beams: 4             # mT5 원본 모델 권장값: 4
+  generation_max_length: 84           # mT5 원본 모델 권장값: 84
+  generation_min_length: 10           # 기본값
+  generation_length_penalty: 1.0      # 기본값
+  generation_no_repeat_ngram_size: 2  # mT5 원본 모델 권장값: 2
   generation_do_sample: false         # 결정론적 생성
   generation_early_stopping: true     # 조기 중단 활성화
   
@@ -119,22 +119,22 @@ wandb:
   tags: [mT5, XL-Sum, RTX3090, extreme_stage1, Unsloth, batch8, seq1024, fixed]
   notes: "mT5 XL-Sum RTX 3090 + Unsloth 극한 최적화 1단계 - 배치 8, 시퀀스 1024, LoRA 64 (안정성 강화)"
 
-# 🏆 1단계 극한 최적화 생성 설정
+# 🏆 mT5 원본 모델 최적화 생성 설정
 generation:
-  max_length: 200                     # 더 긴 요약 허용
-  min_length: 15                      # 최소 길이 증가
-  num_beams: 12                       # 다양한 후보 탐색
-  length_penalty: 0.7                 # 길이 패널티
-  no_repeat_ngram_size: 3             # 반복 방지
+  max_length: 84                      # mT5 원본 모델 권장값
+  min_length: 10                      # 기본값
+  num_beams: 4                        # mT5 원본 모델 권장값
+  length_penalty: 1.0                 # 기본값
+  no_repeat_ngram_size: 2             # mT5 원본 모델 권장값
   early_stopping: true                # 조기 중단
   do_sample: false                    # 결정론적 생성
 
 # 🚀 추가된 inference 섹션 (baseline.py 참조)
 inference:
-  no_repeat_ngram_size: 3             # generation과 동일값 사용
+  no_repeat_ngram_size: 2             # generation과 동일값
   early_stopping: true               # generation과 동일값
-  generate_max_length: 200            # generation의 max_length와 동일
-  num_beams: 12                       # generation과 동일값
+  generate_max_length: 84             # generation의 max_length와 동일
+  num_beams: 4                        # generation과 동일값
   batch_size: 8                       # 추론 배치 크기 (안전하게 설정)
   result_path: "./prediction/"        # baseline.py와 동일
   remove_tokens: ['<pad>', '</s>', '<unk>']  # mT5 올바른 제거 토큰들 (<s>는 유지)

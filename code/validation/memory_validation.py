@@ -113,13 +113,16 @@ class MemoryValidator:
             'kobart': 2.0,      # KoBART (작은 모델)
             't5-base': 3.0,     # T5-base
             't5-large': 8.0,    # T5-large  
-            'mt5': 4.0          # mT5
+            'mt5': 4.0,         # mT5
+            'eenzeenee': 3.0    # eenzeenee T5-base Korean
         }
         
         # 모델 타입 감지
         model_type = 'kobart'
         model_name_lower = model_name.lower()
-        if 'mt5' in model_name_lower:
+        if 'eenzeenee' in model_name_lower:
+            model_type = 'eenzeenee'
+        elif 'mt5' in model_name_lower:
             model_type = 'mt5'
         elif 't5-large' in model_name_lower:
             model_type = 't5-large'

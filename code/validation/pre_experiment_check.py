@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/opt/conda/bin/python3
 """
 실험 전 검증 스크립트
 

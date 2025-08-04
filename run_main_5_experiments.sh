@@ -299,7 +299,7 @@ cleanup_gpu_emergency() {
     
     # 2. GPU 메모리 정리 (기존 로직 유지)
     echo -e "${YELLOW}🧹 GPU 메모리 정리 중...${NC}"
-    python3 -c "
+    /opt/conda/bin/python3 -c "
 import torch
 import gc
 if torch.cuda.is_available():
@@ -407,7 +407,7 @@ cleanup_gpu() {
     done
 
     # Python에서 GPU 메모리 정리
-    python3 -c "
+    /opt/conda/bin/python3 -c "
 import torch
 import gc
 if torch.cuda.is_available():
@@ -429,7 +429,7 @@ gc.collect()
     echo "✅ GPU 메모리 정리 완료"
     
     # Python 가비지 컴렉션
-    python3 -c "import gc; gc.collect()" 2>/dev/null || true
+    /opt/conda/bin/python3 -c "import gc; gc.collect()" 2>/dev/null || true
     echo "✅ Python 가비지 컴렉션 완료"
 
     # 시스템 캐시 정리 (권한이 있는 경우)
@@ -494,7 +494,7 @@ for i in "${!experiments[@]}"; do
     
     # 검증 스크립트 실행 (직접 실행으로 수정 - eval 제거로 정확한 exit code 감지)
     echo -e "${CYAN}🔍 실험 전 검증 중: ${config_file}${NC}"
-    VALIDATION_CMD="python3 code/validation/pre_experiment_check.py --config config/experiments/${config_file} --auto-fix --cleanup"
+    VALIDATION_CMD="/opt/conda/bin/python3 code/validation/pre_experiment_check.py --config config/experiments/${config_file} --auto-fix --cleanup"
     
     if ! $VALIDATION_CMD; then
         echo -e "${RED}❌ 실험 전 검증 실패: $exp_name${NC}"
@@ -506,7 +506,7 @@ for i in "${!experiments[@]}"; do
     echo -e "${GREEN}✅ 실험 전 검증 통과${NC}"
     
     # 실험 실행 (1에포크 모드 옵션 처리)
-    EXPERIMENT_CMD="python3 code/auto_experiment_runner.py --configs config/experiments/${config_file}"
+    EXPERIMENT_CMD="/opt/conda/bin/python3 code/auto_experiment_runner.py --configs config/experiments/${config_file}"
 
     # 1에포크 모드일 때 --one-epoch 옵션 추가
     if [[ "$ONE_EPOCH_MODE" == "true" ]]; then
@@ -588,32 +588,15 @@ for i in "${!experiments[@]}"; do
         break  # 실험 루프 중단
     fi
     
-    # 다음 실험 전 스마트 대기 및 정리 (마지막 실험 제외)
+    # ✨ 최적화된 실험간 GPU 정리 (중복 제거)
     if [ "$i" -lt $((TOTAL_EXPERIMENTS - 1)) ]; then
-        echo -e "${YELLOW}⏸️  다음 실험 준비 중... (스마트 대기)${NC}"
+        echo -e "${YELLOW}⏸️  다음 실험 준비 중... (최적화된 스마트 대기)${NC}"
         
-        # 1. 기본 GPU 정리
-        cleanup_gpu
+        # 하나의 스마트 대기로 사실상 노 GPU 정리 대신 사용
+        # 4GB 아래로 대기, 최대 3분 (기존 5분→3분 효율성)
+        smart_wait 4000 180
         
-        # 2. 실험간 안전 검증 (강화된 복구 메커니즘)
-        echo -e "${CYAN}🔍 다음 실험 전 GPU 상태 강제 검증...${NC}"
-        next_memory=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | xargs | tr -d ',')
-        
-        if [ -n "$next_memory" ]; then
-            next_memory_int=$(echo "$next_memory" | cut -d'.' -f1)
-            if [ "$next_memory_int" -gt 16000 ]; then  # 16GB 이상시 경고 (기존 10GB→16GB 성능 최적화)
-                echo -e "  ${YELLOW}⚠️  실험간 GPU 메모리 높음: ${next_memory}MB - 추가 정리 실행${NC}"
-                cleanup_gpu_emergency
-            else
-                echo -e "  ${GREEN}✅ 실험간 GPU 메모리 상태 양호: ${next_memory}MB${NC}"
-            fi
-        else
-            echo -e "  ${RED}⚠️  GPU 상태 확인 실패 - 기본 정리 실행${NC}"
-            cleanup_gpu
-        fi
-        
-        # 3. 스마트 대기 (RTX 3090 최적화: 성능과 안전성 균형)
-        smart_wait 4000 300  # 4GB 아래로 대기, 최대 5분 (기존 2GB/6분→4GB/5분 성능 최적화)
+        echo -e "${GREEN}✨ 다음 실험 준비 완료 (시간 절약)${NC}"
     fi
 done
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/opt/conda/bin/python3
 """
 추론 CLI 도구
 

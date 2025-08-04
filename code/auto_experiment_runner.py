@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/opt/conda/bin/python3
 """
 자동 실험 실행 시스템 (상대 경로 기준, MPS/CUDA 최적화)
 
