@@ -507,16 +507,22 @@ for i in "${!experiments[@]}"; do
     
     # 실험 실행 (1에포크 모드 옵션 처리)
     EXPERIMENT_CMD="/opt/conda/envs/python311/bin/python3.11 code/auto_experiment_runner.py --configs config/experiments/${config_file}"
-
+    
     # 1에포크 모드일 때 --one-epoch 옵션 추가
     if [[ "$ONE_EPOCH_MODE" == "true" ]]; then
         EXPERIMENT_CMD="$EXPERIMENT_CMD --one-epoch"
         echo -e "${YELLOW}1에포크 모드로 실행 중...${NC}"
     fi
+    
+    # tqdm 진행바 강제 활성화 환경변수 설정
+    export PYTHONUNBUFFERED=1
+    export TQDM_DISABLE=false
+    export FORCE_COLOR=1
 
     # 실험 실행 (직접 실행으로 수정 - eval 제거로 정확한 exit code 감지)
     echo -e "${CYAN}🚀 실험 실행 중: $EXPERIMENT_CMD${NC}"
-    if $EXPERIMENT_CMD > "${LOG_FILE}" 2>&1; then
+    # tee를 사용하여 화면과 로그 파일에 동시 출력 (진행바 표시)
+    if $EXPERIMENT_CMD 2>&1 | tee "${LOG_FILE}"; then
         EXP_END_TIME=$(date +%s)
         EXP_DURATION=$((EXP_END_TIME - EXP_START_TIME))
         
