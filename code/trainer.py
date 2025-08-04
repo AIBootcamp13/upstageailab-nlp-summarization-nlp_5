@@ -1186,14 +1186,19 @@ class DialogueSummarizationTrainer:
             # 🔥 baseline.py 호환 special_tokens 처리: QLoRA 모델에서도 resize_token_embeddings 호출
             if hasattr(self, '_special_tokens_added') and self._special_tokens_added:
                 logger.info(f"Resizing QLoRA model embeddings for special tokens: {self._new_vocab_size}")
-                # QLoRA/PEFT 모델에서는 base_model에 접근해야 함
-                if hasattr(self.model, 'resize_token_embeddings'):
-                    self.model.resize_token_embeddings(self._new_vocab_size)
-                elif hasattr(self.model, 'base_model') and hasattr(self.model.base_model, 'resize_token_embeddings'):
-                    self.model.base_model.resize_token_embeddings(self._new_vocab_size)
-                else:
-                    logger.warning("⚠️ QLoRA 모델에서 resize_token_embeddings 메서드를 찾을 수 없음")
-                logger.info("✅ QLoRA model embeddings resized for special tokens")
+                # QLoRA/PEFT 모델에서는 조심스럽게 처리
+                try:
+                    if hasattr(self.model, 'resize_token_embeddings'):
+                        self.model.resize_token_embeddings(self._new_vocab_size)
+                        logger.info("✅ QLoRA model embeddings resized for special tokens")
+                    elif hasattr(self.model, 'base_model') and hasattr(self.model.base_model, 'resize_token_embeddings'):
+                        self.model.base_model.resize_token_embeddings(self._new_vocab_size)
+                        logger.info("✅ QLoRA base model embeddings resized for special tokens")
+                    else:
+                        logger.warning("⚠️ QLoRA 모델에서 resize_token_embeddings 메서드를 찾을 수 없음")
+                except Exception as e:
+                    logger.warning(f"⚠️ QLoRA 임베딩 리사이징 실패 (무시): {str(e)}")
+                    logger.info("✅ QLoRA 모델은 임베딩 리사이징 없이 계속 진행")
         except ImportError:
             logger.error("❌ bitsandbytes 또는 peft 라이브러리가 설치되지 않음")
             logger.info("폴백 모드: 표준 모델 로딩")
@@ -1292,7 +1297,7 @@ class DialogueSummarizationTrainer:
             "overwrite_output_dir": True,
             "do_train": True,
             "do_eval": True,
-            "evaluation_strategy": train_config.get("eval_strategy", "steps"),
+            "eval_strategy": train_config.get("eval_strategy", "steps"),
             "eval_steps": train_config.get("eval_steps", 500),
             "save_strategy": train_config.get("save_strategy", "steps"),
             "save_steps": train_config.get("save_steps", 500),
@@ -1414,8 +1419,8 @@ def create_trainer(config: Union[str, Dict[str, Any]], sweep_mode: bool = False,
     # 평가 비활성화 모드 적용
     if disable_eval:
         config_dict["training"]["do_eval"] = False
-        config_dict["training"]["evaluation_strategy"] = "no"
-        logger.info(f"🚫 평가 비활성화: do_eval=False, evaluation_strategy=no")
+        config_dict["training"]["eval_strategy"] = "no"
+        logger.info(f"🚫 평가 비활성화: do_eval=False, eval_strategy=no")
     
     # 트레이너 생성
     trainer = DialogueSummarizationTrainer(config=config_dict, sweep_mode=sweep_mode)

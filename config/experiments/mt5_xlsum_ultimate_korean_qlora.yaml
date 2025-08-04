@@ -49,7 +49,7 @@ tokenizer:
 training:
   do_eval: true
   do_train: true
-  evaluation_strategy: steps
+  eval_strategy: steps
   eval_steps: 100
   
   # 안전성 강화된 배치 설정
