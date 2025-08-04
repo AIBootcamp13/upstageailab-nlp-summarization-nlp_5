@@ -119,16 +119,28 @@ class WandbCallback(TrainerCallback):
         self.best_metrics = {}
     
     def on_save(self, args, state: TrainerState, control: TrainerControl, **kwargs):
-        """体克点保存 전 JSON 직렬화 문제 해결"""
+        """체크포인트 저장 전 JSON 직렬화 문제 해결"""
         # tokenizer JSON 직렬화 문제 해결
         import numpy as np
         if hasattr(self.trainer_instance, 'tokenizer') and self.trainer_instance.tokenizer:
             tokenizer = self.trainer_instance.tokenizer
+            
+            # init_kwargs 정리
             if hasattr(tokenizer, 'init_kwargs') and tokenizer.init_kwargs:
                 for key, value in list(tokenizer.init_kwargs.items()):
                     if isinstance(value, np.dtype):
                         tokenizer.init_kwargs[key] = str(value)
                         logger.info(f"🛠️  Fixed JSON serialization on save: {key} = {value} -> {str(value)}")
+            
+            # 추가적인 속성들 정리
+            for attr_name in ['vocab', 'special_tokens_map', 'added_tokens_encoder', 'added_tokens_decoder']:
+                if hasattr(tokenizer, attr_name):
+                    attr = getattr(tokenizer, attr_name)
+                    if isinstance(attr, dict):
+                        for key, value in list(attr.items()):
+                            if isinstance(value, np.dtype):
+                                attr[key] = str(value)
+                                logger.info(f"🛠️  Fixed JSON serialization in {attr_name}: {key} = {value} -> {str(value)}")
 
     def on_evaluate(self, args, state: TrainerState, control: TrainerControl, metrics: Dict[str, float], **kwargs):
         """평가 시 WandB에 메트릭 로깅"""
