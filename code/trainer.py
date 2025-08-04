@@ -601,7 +601,7 @@ class DialogueSummarizationTrainer:
         )
 
         # 평가 메트릭 함수 - HuggingFace Trainer의 콜백으로 사용됨
-        def compute_metrics(eval_preds: Tuple[np.ndarray, np.ndarray]) -> Dict[str, float]:
+        def compute_metrics(eval_preds: Tuple) -> Dict[str, float]:
             """
             학습 중 평가 단계에서 ROUGE 메트릭을 계산하는 중첩 함수
         
