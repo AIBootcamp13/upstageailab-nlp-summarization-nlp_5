@@ -25,7 +25,15 @@ NC='\033[0m' # No Color
 # 스크립트 시작 시간
 START_TIME=$(date +%s)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# PROJECT_ROOT 자동 감지 (경로 독립적으로 수정)
+if [[ "$SCRIPT_DIR" == */scripts/server_sync ]]; then
+    # 스크립트가 scripts/server_sync 디렉토리에 있는 경우
+    PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+else
+    # 다른 위치에서 실행될 경우 현재 디렉토리 사용
+    PROJECT_ROOT="$(pwd)"
+fi
 
 # nvidia-smi 절대 경로 설정
 NVIDIA_SMI="/usr/bin/nvidia-smi"
@@ -33,6 +41,10 @@ NVIDIA_SMI="/usr/bin/nvidia-smi"
 # 로그 파일 설정
 LOG_FILE="$PROJECT_ROOT/logs/gpu_optimizer_$(date '+%Y%m%d_%H%M%S').log"
 mkdir -p "$(dirname "$LOG_FILE")"
+
+# 전역 변수 (정리 전후 비교용)
+MEMORY_BEFORE=0
+MEMORY_AFTER=0
 
 # 로깅 함수
 log_info() {
@@ -49,6 +61,20 @@ log_error() {
 
 log_success() {
     echo -e "${GREEN}[SUCCESS]${NC} $1" | tee -a "$LOG_FILE"
+}
+
+# GPU 메모리 상태 가져오기 함수 (숫자만 반환)
+get_gpu_memory() {
+    local memory_used
+    memory_used=$($NVIDIA_SMI --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | xargs | tr -d ',')
+    
+    if [ -n "$memory_used" ]; then
+        # 소수점 값을 정수로 변환
+        memory_used=$(echo "$memory_used" | cut -d'.' -f1)
+        echo "$memory_used"
+    else
+        echo "0"
+    fi
 }
 
 # GPU 상태 확인 함수
@@ -278,6 +304,44 @@ except Exception as e:
     fi
 }
 
+# 정리 결과 비교 표시 함수
+show_cleanup_results() {
+    local memory_before="$1"
+    local memory_after="$2"
+    
+    echo -e "\n${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BLUE}📈 GPU 메모리 정리 결과${NC}"
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    
+    local memory_cleaned=$((memory_before - memory_after))
+    local memory_cleaned_gb=$((memory_cleaned / 1024))
+    local memory_cleaned_percent=0
+    
+    if [ "$memory_before" -gt 0 ]; then
+        memory_cleaned_percent=$((memory_cleaned * 100 / memory_before))
+    fi
+    
+    echo "  📊 정리 전: ${memory_before}MB"
+    echo "  📊 정리 후: ${memory_after}MB"
+    
+    if [ "$memory_cleaned" -gt 0 ]; then
+        echo -e "  ${GREEN}✅ 정리된 메모리: ${memory_cleaned}MB (${memory_cleaned_gb}GB)${NC}"
+        echo -e "  ${GREEN}📈 정리 효율: ${memory_cleaned_percent}% 감소${NC}"
+        
+        if [ "$memory_cleaned" -gt 5000 ]; then
+            echo -e "  ${GREEN}🎉 탁월한 정리 성과! (5GB 이상 정리)${NC}"
+        elif [ "$memory_cleaned" -gt 2000 ]; then
+            echo -e "  ${CYAN}👍 좋은 정리 성과! (2GB 이상 정리)${NC}"
+        elif [ "$memory_cleaned" -gt 500 ]; then
+            echo -e "  ${YELLOW}👌 적당한 정리 성과 (500MB 이상 정리)${NC}"
+        fi
+    elif [ "$memory_cleaned" -eq 0 ]; then
+        echo -e "  ${YELLOW}ℹ️  정리된 메모리: 변화 없음${NC}"
+    else
+        echo -e "  ${RED}⚠️  메모리 증가: $((memory_after - memory_before))MB (일시적 현상일 수 있음)${NC}"
+    fi
+}
+
 # 메인 최적화 함수
 optimize_gpu_memory() {
     local mode="$1"
@@ -285,9 +349,10 @@ optimize_gpu_memory() {
     echo -e "\n${GREEN}🚀 GPU 메모리 최적화 시작${NC}"
     log_info "모드: $mode"
     
-    # 1. 현재 상태 확인
+    # 1. 현재 상태 확인 및 정리 전 메모리 저장
     check_gpu_status "최적화 전 상태"
     local initial_status=$?
+    MEMORY_BEFORE=$(get_gpu_memory)
     
     if [ "$mode" = "--check-only" ]; then
         log_info "체크 모드: 정리 작업 생략"
@@ -309,12 +374,16 @@ optimize_gpu_memory() {
     # 6. CUDA 장치 재시작 (deep-clean 모드에서만)
     reset_cuda_device "$mode"
     
-    # 7. 최종 상태 확인
+    # 7. 최종 상태 확인 및 정리 후 메모리 저장
     sleep 3
+    MEMORY_AFTER=$(get_gpu_memory)
     check_gpu_status "최적화 후 상태"
     local final_status=$?
     
-    # 8. 결과 리포트
+    # 8. 정리 결과 비교 표시
+    show_cleanup_results "$MEMORY_BEFORE" "$MEMORY_AFTER"
+    
+    # 9. 결과 리포트
     echo -e "\n${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${BLUE}📋 최적화 결과 요약${NC}"
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
