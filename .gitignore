@@ -68,13 +68,13 @@ Thumbs.db
 *.swp
 *.swo
 *~
-.cache/
-
 # Config overrides (local settings)
 config_local.yaml
 config_override.yaml
 *_local.yaml
 
+# 동기화 스크립트 개인 설정 파일
+scripts/server_sync/config.conf
 # Secrets and credentials
 .env
 .env.local

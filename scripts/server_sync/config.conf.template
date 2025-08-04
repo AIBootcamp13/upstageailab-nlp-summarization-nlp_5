@@ -23,14 +23,30 @@ LOCAL_BASE="/Users/YOUR_USERNAME/Developer/Projects/nlp-5/nlp-sum-lyj"
 REMOTE_BASE="/data/ephemeral/home/nlp-5/nlp-sum-lyj"
 
 # =================================================================
-# 실험 결과 데이터 경로 (일반적으로 동일)
+# 동기화 대상 디렉토리 경로 설정
 # =================================================================
+# 📌 중요: 경로가 비어있으면("") 해당 폴더는 동기화하지 않음
+# 📌 경로가 설정되어 있으면 자동으로 동기화 대상에 포함됨
+# 📌 루트 경로(LOCAL_BASE, REMOTE_BASE) 기준 상대 경로로 설정
+# 📌 조원별로 다른 폴더 구조를 사용하는 경우 해당 경로를 수정하세요
 
-# 실험 결과가 저장되는 상대 경로들
-OUTPUTS_SUBDIR="outputs"           # 메인 실험 결과 디렉토리
-LOGS_SUBDIR="logs"                 # 로그 디렉토리  
-WANDB_SUBDIR="wandb"               # WandB 로그 디렉토리
-MODELS_SUBDIR="models"             # 모델 저장 디렉토리
+# 핵심 실험 결과 디렉토리들 (필수 - 대부분의 경우 설정 권장)
+OUTPUTS_PATH="outputs"              # 메인 실험 결과 디렉토리
+LOGS_PATH="logs"                    # 로그 디렉토리  
+PREDICTION_PATH="prediction"        # 채점용 파일 디렉토리 (가장 중요!)
+
+# 모델 및 체크포인트 디렉토리들 (선택적)
+CHECKPOINTS_PATH="checkpoints"      # 모델 체크포인트 디렉토리
+MODELS_PATH=""                      # 저장된 모델 디렉토리 (대용량이므로 기본 비워둠)
+
+# 로그 및 분석 디렉토리들 (선택적)  
+WANDB_PATH=""                       # WandB 로그 디렉토리
+VALIDATION_LOGS_PATH=""             # 검증 로그 디렉토리  
+ANALYSIS_RESULTS_PATH=""            # 분석 결과 디렉토리
+
+# 최종 제출 및 데이터 디렉토리들 (선택적)
+FINAL_SUBMISSION_PATH=""            # 최종 제출 디렉토리
+DATA_PATH=""                        # 데이터 파일 디렉토리 (대용량이므로 기본 비워둠)
 
 # =================================================================
 # 동기화 옵션
@@ -75,17 +91,25 @@ MAX_RETRY_COUNT=3
 CONNECTION_TIMEOUT=30
 
 # =================================================================
-# 개인 설정 예시
+# 설정 예시 (song 조원 기준)
 # =================================================================
 
-# 팀장 (jayden) 설정 예시:
-# LOCAL_BASE="/Users/jayden/Developer/Projects/nlp-5/nlp-sum-lyj"
-# REMOTE_BASE="/data/ephemeral/home/nlp-5/nlp-sum-lyj"
+# 📋 song 조원의 실제 설정 예시:
+# LOCAL_BASE="/Users/song/Developer/Projects/nlp-5/song"
+# REMOTE_BASE="/data/ephemeral/home/nlp-5/song"
+# OUTPUTS_PATH="outputs"              # 실험 결과 저장
+# LOGS_PATH="logs"                    # 실행 로그 
+# PREDICTION_PATH="prediction"        # 채점용 CSV 파일 (필수!)
+# CHECKPOINTS_PATH=""                 # 현재 사용하지 않음
+# MODELS_PATH=""                      # 대용량이므로 비활성화
+# WANDB_PATH=""                       # 현재 사용하지 않음
+# DATA_PATH=""                        # 대용량이므로 비활성화
 
-# 팀원 A 설정 예시:
-# LOCAL_BASE="/Users/teamA/Documents/nlp-project/nlp-sum-lyj"  
+# 📋 다른 조원이 다른 구조를 사용하는 경우:
+# LOCAL_BASE="/Users/username/workspace/nlp-project/nlp-sum-lyj"
 # REMOTE_BASE="/data/ephemeral/home/nlp-5/nlp-sum-lyj"
-
-# 팀원 B 설정 예시:
-# LOCAL_BASE="/Users/teamB/workspace/nlp-summarization/nlp-sum-lyj"
-# REMOTE_BASE="/data/ephemeral/home/nlp-5/nlp-sum-lyj"
+# OUTPUTS_PATH="experiment_results"   # 다른 폴더명 사용
+# LOGS_PATH="training_logs"           # 다른 폴더명 사용
+# PREDICTION_PATH="submissions"       # 다른 폴더명 사용
+# CHECKPOINTS_PATH="model_saves"      # 체크포인트 사용하는 경우
+# WANDB_PATH="wandb_logs"             # WandB 사용하는 경우
