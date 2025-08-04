@@ -64,9 +64,14 @@ class SafeSeq2SeqTrainer(Seq2SeqTrainer):
         """tokenizer의 JSON 직렬화 문제를 해결하는 강력한 정리 함수"""
         import numpy as np
         
+        # self.tokenizer와 self.processing_class 모두 정리
+        tokenizers_to_clean = []
         if hasattr(self, 'tokenizer') and self.tokenizer:
-            tokenizer = self.tokenizer
-            
+            tokenizers_to_clean.append(self.tokenizer)
+        if hasattr(self, 'processing_class') and self.processing_class:
+            tokenizers_to_clean.append(self.processing_class)
+        
+        for tokenizer in tokenizers_to_clean:
             def clean_recursive(obj):
                 """재귀적으로 JSON 직렬화 불가능한 객체를 정리"""
                 if isinstance(obj, np.dtype):
