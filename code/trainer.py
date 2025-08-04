@@ -16,6 +16,13 @@ from dataclasses import dataclass, field
 import warnings
 import gc  # 메모리 정리를 위한 import
 
+# .env 파일 로딩
+try:
+    from dotenv import load_dotenv
+    load_dotenv()  # .env 파일에서 환경변수 로드
+except ImportError:
+    print("⚠️ python-dotenv가 설치되지 않음: pip install python-dotenv")
+
 warnings.filterwarnings("ignore")
 
 import torch

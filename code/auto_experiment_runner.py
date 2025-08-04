@@ -9,6 +9,7 @@
 """
 
 import sys
+import os
 import json
 import time
 from pathlib import Path
@@ -17,6 +18,13 @@ from datetime import datetime
 import subprocess
 import logging
 import pandas as pd
+
+# .env 파일 로딩
+try:
+    from dotenv import load_dotenv
+    load_dotenv()  # .env 파일에서 환경변수 로드
+except ImportError:
+    print("⚠️ python-dotenv가 설치되지 않음: pip install python-dotenv")
 
 # 프로젝트 루트 디렉토리를 Python 경로에 추가
 project_root = Path(__file__).parent.parent
