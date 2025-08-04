@@ -136,4 +136,3 @@ inference:
   batch_size: 16                       # 추론 배치 크기 (training과 일치)
   result_path: "./prediction/"        # baseline.py와 동일
   remove_tokens: ['<pad>', '</s>', '<unk>']  # mT5 올바른 제거 토큰들 (<s>는 유지)
-  remove_tokens: ['<pad>', '</s>', '<unk>']  # mT5 올바른 제거 토큰들 (<s>는 유지)
