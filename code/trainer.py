@@ -972,6 +972,14 @@ class DialogueSummarizationTrainer:
                 logger.info(f"✅ Added {num_added_tokens} special tokens to tokenizer")
                 logger.info(f"   New vocab size: {len(self.tokenizer)}")
                 
+                # JSON 직렬화 문제 해결: numpy.dtype 객체를 문자열로 변환
+                import numpy as np
+                if hasattr(self.tokenizer, 'init_kwargs') and self.tokenizer.init_kwargs:
+                    for key, value in list(self.tokenizer.init_kwargs.items()):
+                        if isinstance(value, np.dtype):
+                            self.tokenizer.init_kwargs[key] = str(value)
+                            logger.info(f"🛠️  Fixed JSON serialization: {key} = {value} -> {str(value)}")
+                
                 # tokenizer 변경사항을 self에 저장 (모델 로딩 시 사용)
                 self._special_tokens_added = True
                 self._new_vocab_size = len(self.tokenizer)
