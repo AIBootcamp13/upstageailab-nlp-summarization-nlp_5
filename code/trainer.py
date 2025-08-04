@@ -1068,7 +1068,8 @@ class DialogueSummarizationTrainer:
                 model_name=model_checkpoint,
                 max_seq_length=self.config["tokenizer"].get("encoder_max_len", 512)
                 + self.config["tokenizer"].get("decoder_max_len", 200),
-                dtype=torch.float16 if self.config["training"].get("fp16") else torch.float32,
+                # 🔧 Unsloth dtype 호환성 수정: float16 또는 bfloat16만 지원
+                dtype=torch.bfloat16 if self.config["training"].get("bf16") else torch.float16,
                 load_in_4bit=qlora_config.get("load_in_4bit", True),
             )
 
