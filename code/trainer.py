@@ -48,160 +48,113 @@ from transformers import (
     PreTrainedTokenizer,
 )
 
+# 🔥 CRITICAL: Transformers Monkey Patch for numpy.dtype JSON serialization
+# 이 패치는 transformers 라이브러리의 save_pretrained 메서드에서 발생하는
+# "Object of type dtype is not JSON serializable" 에러를 근본적으로 해결합니다.
+from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+import numpy as np
+import json
+
+# 원본 save_pretrained 메서드 백업
+_original_save_pretrained = PreTrainedTokenizerBase.save_pretrained
+
+def _safe_save_pretrained(self, save_directory, **kwargs):
+    """numpy.dtype 문제를 해결하는 안전한 save_pretrained 메서드"""
+    print(f"🔧 Monkey Patch: safe_save_pretrained 호출됨 - {save_directory}")
+    
+    def _clean_numpy_dtypes_recursive(obj, path="root"):
+        """재귀적으로 모든 numpy.dtype을 찾아서 문자열로 변환"""
+        if isinstance(obj, dict):
+            cleaned = {}
+            for key, value in obj.items():
+                if isinstance(value, np.dtype):
+                    print(f"🔥 Monkey Patch: numpy.dtype 발견 및 변환: {path}.{key} = {value}")
+                    cleaned[key] = str(value)
+                elif isinstance(value, (dict, list, tuple)):
+                    cleaned[key] = _clean_numpy_dtypes_recursive(value, f"{path}.{key}")
+                elif callable(value) and not isinstance(value, type):
+                    print(f"🔥 Monkey Patch: callable 발견 및 제거: {path}.{key}")
+                    # callable은 제외
+                    continue
+                else:
+                    cleaned[key] = value
+            return cleaned
+        elif isinstance(obj, (list, tuple)):
+            cleaned_items = []
+            for i, item in enumerate(obj):
+                if isinstance(item, np.dtype):
+                    print(f"🔥 Monkey Patch: numpy.dtype 발견 및 변환: {path}[{i}] = {item}")
+                    cleaned_items.append(str(item))
+                elif isinstance(item, (dict, list, tuple)):
+                    cleaned_items.append(_clean_numpy_dtypes_recursive(item, f"{path}[{i}]"))
+                elif callable(item) and not isinstance(item, type):
+                    print(f"🔥 Monkey Patch: callable 발견 및 제거: {path}[{i}]")
+                    # callable은 제외
+                    continue
+                else:
+                    cleaned_items.append(item)
+            return type(obj)(cleaned_items)
+        else:
+            return obj
+    
+    # tokenizer 설정 정리
+    if hasattr(self, 'init_kwargs') and self.init_kwargs:
+        print(f"🧹 Monkey Patch: init_kwargs 정리 중")
+        self.init_kwargs = _clean_numpy_dtypes_recursive(self.init_kwargs, "init_kwargs")
+    
+    # 기타 중요한 속성들 정리
+    critical_attrs = [
+        'special_tokens_map', 'added_tokens_encoder', 'added_tokens_decoder',
+        'vocab', '_tokenizer', 'backend_tokenizer'
+    ]
+    
+    for attr_name in critical_attrs:
+        if hasattr(self, attr_name):
+            try:
+                attr_value = getattr(self, attr_name)
+                if attr_value is not None:
+                    cleaned_value = _clean_numpy_dtypes_recursive(attr_value, f"tokenizer.{attr_name}")
+                    setattr(self, attr_name, cleaned_value)
+            except Exception as e:
+                print(f"🔥 Monkey Patch: {attr_name} 정리 실패: {e}")
+                pass
+    
+    print(f"✅ Monkey Patch: numpy.dtype 정리 완료")
+    
+    # 원본 메서드 호출
+    try:
+        return _original_save_pretrained(self, save_directory, **kwargs)
+    except Exception as e:
+        print(f"🔥 Monkey Patch: save_pretrained 실패: {e}")
+        raise
+
+# Monkey Patch 적용
+PreTrainedTokenizerBase.save_pretrained = _safe_save_pretrained
+print(f"🚀 Transformers Monkey Patch 적용 완료: PreTrainedTokenizerBase.save_pretrained")
+
 
 class SafeSeq2SeqTrainer(Seq2SeqTrainer):
-    """JSON 직렬화 문제를 해결하기 위한 안전한 Seq2SeqTrainer"""
+    """Transformers Monkey Patch와 함께 작동하는 간소화된 Seq2SeqTrainer
+    
+    주요 변경사항:
+    - Monkey Patch가 근본적으로 numpy.dtype 문제를 해결
+    - 기존의 복잡한 JSON 직렬화 보호 코드 제거
+    - 간단한 로깅만 유지
+    """
     
     def _save(self, output_dir: str, state_dict=None):
-        """체크포인트 저장 전 JSON 직렬화 문제 해결"""
+        """간소화된 체크포인트 저장 (Monkey Patch 의존)"""
         print(f"🔧 SafeSeq2SeqTrainer._save 호출됨: {output_dir}")
+        print(f"🚀 Monkey Patch가 numpy.dtype 문제를 자동 해결합니다")
         
-        # 최종 해결책: JSON 직렬화 전체를 보호
-        import json
-        import numpy as np
-        
-        # 원본 json.dumps를 백업
-        original_json_dumps = json.dumps
-        
-        def safe_json_dumps(obj, **kwargs):
-            """모든 numpy.dtype를 처리하는 안전한 JSON 직렬화"""
-            def clean_for_json(o):
-                import numpy as np
-                try:
-                    # numpy.dtype 체크
-                    if isinstance(o, np.dtype):
-                        print(f"🔥 JSON에서 numpy.dtype 발견 및 제거: {o}")
-                        return str(o)
-                    # callable 체크
-                    elif callable(o) and not isinstance(o, type):
-                        print(f"🔥 JSON에서 callable 발견 및 제거: {type(o)}")
-                        return str(o)
-                    # hasattr dtype 체크
-                    elif hasattr(o, 'dtype') and hasattr(o.dtype, 'name'):
-                        print(f"🔥 JSON에서 dtype 속성 발견 및 제거: {type(o)}")
-                        return str(o)
-                    # dict 재귀 처리
-                    elif isinstance(o, dict):
-                        result = {}
-                        for k, v in o.items():
-                            try:
-                                cleaned_key = clean_for_json(k)
-                                cleaned_value = clean_for_json(v)
-                                result[cleaned_key] = cleaned_value
-                            except Exception as e:
-                                print(f"🔥 dict 키 {k} 정리 실패, 생략: {e}")
-                                continue
-                        return result
-                    # list/tuple 재귀 처리
-                    elif isinstance(o, (list, tuple)):
-                        try:
-                            cleaned_items = []
-                            for item in o:
-                                try:
-                                    cleaned_item = clean_for_json(item)
-                                    cleaned_items.append(cleaned_item)
-                                except Exception as e:
-                                    print(f"🔥 list item 정리 실패, 생략: {e}")
-                                    continue
-                            return type(o)(cleaned_items)
-                        except:
-                            return []
-                    else:
-                        return o
-                except Exception as e:
-                    print(f"🔥 객체 정리 중 예외 발생, 문자열로 변환: {e}")
-                    return str(o)
-            
-            try:
-                cleaned_obj = clean_for_json(obj)
-                return original_json_dumps(cleaned_obj, **kwargs)
-            except Exception as e:
-                print(f"🔥 JSON 직렬화 실패, 빈 dict 반환: {e}")
-                return original_json_dumps({}, **kwargs)
-        
-        # json.dumps를 임시 교체
-        json.dumps = safe_json_dumps
-        
+        # 부모 클래스의 _save 메서드 직접 호출
+        # Monkey Patch가 save_pretrained에서 numpy.dtype을 자동 정리
         try:
-            # 저장 직전 tokenizer 완전 정리
-            self._clean_tokenizer_for_serialization()
-            
-            # 부모 클래스의 _save 메서드 호출
             super()._save(output_dir, state_dict)
-            
-        finally:
-            # json.dumps 원복
-            json.dumps = original_json_dumps
-            print(f"✅ JSON 직렬화 보호 완료")
-    
-    def _clean_tokenizer_for_serialization(self):
-        """토크나이저의 JSON 직렬화 문제를 해결하는 강력한 정리 함수 (mT5 모델 대응)"""
-        import numpy as np
-        print(f"🧹 모든 numpy.dtype 완전 삭제 시작")
-        
-        # 강력한 해결책: 모든 numpy.dtype 완전 삭제
-        def remove_numpy_dtypes_recursive(obj, path="root"):
-            """재귀적으로 모든 numpy.dtype을 찾아서 완전 삭제"""
-            if isinstance(obj, dict):
-                keys_to_remove = []
-                for key, value in list(obj.items()):
-                    if isinstance(value, np.dtype):
-                        keys_to_remove.append(key)
-                        print(f"✅ {path}.{key}: numpy.dtype 완전 삭제")
-                    elif callable(value) and not isinstance(value, type):
-                        keys_to_remove.append(key)
-                        print(f"✅ {path}.{key}: callable 삭제")
-                    elif isinstance(value, (dict, list, tuple)):
-                        remove_numpy_dtypes_recursive(value, f"{path}.{key}")
-                
-                for key in keys_to_remove:
-                    del obj[key]
-                    
-            elif isinstance(obj, (list, tuple)):
-                for i, item in enumerate(obj):
-                    if isinstance(item, (dict, list, tuple)):
-                        remove_numpy_dtypes_recursive(item, f"{path}[{i}]")
-        
-        # 1. processing_class 완전 정리
-        if hasattr(self, 'processing_class') and self.processing_class:
-            print(f"⚙️ processing_class 완전 정리 중")
-            
-            # init_kwargs 정리
-            if hasattr(self.processing_class, 'init_kwargs') and self.processing_class.init_kwargs:
-                remove_numpy_dtypes_recursive(self.processing_class.init_kwargs, "init_kwargs")
-            
-            # 모든 주요 속성 정리
-            critical_attrs = [
-                'special_tokens_map', 'added_tokens_encoder', 'added_tokens_decoder',
-                'vocab', '_tokenizer', 'backend_tokenizer'
-            ]
-            
-            for attr_name in critical_attrs:
-                if hasattr(self.processing_class, attr_name):
-                    try:
-                        attr_value = getattr(self.processing_class, attr_name)
-                        if attr_value is not None:
-                            remove_numpy_dtypes_recursive(attr_value, f"processing_class.{attr_name}")
-                    except:
-                        pass
-        
-        # 2. tokenizer 완전 정리
-        if hasattr(self, 'tokenizer') and self.tokenizer:
-            print(f"⚙️ tokenizer 완전 정리 중")
-            
-            if hasattr(self.tokenizer, 'init_kwargs') and self.tokenizer.init_kwargs:
-                remove_numpy_dtypes_recursive(self.tokenizer.init_kwargs, "tokenizer.init_kwargs")
-            
-            for attr_name in critical_attrs:
-                if hasattr(self.tokenizer, attr_name):
-                    try:
-                        attr_value = getattr(self.tokenizer, attr_name)
-                        if attr_value is not None:
-                            remove_numpy_dtypes_recursive(attr_value, f"tokenizer.{attr_name}")
-                    except:
-                        pass
-        
-        print(f"✅ 모든 numpy.dtype 완전 삭제 완료")
+            print(f"✅ 체크포인트 저장 성공: {output_dir}")
+        except Exception as e:
+            print(f"🔥 체크포인트 저장 실패: {e}")
+            raise
 # QLoRA 및 unsloth 관련 import (선택적)
 try:
     from unsloth import FastLanguageModel
