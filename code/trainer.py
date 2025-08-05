@@ -210,13 +210,6 @@ print(f"   - PreTrainedTokenizerFast.save_pretrained")
 print(f"   - NumpyDtypeEncoder 적용")
 
 
-    print(f"   - json.dumps (글로벌 패치)")
-    print(f"   - PreTrainedTokenizerBase.save_pretrained")
-    print(f"   - PreTrainedTokenizerFast.save_pretrained")
-    print(f"   - NumpyDtypeEncoder 적용")
-    
-    
-
 class SafeSeq2SeqTrainer(Seq2SeqTrainer):
     """Transformers Monkey Patch와 함께 작동하는 간소화된 Seq2SeqTrainer
     
