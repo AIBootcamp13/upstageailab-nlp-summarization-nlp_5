@@ -52,15 +52,20 @@ from transformers import (
 # 이 패치는 transformers 라이브러리의 save_pretrained 메서드에서 발생하는
 # "Object of type dtype is not JSON serializable" 에러를 근본적으로 해결합니다.
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+from transformers.tokenization_utils_fast import PreTrainedTokenizerFast
 import numpy as np
 import json
 
-# 원본 save_pretrained 메서드 백업
-_original_save_pretrained = PreTrainedTokenizerBase.save_pretrained
+# 🎯 STEP 1: PreTrainedTokenizerBase.save_pretrained 패치
+_original_base_save_pretrained = PreTrainedTokenizerBase.save_pretrained
+
+# 🎯 STEP 2: PreTrainedTokenizerFast.save_pretrained 패치 (이중 보안)
+_original_fast_save_pretrained = PreTrainedTokenizerFast.save_pretrained
 
 def _safe_save_pretrained(self, save_directory, **kwargs):
     """numpy.dtype 문제를 해결하는 안전한 save_pretrained 메서드"""
     print(f"🔧 Monkey Patch: safe_save_pretrained 호출됨 - {save_directory}")
+    print(f"🔍 Tokenizer 타입: {type(self).__name__}")
     
     def _clean_numpy_dtypes_recursive(obj, path="root"):
         """재귀적으로 모든 numpy.dtype을 찾아서 문자열로 변환"""
@@ -121,16 +126,23 @@ def _safe_save_pretrained(self, save_directory, **kwargs):
     
     print(f"✅ Monkey Patch: numpy.dtype 정리 완료")
     
-    # 원본 메서드 호출
+    # 원본 메서드 호출 (타입에 따라 다른 원본 메서드 사용)
     try:
-        return _original_save_pretrained(self, save_directory, **kwargs)
+        if isinstance(self, PreTrainedTokenizerFast):
+            return _original_fast_save_pretrained(self, save_directory, **kwargs)
+        else:
+            return _original_base_save_pretrained(self, save_directory, **kwargs)
     except Exception as e:
         print(f"🔥 Monkey Patch: save_pretrained 실패: {e}")
         raise
 
-# Monkey Patch 적용
+# 🔥 CRITICAL: 모든 토크나이저 클래스에 Monkey Patch 적용
 PreTrainedTokenizerBase.save_pretrained = _safe_save_pretrained
-print(f"🚀 Transformers Monkey Patch 적용 완료: PreTrainedTokenizerBase.save_pretrained")
+PreTrainedTokenizerFast.save_pretrained = _safe_save_pretrained
+
+print(f"🚀 완전 Monkey Patch 적용 완료:")
+print(f"   - PreTrainedTokenizerBase.save_pretrained")
+print(f"   - PreTrainedTokenizerFast.save_pretrained")
 
 
 class SafeSeq2SeqTrainer(Seq2SeqTrainer):
