@@ -44,106 +44,168 @@ from transformers import (
     TrainerCallback,
     TrainerState,
     TrainerControl,
-    PreTrainedModel,
-    PreTrainedTokenizer,
-)
-
-# 🔥 CRITICAL: Transformers Monkey Patch for numpy.dtype JSON serialization
-# 이 패치는 transformers 라이브러리의 save_pretrained 메서드에서 발생하는
-# "Object of type dtype is not JSON serializable" 에러를 근본적으로 해결합니다.
-from transformers.tokenization_utils_base import PreTrainedTokenizerBase
-from transformers.tokenization_utils_fast import PreTrainedTokenizerFast
-import numpy as np
-import json
-
-# 🎯 STEP 1: PreTrainedTokenizerBase.save_pretrained 패치
-_original_base_save_pretrained = PreTrainedTokenizerBase.save_pretrained
-
-# 🎯 STEP 2: PreTrainedTokenizerFast.save_pretrained 패치 (이중 보안)
-_original_fast_save_pretrained = PreTrainedTokenizerFast.save_pretrained
-
-def _safe_save_pretrained(self, save_directory, **kwargs):
-    """numpy.dtype 문제를 해결하는 안전한 save_pretrained 메서드"""
-    print(f"🔧 Monkey Patch: safe_save_pretrained 호출됨 - {save_directory}")
-    print(f"🔍 Tokenizer 타입: {type(self).__name__}")
+    # 🔥 CRITICAL: Transformers Monkey Patch for numpy.dtype JSON serialization
+    # 이 패치는 transformers 라이브러리의 save_pretrained 메서드에서 발생하는
+    # "Object of type dtype is not JSON serializable" 에러를 근본적으로 해결합니다.
+    from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+    from transformers.tokenization_utils_fast import PreTrainedTokenizerFast
+    import numpy as np
+    import json
     
-    def _clean_numpy_dtypes_recursive(obj, path="root"):
-        """재귀적으로 모든 numpy.dtype을 찾아서 문자열로 변환"""
-        if isinstance(obj, dict):
-            cleaned = {}
-            for key, value in obj.items():
-                if isinstance(value, np.dtype):
-                    print(f"🔥 Monkey Patch: numpy.dtype 발견 및 변환: {path}.{key} = {value}")
-                    cleaned[key] = str(value)
-                elif isinstance(value, (dict, list, tuple)):
-                    cleaned[key] = _clean_numpy_dtypes_recursive(value, f"{path}.{key}")
-                elif callable(value) and not isinstance(value, type):
-                    print(f"🔥 Monkey Patch: callable 발견 및 제거: {path}.{key}")
-                    # callable은 제외
-                    continue
-                else:
-                    cleaned[key] = value
-            return cleaned
-        elif isinstance(obj, (list, tuple)):
-            cleaned_items = []
-            for i, item in enumerate(obj):
-                if isinstance(item, np.dtype):
-                    print(f"🔥 Monkey Patch: numpy.dtype 발견 및 변환: {path}[{i}] = {item}")
-                    cleaned_items.append(str(item))
-                elif isinstance(item, (dict, list, tuple)):
-                    cleaned_items.append(_clean_numpy_dtypes_recursive(item, f"{path}[{i}]"))
-                elif callable(item) and not isinstance(item, type):
-                    print(f"🔥 Monkey Patch: callable 발견 및 제거: {path}[{i}]")
-                    # callable은 제외
-                    continue
-                else:
-                    cleaned_items.append(item)
-            return type(obj)(cleaned_items)
-        else:
-            return obj
+    # 🎯 STEP 1: JSON 직렬화를 위한 커스텀 인코더
+    class NumpyDtypeEncoder(json.JSONEncoder):
+        """numpy.dtype과 기타 문제있는 타입을 안전하게 직렬화하는 인코더"""
+        
+        def default(self, obj):
+            if isinstance(obj, np.dtype):
+                return str(obj)
+            elif isinstance(obj, np.integer):
+                return int(obj)
+            elif isinstance(obj, np.floating):
+                return float(obj)
+            elif isinstance(obj, np.ndarray):
+                return obj.tolist()
+            elif callable(obj) and not isinstance(obj, type):
+                # callable 객체는 문자열로 변환
+                return str(obj)
+            elif hasattr(obj, '__dict__') and not isinstance(obj, (str, int, float, bool, type(None))):
+                # 복잡한 객체는 타입명으로 변환
+                return f"<{type(obj).__name__}>"
+            else:
+                return super().default(obj)
     
-    # tokenizer 설정 정리
-    if hasattr(self, 'init_kwargs') and self.init_kwargs:
-        print(f"🧹 Monkey Patch: init_kwargs 정리 중")
-        self.init_kwargs = _clean_numpy_dtypes_recursive(self.init_kwargs, "init_kwargs")
+    # 🎯 STEP 2: 원본 메서드들 백업
+    _original_json_dumps = json.dumps
+    _original_base_save_pretrained = PreTrainedTokenizerBase.save_pretrained
+    _original_fast_save_pretrained = PreTrainedTokenizerFast.save_pretrained
     
-    # 기타 중요한 속성들 정리
-    critical_attrs = [
-        'special_tokens_map', 'added_tokens_encoder', 'added_tokens_decoder',
-        'vocab', '_tokenizer', 'backend_tokenizer'
-    ]
+    # 🎯 STEP 3: JSON dumps 패치
+    def _safe_json_dumps(*args, **kwargs):
+        """numpy.dtype을 자동으로 처리하는 안전한 json.dumps"""
+        # 커스텀 인코더를 기본으로 사용
+        if 'cls' not in kwargs:
+            kwargs['cls'] = NumpyDtypeEncoder
+        try:
+            return _original_json_dumps(*args, **kwargs)
+        except TypeError as e:
+            if "not JSON serializable" in str(e):
+                print(f"🔥 JSON dumps 에러 발생, 안전 모드로 재시도: {e}")
+                # ensure_ascii=False로 재시도
+                kwargs['ensure_ascii'] = False
+                return _original_json_dumps(*args, **kwargs)
+            else:
+                raise
     
-    for attr_name in critical_attrs:
-        if hasattr(self, attr_name):
+    # JSON dumps 전역 패치
+    json.dumps = _safe_json_dumps
+    
+    def _safe_save_pretrained(self, save_directory, **kwargs):
+        """numpy.dtype 문제를 해결하는 안전한 save_pretrained 메서드"""
+        print(f"🔧 Monkey Patch: safe_save_pretrained 호출됨 - {save_directory}")
+        print(f"🔍 Tokenizer 타입: {type(self).__name__}")
+        
+        def _clean_numpy_dtypes_recursive(obj, path="root"):
+            """재귀적으로 모든 numpy.dtype을 찾아서 문자열로 변환"""
+            if isinstance(obj, dict):
+                cleaned = {}
+                for key, value in obj.items():
+                    if isinstance(value, np.dtype):
+                        print(f"🔥 Monkey Patch: numpy.dtype 발견 및 변환: {path}.{key} = {value}")
+                        cleaned[key] = str(value)
+                    elif isinstance(value, (dict, list, tuple)):
+                        cleaned[key] = _clean_numpy_dtypes_recursive(value, f"{path}.{key}")
+                    elif callable(value) and not isinstance(value, type):
+                        print(f"🔥 Monkey Patch: callable 발견 및 제거: {path}.{key}")
+                        # callable은 문자열로 변환
+                        cleaned[key] = str(value)
+                    else:
+                        cleaned[key] = value
+                return cleaned
+            elif isinstance(obj, (list, tuple)):
+                cleaned_items = []
+                for i, item in enumerate(obj):
+                    if isinstance(item, np.dtype):
+                        print(f"🔥 Monkey Patch: numpy.dtype 발견 및 변환: {path}[{i}] = {item}")
+                        cleaned_items.append(str(item))
+                    elif isinstance(item, (dict, list, tuple)):
+                        cleaned_items.append(_clean_numpy_dtypes_recursive(item, f"{path}[{i}]"))
+                    elif callable(item) and not isinstance(item, type):
+                        print(f"🔥 Monkey Patch: callable 발견 및 제거: {path}[{i}]")
+                        # callable은 문자열로 변환
+                        cleaned_items.append(str(item))
+                    else:
+                        cleaned_items.append(item)
+                return type(obj)(cleaned_items)
+            else:
+                return obj
+        
+        # tokenizer 설정 정리
+        if hasattr(self, 'init_kwargs') and self.init_kwargs:
+            print(f"🧹 Monkey Patch: init_kwargs 정리 중")
+            self.init_kwargs = _clean_numpy_dtypes_recursive(self.init_kwargs, "init_kwargs")
+        
+        # 기타 중요한 속성들 정리
+        critical_attrs = [
+            'special_tokens_map', 'added_tokens_encoder', 'added_tokens_decoder',
+            'vocab', '_tokenizer', 'backend_tokenizer', 'tokenizer', 
+            'post_processor', 'decoder', 'model', 'normalizer', 'pre_tokenizer'
+        ]
+        
+        for attr_name in critical_attrs:
+            if hasattr(self, attr_name):
+                try:
+                    attr_value = getattr(self, attr_name)
+                    if attr_value is not None:
+                        cleaned_value = _clean_numpy_dtypes_recursive(attr_value, f"tokenizer.{attr_name}")
+                        setattr(self, attr_name, cleaned_value)
+                except Exception as e:
+                    print(f"🔥 Monkey Patch: {attr_name} 정리 실패: {e}")
+                    pass
+        
+        print(f"✅ Monkey Patch: numpy.dtype 정리 완료")
+        
+        # 원본 메서드 호출 (타입에 따라 다른 원본 메서드 사용)
+        try:
+            if isinstance(self, PreTrainedTokenizerFast):
+                return _original_fast_save_pretrained(self, save_directory, **kwargs)
+            else:
+                return _original_base_save_pretrained(self, save_directory, **kwargs)
+        except Exception as e:
+            print(f"🔥 Monkey Patch: save_pretrained 실패: {e}")
+            # 최후의 수단: 수동으로 tokenizer_config.json 생성
             try:
-                attr_value = getattr(self, attr_name)
-                if attr_value is not None:
-                    cleaned_value = _clean_numpy_dtypes_recursive(attr_value, f"tokenizer.{attr_name}")
-                    setattr(self, attr_name, cleaned_value)
-            except Exception as e:
-                print(f"🔥 Monkey Patch: {attr_name} 정리 실패: {e}")
-                pass
+                print(f"🔧 Monkey Patch: 수동 tokenizer_config.json 생성 시도")
+                import os
+                os.makedirs(save_directory, exist_ok=True)
+                
+                # 안전한 설정만 저장
+                safe_config = {
+                    "model_type": getattr(self, 'model_type', 'unknown'),
+                    "name_or_path": getattr(self, 'name_or_path', 'unknown'),
+                    "tokenizer_class": type(self).__name__
+                }
+                
+                config_path = os.path.join(save_directory, "tokenizer_config.json")
+                with open(config_path, 'w', encoding='utf-8') as f:
+                    json.dumps(safe_config, f, indent=2, ensure_ascii=False, cls=NumpyDtypeEncoder)
+                
+                print(f"✅ Monkey Patch: 수동 생성 성공")
+                
+            except Exception as manual_e:
+                print(f"🔥 Monkey Patch: 수동 생성도 실패: {manual_e}")
+                raise e
     
-    print(f"✅ Monkey Patch: numpy.dtype 정리 완료")
+    # 🔥 CRITICAL: 모든 토크나이저 클래스에 Monkey Patch 적용
+    PreTrainedTokenizerBase.save_pretrained = _safe_save_pretrained
+    PreTrainedTokenizerFast.save_pretrained = _safe_save_pretrained
     
-    # 원본 메서드 호출 (타입에 따라 다른 원본 메서드 사용)
-    try:
-        if isinstance(self, PreTrainedTokenizerFast):
-            return _original_fast_save_pretrained(self, save_directory, **kwargs)
-        else:
-            return _original_base_save_pretrained(self, save_directory, **kwargs)
-    except Exception as e:
-        print(f"🔥 Monkey Patch: save_pretrained 실패: {e}")
-        raise
-
-# 🔥 CRITICAL: 모든 토크나이저 클래스에 Monkey Patch 적용
-PreTrainedTokenizerBase.save_pretrained = _safe_save_pretrained
-PreTrainedTokenizerFast.save_pretrained = _safe_save_pretrained
-
-print(f"🚀 완전 Monkey Patch 적용 완료:")
-print(f"   - PreTrainedTokenizerBase.save_pretrained")
-print(f"   - PreTrainedTokenizerFast.save_pretrained")
-
+    print(f"🚀 완전 Monkey Patch 적용 완료:")
+    print(f"   - json.dumps (글로벌 패치)")
+    print(f"   - PreTrainedTokenizerBase.save_pretrained")
+    print(f"   - PreTrainedTokenizerFast.save_pretrained")
+    print(f"   - NumpyDtypeEncoder 적용")
+    
+    
 
 class SafeSeq2SeqTrainer(Seq2SeqTrainer):
     """Transformers Monkey Patch와 함께 작동하는 간소화된 Seq2SeqTrainer
