@@ -44,13 +44,17 @@ from transformers import (
     TrainerCallback,
     TrainerState,
     TrainerControl,
-    # 🔥 CRITICAL: Transformers Monkey Patch for numpy.dtype JSON serialization
-    # 이 패치는 transformers 라이브러리의 save_pretrained 메서드에서 발생하는
-    # "Object of type dtype is not JSON serializable" 에러를 근본적으로 해결합니다.
-    from transformers.tokenization_utils_base import PreTrainedTokenizerBase
-    from transformers.tokenization_utils_fast import PreTrainedTokenizerFast
-    import numpy as np
-    import json
+    PreTrainedModel,
+    PreTrainedTokenizer,
+)
+
+# 🔥 CRITICAL: Transformers Monkey Patch for numpy.dtype JSON serialization
+# 이 패치는 transformers 라이브러리의 save_pretrained 메서드에서 발생하는
+# "Object of type dtype is not JSON serializable" 에러를 근본적으로 해결합니다.
+from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+from transformers.tokenization_utils_fast import PreTrainedTokenizerFast
+import numpy as np
+import json
     
     # 🎯 STEP 1: JSON 직렬화를 위한 커스텀 인코더
     class NumpyDtypeEncoder(json.JSONEncoder):
