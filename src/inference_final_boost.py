@@ -14,7 +14,7 @@ import os
 project_dir = "/data/ephemeral/home/nlp-5/lyj"
 sys.path.append(project_dir)
 
-from models.BART import load_tokenizer_and_model_for_test
+from models.BART import load_tokenizer_and_model_for_inference
 from inference.inference_modified import inference
 from dataset.preprocess import Preprocess
 
@@ -40,7 +40,7 @@ def main():
     
     # 모델 및 토크나이저 로드
     print("📦 Loading model and tokenizer...")
-    model, tokenizer = load_tokenizer_and_model_for_test(config, device)
+    model, tokenizer = load_tokenizer_and_model_for_inference(config, device)
     
     # 추론 실행
     print("🔮 Starting inference...")
