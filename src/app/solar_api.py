@@ -13,7 +13,7 @@ tqdm.pandas()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- Configuration ---
-PROJECT_DIR = "/data/ephemeral/home/nlp-5/pyeon/upstageailab-nlp-summarization-nlp_5"
+PROJECT_DIR = "/data/ephemeral/home/nlp-5/lyj"
 DATA_DIR = os.path.join(PROJECT_DIR, 'data')
 TRAIN_CSV = os.path.join(DATA_DIR, "train_clean_special_tokens.csv")
 DEV_CSV = os.path.join(DATA_DIR, "dev.csv")

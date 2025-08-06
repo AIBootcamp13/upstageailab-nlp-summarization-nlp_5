@@ -13,7 +13,7 @@ from rouge import Rouge # 모델의 성능을 평가하기 위한 라이브러�
 
 import wandb # 모델 학습 과정을 손쉽게 Tracking하고, 시각화할 수 있는 라이브러리입니다.
 
-project_dir = "/data/ephemeral/home/nlp-5/pyeon/upstageailab-nlp-summarization-nlp_5"
+project_dir = "/data/ephemeral/home/nlp-5/lyj"
 
 import sys
 sys.path.append(

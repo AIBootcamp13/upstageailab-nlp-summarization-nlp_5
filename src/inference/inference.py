@@ -5,7 +5,7 @@ from tqdm import tqdm
 
 import sys
 sys.path.append(
-    "/data/ephemeral/home/nlp-5/song/"
+    "/data/ephemeral/home/nlp-5/lyj"
 )
 from src.dataset.dataset_base import *
 from src.dataset.preprocess import *

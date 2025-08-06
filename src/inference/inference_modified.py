@@ -5,7 +5,7 @@ from tqdm import tqdm
 
 import sys
 sys.path.append(
-    "/data/ephemeral/home/nlp-5/pyeon/upstageailab-nlp-summarization-nlp_5"
+    "/data/ephemeral/home/nlp-5/lyj"
 )
 from dataset.dataset_base import *
 from dataset.preprocess import *
