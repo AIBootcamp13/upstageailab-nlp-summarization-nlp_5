@@ -51,7 +51,7 @@ def clean_text(text: str) -> str:
     text = re.sub(r"\n+", r"\n", text)
 
     # 중복 공백 제거
-    text = re.sub(r"\s+", ' ', text)
+    text = re.sub(r"[ \t]+", ' ', text)
 
     return text.strip()
 
@@ -118,4 +118,3 @@ class Preprocess:
             decoder_input = dataset['summary'].apply(lambda x : self.bos_token + str(x)) # 디코더 입력은 'summary' 앞에 시작 토큰(bos_token)을 추가하여 생성
             decoder_output = dataset['summary'].apply(lambda x : str(x) + self.eos_token) # 디코더 출력(레이블)은 'summary' 뒤에 종료 토큰(eos_token)을 추가하여 생성
             return encoder_input.tolist(), decoder_input.tolist(), decoder_output.tolist() # 인코더 입력, 디코더 입력, 디코더 출력을 리스트 형태로 반환
-

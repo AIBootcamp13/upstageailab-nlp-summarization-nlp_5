@@ -5,20 +5,16 @@ from tqdm import tqdm
 
 import sys
 sys.path.append(
-    "/data/ephemeral/home/nlp-5/song/"
+    "/data/ephemeral/home/nlp-5/pyeon/upstageailab-nlp-summarization-nlp_5"
 )
-from src.dataset.dataset_base import *
-from src.dataset.preprocess import *
-# from src.models.BART import *
-from src.models.AutoModels import *
+from dataset.dataset_base import *
+from dataset.preprocess import *
+from models.BART import *
 
 # tokenization 과정까지 진행된 최종적으로 모델에 입력될 데이터를 출력합니다.
-def prepare_test_dataset(config, preprocessor, tokenizer, val_flag=False):
+def prepare_test_dataset(config, preprocessor, tokenizer):
 
-    if val_flag:
-        test_file_path = os.path.join(config['general']['data_path'],'dev.csv')
-    else:
-        test_file_path = os.path.join(config['general']['data_path'],'test.csv')
+    test_file_path = os.path.join(config['general']['data_path'],'test.csv')
 
     test_data = preprocessor.make_set_as_df(test_file_path,is_train=False)
     test_id = test_data['fname']
@@ -42,7 +38,7 @@ def prepare_test_dataset(config, preprocessor, tokenizer, val_flag=False):
 
 
 # 학습된 모델이 생성한 요약문의 출력 결과를 보여줍니다.
-def inference(config, generate_model, tokenizer, val_flag=False):
+def inference(config, generate_model, tokenizer):
     device = torch.device('cuda:0' if torch.cuda.is_available()  else 'cpu')
     print('-'*10, f'device : {device}', '-'*10,)
     print(torch.__version__)
@@ -52,13 +48,11 @@ def inference(config, generate_model, tokenizer, val_flag=False):
     data_path = config['general']['data_path']
     preprocessor = Preprocess(config['tokenizer']['bos_token'], config['tokenizer']['eos_token'])
 
-    test_data, test_encoder_inputs_dataset = prepare_test_dataset(config,preprocessor, tokenizer, val_flag)
+    test_data, test_encoder_inputs_dataset = prepare_test_dataset(config,preprocessor, tokenizer)
     dataloader = DataLoader(test_encoder_inputs_dataset, batch_size=config['inference']['batch_size'])
 
     summary = []
     text_ids = []
-    generate_model.eval()
-    generate_model.gradient_checkpointing_disable()
     with torch.no_grad():
         for item in tqdm(dataloader):
             text_ids.extend(item['ID'])
@@ -84,22 +78,10 @@ def inference(config, generate_model, tokenizer, val_flag=False):
             "summary" : preprocessed_summary,
         }
     )
-
-    if val_flag:
-        val_file_path = os.path.join(config['general']['data_path'],'dev.csv')
-        # merge with val_df
-        val_df = pd.read_csv(val_file_path)
-        output = output.merge(val_df[['fname','dialogue','topic']], on='fname')
-
     result_path = config['inference']['result_path'] # submission 파일 경로
-
-    if val_flag:
-        result_path = os.path.dirname(result_path)
-        result_path = os.path.join(result_path, "val_inference.csv")
-
     if not os.path.exists(result_path):
-        os.makedirs(os.path.dirname(result_path), exist_ok=True)
-    output.to_csv(os.path.join(result_path), index=False)
+        os.makedirs(result_path, exist_ok=True)
+    output.to_csv(os.path.join(result_path, 'result1'), index=False)
 
     return output
     

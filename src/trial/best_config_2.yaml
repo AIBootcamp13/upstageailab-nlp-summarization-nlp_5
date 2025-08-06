@@ -23,7 +23,7 @@ tokenizer:
   special_tokens:
   - '#Person1#'
   - '#Person2#'
-  - '#Person3#' #까지만 기존에 존재함
+  - '#Person3#'
   - '#Person4#'
   - '#Person5#'
   - '#Person6#'
@@ -44,21 +44,20 @@ training:
   eval_steps: 400
   evaluation_strategy: steps
   fp16: true
-  #bf16: false
   generation_max_length: 200
-  gradient_accumulation_steps: 1
+  gradient_accumulation_steps: 4
   gradient_checkpointing: true
   gradient_checkpointing_kwargs:
     use_reentrant: false
   group_by_length: true
-  learning_rate: 1.0e-05
+  learning_rate: 2.958696443629532e-05
   load_best_model_at_end: true
   logging_steps: 100
-  num_train_epochs: 20
+  num_train_epochs: 10
   output_dir: baseline_test1
   overwrite_output_dir: false
   per_device_eval_batch_size: 48
-  per_device_train_batch_size: 64
+  per_device_train_batch_size: 32
   predict_with_generate: true
   remove_unused_columns: true
   report_to: all
@@ -67,7 +66,7 @@ training:
   seed: 42
   torch_empty_cache_steps: 10
   warmup_steps: 10
-  weight_decay: 0.01
+  weight_decay: 0.02412550452853243
 wandb:
   entity: ahyeon1-
   name: base

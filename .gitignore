@@ -1,4 +1,14 @@
 ### >>> Custom gitignore >>>
+# CSV files
+*.csv
+
+# Large notebook files
+src/notebooks/00_EDA_length.ipynb
+src/notebooks/ahyeon_preprocess.ipynb
+src/notebooks/ahyeon_preprocess_only_iwant.ipynb
+
+# Python cache files (additional)
+src/**/__pycache__/
 
 ### <<< Custom gitignore <<<
 

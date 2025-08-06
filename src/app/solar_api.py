@@ -13,9 +13,9 @@ tqdm.pandas()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- Configuration ---
-PROJECT_DIR = "/mnt/c/SKH/ai_lab_13/projects/nlp-text-summarization/song"
+PROJECT_DIR = "/data/ephemeral/home/nlp-5/pyeon/upstageailab-nlp-summarization-nlp_5"
 DATA_DIR = os.path.join(PROJECT_DIR, 'data')
-TRAIN_CSV = os.path.join(DATA_DIR, "train.csv")
+TRAIN_CSV = os.path.join(DATA_DIR, "train_clean_special_tokens.csv")
 DEV_CSV = os.path.join(DATA_DIR, "dev.csv")
 
 load_dotenv(os.path.join(PROJECT_DIR, ".env"))
@@ -25,6 +25,7 @@ client = openai.OpenAI(
     api_key=UPSTAGE_API_KEY,
     base_url="https://api.upstage.ai/v1/solar"
 )
+
 
 # Prompt를 생성하는 함수를 수정합니다.
 def build_prompt(dialogue, type='summarization'):
@@ -58,8 +59,8 @@ def build_prompt(dialogue, type='summarization'):
             f"{dialogue}\n\n"
             "Translation:\n"
         )
-    elif type=='en2ko':
-        system_prompt = "You are a expert in the field of translation. Translate the given English dialogue into Korean. Follow the user's instruction carefully and provide a translation that is relevant to the original english dialogue."
+    elif type=='en2ja':
+        system_prompt = "You are a expert in the field of translation. Translate the given English dialogue into Japanese. Follow the user's instruction carefully and provide a translation that is relevant to the original english dialogue."
 
         user_prompt = (
             "Following the instructions below, translate the given dialogue.\n"
@@ -68,8 +69,22 @@ def build_prompt(dialogue, type='summarization'):
             "2. Preserve named entities or english name in the dialogue.\n"
             "3. Each turn is distinguished by line feed, preserve the number of turns and representation of speaker such as #Person1#.\n"
             "4. Preserve Personal Identity Information masking such as #Person1#, #Email#, #Address#, etc."
-            "5. Translate English to Korean.\n\n"
+            "5. Translate English to Japanese.\n\n"
             "English Dialogue:\n"
+            f"{dialogue}\n\n"
+            "Translation:\n"
+        )
+    elif type=='ja2ko':
+        system_prompt = "You are a expert in the field of translation. Translate the given Japanese dialogue into Korean. Follow the user's instruction carefully and provide a translation that is relevant to the original japanese dialogue."
+
+        user_prompt = (
+            "Following the instructions below, translate the given dialogue.\n"
+            "Instructions:\n"
+            "1. Read the dialogue carefully.\n"
+            "2. Preserve named entities or english name in the dialogue.\n"
+            "3. Each turn is distinguished by line feed, preserve the number of turns and representation of speaker such as #Person1#.\n"
+            "4. Translate Japanese to Korean.\n\n"
+            "Japanese Dialogue:\n"
             f"{dialogue}\n\n"
             "Translation:\n"
         )
@@ -115,7 +130,7 @@ def build_prompt(dialogue, type='summarization'):
 
 def chat_solar(dialogue, type='summarization'):
     max_tokens = 170
-    if type in ['en2ko', 'ko2en']:
+    if type in ['ko2en', 'en2ja', 'ja2ko']:
         max_tokens = None # 따로 설정하지 않는다.
     elif type == 'topic':
         max_tokens = 15
@@ -159,11 +174,11 @@ def process_row(row):
     dialogue = data['dialogue']
     fname = data['fname']
     # print("="*15,fname,"="*15)
-    try:
-        summary = chat_solar(dialogue, type='summarization')
-    except Exception as e:
-        print(f"[{idx}] Error in summarization: {e}")
-        summary = None
+    # try:
+    #     summary = chat_solar(dialogue, type='summarization')
+    # except Exception as e:
+    #     print(f"[{idx}] Error in summarization: {e}")
+    #     summary = None
 
     try:
         ko2en = chat_solar(dialogue, type='ko2en')
@@ -172,30 +187,36 @@ def process_row(row):
         ko2en = None
 
     try:
-        en2ko = chat_solar(ko2en, type='en2ko') if ko2en else None
+        en2ja = chat_solar(ko2en, type='en2ja') if ko2en else None
     except Exception as e:
-        print(f"[{idx}] Error in en2ko: {e}")
-        en2ko = None
-
+        print(f"[{idx}] Error in en2ja: {e}")
+        en2ja = None
+    
     try:
-        re_summary = chat_solar(en2ko, type='summarization') if en2ko else None
+        ja2ko = chat_solar(en2ja, type='ja2ko') if en2ja else None
     except Exception as e:
-        print(f"[{idx}] Error in re_summary: {e}")
-        re_summary = None
+        print(f"[{idx}] Error in ja2ko: {e}")
+        ja2ko = None
 
-    try:
-        topic = chat_solar(en2ko, type='topic') if en2ko else None
-    except Exception as e:
-        print(f"[{idx}] Error in topic: {e}")
-        topic = None
+    # try:
+    #     re_summary = chat_solar(ja2ko, type='summarization') if ja2ko else None
+    # except Exception as e:
+    #     print(f"[{idx}] Error in re_summary: {e}")
+    #     re_summary = None
 
-    try:
-        ner = chat_solar(dialogue, type='ner')
-    except Exception as e:
-        print(f"[{idx}] Error in ner: {e}")
-        ner = None
+    # try:
+    #     topic = chat_solar(ja2ko, type='topic') if ja2ko else None
+    # except Exception as e:
+    #     print(f"[{idx}] Error in topic: {e}")
+    #     topic = None
 
-    return fname, summary, topic, ko2en, en2ko, re_summary, ner
+    # try:
+    #     ner = chat_solar(dialogue, type='ner')
+    # except Exception as e:
+    #     print(f"[{idx}] Error in ner: {e}")
+    #     ner = None
+
+    return fname, ko2en, en2ja, ja2ko
 
 def process_topic(row):
     idx, data = row
@@ -219,7 +240,8 @@ def retranslate_all(df):
                 print(f"Error in processing row: {e}")
 
     results_df = pd.DataFrame(
-        results, columns=['fname', 'summary_solar', 'topic_solar', 'dialogue_ko2en', 'dialogue_en2ko', 're_summary_solar', 'ner_solar']
+        #results, columns=['fname', 'summary_solar', 'topic_solar', 'dialogue_ko2en', 'dialogue_en2ja', 'dialogue_ja2ko', 're_summary_solar', 'ner_solar']
+        results, columns=['fname', 'dialogue_ko2en', 'dialogue_en2ja', 'dialogue_ja2ko']
     )
     return results_df
 
@@ -252,43 +274,42 @@ def filter_solar(data):
     filtered_data = re.sub(r'\([^)]*\)|\[[^\]]*\]|\{[^}]*\}|\<[^>]*\>|\*\*.*?\*\*|\*.*?\*', '', filtered_data)
     return filtered_data.strip() # 공백 제거
 
-def filter_topic(data):
-    if not isinstance(data, str):
-        return ""
-    filtered_data = re.split(r'\n', data, 1)[0]
-    return filtered_data
+# def filter_topic(data):
+#     if not isinstance(data, str):
+#         return ""
+#     filtered_data = re.split(r'\n', data, 1)[0]
+#     return filtered_data
 
-def extract_topic_all(df):
-    results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        futures = [executor.submit(process_topic, row) for row in df.iterrows()]
-        for future in tqdm(concurrent.futures.as_completed(futures), total=len(df)):
-            try:
-                results.append(future.result())
-            except Exception as e:
-                print(f"Error in processing row: {e}")
+# def extract_topic_all(df):
+#     results = []
+#     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+#         futures = [executor.submit(process_topic, row) for row in df.iterrows()]
+#         for future in tqdm(concurrent.futures.as_completed(futures), total=len(df)):
+#             try:
+#                 results.append(future.result())
+#             except Exception as e:
+#                 print(f"Error in processing row: {e}")
 
-    results_df = pd.DataFrame(
-        results, columns=['fname', 'dialogue', 'topic']
-    )
-    results_df['topic'] = results_df['topic'].apply(filter_topic)
-    return results_df
+#     results_df = pd.DataFrame(
+#         results, columns=['fname', 'dialogue', 'topic']
+#     )
+#     results_df['topic'] = results_df['topic'].apply(filter_topic)
+#     return results_df
 
 if __name__ == '__main__':
     train_df = pd.read_csv(TRAIN_CSV)
-    val_df = pd.read_csv(DEV_CSV)
-    test_df = pd.read_csv(os.path.join(DATA_DIR, "test.csv"))
+    train_df = train_df.iloc[6000:]
 
-    # print("Processing train_df...")
-    # train_results = retranslate_all(train_df)
-    # train_results.to_csv(os.path.join(DATA_DIR, "train_solar_results.csv"), index=False)
-    # print("Train results saved to data/train_solar_results.csv")
+    print("Processing train_df...")
+    train_results = retranslate_all(train_df)
+    train_results.to_csv(os.path.join(DATA_DIR, "train_backtranslation_ko2en2ja2ko_results_dialogue_6000-.csv"), index=False)
+    print("Train results saved to data/train_backtranslation_ko2en2ja2ko_results_dialogue_6000-.csv")
 
     # print("Processing val_df...")
     # val_results = retranslate_all(val_df)
     # val_results.to_csv(os.path.join(DATA_DIR, "val_solar_results.csv"), index=False)
     # print("Validation results saved to data/val_solar_results.csv")
 
-    test_results = extract_topic_all(test_df)
-    test_results.to_csv(os.path.join(DATA_DIR, "test_topic_solar.csv"), index=False)
-    print("Validation results saved to data/test_solar_results.csv")
+    # test_results = extract_topic_all(test_df)
+    # test_results.to_csv(os.path.join(DATA_DIR, "test_topic_solar.csv"), index=False)
+    # print("Validation results saved to data/test_solar_results.csv")
