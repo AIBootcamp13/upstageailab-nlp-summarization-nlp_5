@@ -30,6 +30,7 @@ pytorch_lightning==2.5.2
 # transformers[torch]==4.35.2
 transformers==4.54.0
 rouge
+rouge-score
 jupyter
 jupyterlab
 unsloth
@@ -39,3 +40,7 @@ matplotlib
 seaborn
 python-dotenv
 nltk
+scipy
+kiwipiepy==0.21.0
+datasets
+optuna
