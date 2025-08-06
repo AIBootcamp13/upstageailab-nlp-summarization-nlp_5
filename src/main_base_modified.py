@@ -18,6 +18,10 @@ from transformers import Trainer, TrainingArguments
 from transformers import EarlyStoppingCallback
 
 import wandb # 모델 학습 과정을 손쉽게 Tracking하고, 시각화할 수 있는 라이브러리입니다.
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 project_dir = "/data/ephemeral/home/nlp-5/lyj"
 
