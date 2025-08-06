@@ -1,13 +1,18 @@
 from transformers import AutoTokenizer, BartForConditionalGeneration, BartConfig
+import os
 
 # 학습을 위한 tokenizer와 사전 학습된 모델을 불러옵니다.
 def load_tokenizer_and_model_for_train(config, device):
     print('-'*10, 'Load tokenizer & model', '-'*10,)
     print('-'*10, f'Model Name : {config["general"]["model_name"]}', '-'*10,)
     model_name = config['general']['model_name']
-    bart_config = BartConfig().from_pretrained(model_name)
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    generate_model = BartForConditionalGeneration.from_pretrained(config['general']['model_name'],config=bart_config)
+    
+    # HF_TOKEN 환경변수 가져오기
+    hf_token = os.getenv('HF_TOKEN')
+    
+    bart_config = BartConfig().from_pretrained(model_name, token=hf_token)
+    tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
+    generate_model = BartForConditionalGeneration.from_pretrained(config['general']['model_name'], config=bart_config, token=hf_token)
 
     special_tokens_dict={'additional_special_tokens':config['tokenizer']['special_tokens']}
     tokenizer.add_special_tokens(special_tokens_dict)
