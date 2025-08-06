@@ -1,0 +1,133 @@
+# 🚀 최적화된 Config - RTX 3090 24GB + Python 3.11 환경
+# Notion 상위 성능 모델 패턴 분석 기반 (Public 48.08270, Val 27.33300 목표)
+# 생성일: 2025-08-06
+
+general:
+  data_path: ./data/
+  model_name: digit82/kobart-summarization  # 검증된 베이스 모델
+  output_dir: ./outputs/exp_optimized_lyj
+  train_data: train_japan_backtranslation_filtered.csv  # 백번역 데이터 활용
+
+inference:
+  batch_size: 48                    # RTX 3090 24GB 최적화 (32→48)
+  ckt_dir: ./outputs/exp_optimized_lyj/best
+  early_stopping: true
+  generate_max_length: 180          # 최적 길이 (200→180)
+  no_repeat_ngram_size: 3           # 반복 방지 강화 (2→3)
+  num_beams: 6                      # Beam search 확장 (4→6)
+  length_penalty: 1.2               # 길이 페널티 추가 (상위 모델 패턴)
+  repetition_penalty: 1.1           # 반복 페널티 추가
+  remove_tokens:
+  - <usr>
+  - <s>
+  - </s>
+  - <pad>
+  - <unk>                          # 추가 노이즈 토큰
+  result_path: ./outputs/exp_optimized_lyj/submission_lyj.csv
+
+tokenizer:
+  bos_token: <s>
+  decoder_max_len: 180              # inference와 일치
+  encoder_max_len: 768              # 확장 (512→768)
+  eos_token: </s>
+  special_tokens:                   # 검증된 Special Token 세트
+  - '#Person1#'
+  - '#Person2#'
+  - '#Person3#'
+  - '#Person4#'
+  - '#Person5#'
+  - '#Person6#'
+  - '#Person7#'
+  - '#PhoneNumber#'
+  - '#Address#'
+  - '#DateOfBirth#'
+  - '#PassportNumber#'
+  - '#SSN#'
+  - '#CardNumber#'
+  - '#CarNumber#'
+  - '#Email#'
+  - '#Topic#'                      # Topic 정보 활용
+  - '#SEP#'                        # 구분자 토큰
+
+training:
+  # 📊 배치 및 데이터 최적화 (RTX 3090 24GB 활용)
+  per_device_train_batch_size: 80   # 메모리 최대 활용 (64→80)
+  per_device_eval_batch_size: 64    # 평가 배치 확대 (48→64)
+  dataloader_num_workers: 16        # CPU 48스레드 활용 (8→16)
+  dataloader_drop_last: false
+  dataloader_pin_memory: true       # 메모리 최적화 추가
+  dataloader_persistent_workers: true  # 워커 재사용
+  
+  # 🎯 학습 전략 최적화
+  num_train_epochs: 15              # 효율적 에포크 (20→15)
+  learning_rate: 3.0e-05            # 학습률 증가 (1e-5→3e-5)
+  warmup_steps: 500                 # Warmup 확대 (10→500)
+  weight_decay: 0.005               # 정규화 강화 (0.01→0.005)
+  
+  # 🔧 고급 최적화 (Python 3.11 + PyTorch 2.6)
+  fp16: true                        # 혼합 정밀도 유지
+  torch_compile: true               # PyTorch 2.6 컴파일 최적화
+  torch_compile_mode: "default"     # 기본 컴파일 모드
+  
+  # 💾 메모리 및 성능 최적화
+  gradient_checkpointing: true
+  gradient_checkpointing_kwargs:
+    use_reentrant: false
+  gradient_accumulation_steps: 1    # 배치 크기 증가로 1 유지
+  torch_empty_cache_steps: 5        # 캐시 정리 주기 (10→5)
+  
+  # 📈 평가 및 저장 전략
+  evaluation_strategy: steps
+  eval_steps: 300                   # 평가 주기 단축 (400→300)
+  save_steps: 300                   # 저장 주기 일치
+  logging_steps: 50                 # 로깅 세분화 (100→50)
+  
+  # 🎪 Early Stopping 조정
+  early_stopping_patience: 2        # 패티언스 증가 (1→2)
+  early_stopping_threshold: 0.0005  # 임계값 강화 (0.001→0.0005)
+  
+  # 🎲 재현성 및 기타
+  seed: 2025                        # 새로운 시드
+  group_by_length: true
+  remove_unused_columns: true
+  predict_with_generate: true
+  generation_max_length: 180        # 일관성 유지
+  
+  # 💽 저장 관리
+  output_dir: ./outputs/exp_optimized_lyj
+  overwrite_output_dir: false
+  save_total_limit: 3               # 체크포인트 증가 (1→3)
+  load_best_model_at_end: true
+  
+  # 📊 리포팅
+  report_to: wandb
+  logging_dir: ./outputs/exp_optimized_lyj/logs
+
+# 🔍 WandB 실험 추적
+wandb:
+  entity: lyjune37
+  name: optimized_lyj_v1
+  notes: "RTX3090+Python3.11 최적화, Beam6, LR3e-5, Batch80, Epoch15"
+  project: nlp-5
+  tags:
+  - "optimized"
+  - "lyj"
+  - "rtx3090"
+  - "python311"
+  - "beam6"
+
+# 🎯 실험 메타데이터
+experiment:
+  version: "1.0"
+  target_score: 
+    public: 48.5     # 목표 Public 점수
+    val: 28.0        # 목표 Validation 점수
+  hardware: "RTX 3090 24GB"
+  python_version: "3.11.13"
+  pytorch_version: "2.6.0"
+  optimization_focus:
+  - "Beam search 확장"
+  - "배치 크기 최적화"
+  - "길이 조정"
+  - "Special token 활용"
+  - "PyTorch 2.6 컴파일"
