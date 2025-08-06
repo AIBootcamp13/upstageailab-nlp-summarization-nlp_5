@@ -1,0 +1,56 @@
+# ⚡ Quick Boost - 기존 모델 최대 활용
+# 15분 내 즉시 점수 향상용
+
+general:
+  data_path: ./data/
+  model_name: digit82/kobart-summarization
+  output_dir: ./outputs/exp_quick_boost_lyj
+  train_data: train_japan_backtranslation_filtered.csv
+
+inference:
+  batch_size: 48
+  ckt_dir: ./outputs/exp_optimized_lyj/best
+  early_stopping: true
+  
+  # 🚀 극한 최적화 설정 (상위 모델 분석 기반)
+  generate_max_length: 230          # 매우 긴 요약으로 정보량 극대화
+  num_beams: 12                     # 최대 beam
+  length_penalty: 2.0               # 강력한 길이 선호
+  repetition_penalty: 1.25          # 강한 반복 방지
+  no_repeat_ngram_size: 6           # 매우 강한 n-gram 제어
+  
+  # 품질 극대화
+  diversity_penalty: 0.5            # 다양성 추가
+  early_stopping: true
+  
+  remove_tokens:
+  - <usr>
+  - <s>
+  - </s>
+  - <pad>
+  - <unk>
+  result_path: ./outputs/exp_quick_boost_lyj/submission_quick.csv
+
+tokenizer:
+  bos_token: <s>
+  decoder_max_len: 230
+  encoder_max_len: 768
+  eos_token: </s>
+  special_tokens:
+  - '#Person1#'
+  - '#Person2#'
+  - '#Person3#'
+  - '#Person4#'
+  - '#Person5#'
+  - '#Person6#'
+  - '#Person7#'
+  - '#PhoneNumber#'
+  - '#Address#'
+  - '#DateOfBirth#'
+  - '#PassportNumber#'
+  - '#SSN#'
+  - '#CardNumber#'
+  - '#CarNumber#'
+  - '#Email#'
+  - '#Topic#'
+  - '#SEP#'
