@@ -69,6 +69,6 @@ training:
   warmup_steps: 10
   weight_decay: 0.01
 wandb:
-  entity: ahyeon1-
+  entity: lyjune37
   name: base
   project: nlp-5
