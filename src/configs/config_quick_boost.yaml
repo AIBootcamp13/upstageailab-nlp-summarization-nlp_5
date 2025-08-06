@@ -1,5 +1,5 @@
-# ⚡ Quick Boost - 기존 모델 최대 활용
-# 15분 내 즉시 점수 향상용
+# ⚡ Quick Boost - 기존 모델 최대 활용 (inference only)
+# WandB 비활성화 + 에러 수정
 
 general:
   data_path: ./data/
@@ -11,18 +11,11 @@ inference:
   batch_size: 48
   ckt_dir: ./outputs/exp_optimized_lyj/best
   early_stopping: true
-  
-  # 🚀 극한 최적화 설정 (상위 모델 분석 기반)
-  generate_max_length: 230          # 매우 긴 요약으로 정보량 극대화
-  num_beams: 12                     # 최대 beam
-  length_penalty: 2.0               # 강력한 길이 선호
-  repetition_penalty: 1.25          # 강한 반복 방지
-  no_repeat_ngram_size: 6           # 매우 강한 n-gram 제어
-  
-  # 품질 극대화
-  diversity_penalty: 0.5            # 다양성 추가
-  early_stopping: true
-  
+  generate_max_length: 230
+  num_beams: 12
+  length_penalty: 2.0
+  repetition_penalty: 1.25
+  no_repeat_ngram_size: 6
   remove_tokens:
   - <usr>
   - <s>
@@ -54,3 +47,10 @@ tokenizer:
   - '#Email#'
   - '#Topic#'
   - '#SEP#'
+
+# Inference Only 모드 (training 건너뛰기)
+training:
+  num_train_epochs: 0
+  per_device_train_batch_size: 1
+  seed: 42
+  report_to: []  # WandB 비활성화

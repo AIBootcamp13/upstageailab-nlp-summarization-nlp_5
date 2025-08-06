@@ -97,6 +97,7 @@ training:
   
   # 기타 최적화
   seed: 42                          # 재현성
+  report_to: []  # WandB 비활성화
   group_by_length: true
   remove_unused_columns: true
   predict_with_generate: true
