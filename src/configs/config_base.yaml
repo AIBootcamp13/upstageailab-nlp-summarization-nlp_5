@@ -2,6 +2,7 @@ general:
   data_path: data/
   model_name: digit82/kobart-summarization
   output_dir: ./
+  train_data: train_18000_2.csv
 inference:
   batch_size: 32
   ckt_dir: model-ckt-path
