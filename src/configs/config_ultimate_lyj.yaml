@@ -1,0 +1,132 @@
+# 🏆 Ultimate Performance Config - 1위 달성용
+# 상위 모델 패턴 완전 분석 + 최고 성능 설정
+# 목표: ROUGE-1 0.60+, ROUGE-2 0.42+, ROUGE-L 0.54+
+
+general:
+  data_path: ./data/
+  model_name: digit82/kobart-summarization
+  output_dir: ./outputs/exp_ultimate_lyj
+  train_data: train_japan_backtranslation_filtered.csv
+
+inference:
+  batch_size: 32                    # 안정성 우선
+  ckt_dir: ./outputs/exp_ultimate_lyj/best
+  early_stopping: true
+  
+  # 🎯 1위 모델 완전 모방 설정
+  generate_max_length: 220          # 상위 모델들이 더 긴 요약 선호
+  num_beams: 10                     # 최대 beam 확장
+  length_penalty: 1.8               # 강력한 길이 제어
+  repetition_penalty: 1.2           # 반복 방지 강화
+  no_repeat_ngram_size: 5           # 더 강력한 n-gram 제어
+  
+  # 🎲 다양성과 품질 균형
+  do_sample: false                  # deterministic 출력으로 일관성 확보
+  early_stopping: true
+  
+  remove_tokens:
+  - <usr>
+  - <s>
+  - </s>
+  - <pad>
+  - <unk>
+  result_path: ./outputs/exp_ultimate_lyj/submission_ultimate.csv
+
+tokenizer:
+  bos_token: <s>
+  decoder_max_len: 220              # inference와 일치
+  encoder_max_len: 896              # 더 긴 입력 지원
+  eos_token: </s>
+  special_tokens:
+  - '#Person1#'
+  - '#Person2#'
+  - '#Person3#'
+  - '#Person4#'
+  - '#Person5#'
+  - '#Person6#'
+  - '#Person7#'
+  - '#PhoneNumber#'
+  - '#Address#'
+  - '#DateOfBirth#'
+  - '#PassportNumber#'
+  - '#SSN#'
+  - '#CardNumber#'
+  - '#CarNumber#'
+  - '#Email#'
+  - '#Topic#'
+  - '#SEP#'
+
+training:
+  # 🔥 최고 성능 훈련 설정
+  per_device_train_batch_size: 64   # 최적 배치
+  per_device_eval_batch_size: 48    
+  dataloader_num_workers: 12        
+  dataloader_drop_last: false
+  dataloader_pin_memory: true
+  dataloader_persistent_workers: true
+  
+  # 📈 학습률 및 스케줄링 최적화
+  num_train_epochs: 8               # 적절한 에포크 (과적합 방지)
+  learning_rate: 2.5e-05            # 미세 조정된 학습률
+  warmup_ratio: 0.1                 # 비율 기반 warmup
+  weight_decay: 0.008               # 정규화 강화
+  
+  # 🎯 스케줄러 최적화
+  lr_scheduler_type: cosine         # 코사인 스케줄러
+  cosine_restart_ratio: 0.5         # 재시작 비율
+  
+  # 💾 메모리 및 성능 최적화
+  fp16: true
+  torch_compile: true
+  torch_compile_mode: "reduce-overhead"
+  gradient_checkpointing: true
+  gradient_checkpointing_kwargs:
+    use_reentrant: false
+  gradient_accumulation_steps: 2    # 효과적 배치 확대
+  torch_empty_cache_steps: 3
+  
+  # 📊 평가 및 저장 최적화
+  evaluation_strategy: steps
+  eval_steps: 250                   # 더 자주 평가
+  save_steps: 250
+  logging_steps: 25
+  
+  # 🎪 Early Stopping 세밀 조정
+  early_stopping_patience: 3
+  early_stopping_threshold: 0.0003
+  
+  # 기타 최적화
+  seed: 42                          # 재현성
+  group_by_length: true
+  remove_unused_columns: true
+  predict_with_generate: true
+  generation_max_length: 220
+  
+  output_dir: ./outputs/exp_ultimate_lyj
+  overwrite_output_dir: false
+  save_total_limit: 5               # 더 많은 체크포인트 보관
+  load_best_model_at_end: true
+  metric_for_best_model: eval_rouge-2
+  greater_is_better: true
+  
+  report_to: wandb
+  logging_dir: ./outputs/exp_ultimate_lyj/logs
+
+# 🔍 WandB 설정
+wandb:
+  entity: lyjune37
+  name: ultimate_performance_v1
+  notes: "Ultimate config for #1 rank - enhanced everything"
+  project: nlp-5
+  tags:
+  - "ultimate"
+  - "rank1"
+  - "enhanced"
+  - "rouge2-focus"
+
+# 실험 메타데이터
+experiment:
+  version: "ultimate_v1"
+  strategy: "complete_optimization"
+  target_score: 52.0
+  focus: "ROUGE-2_enhancement"
