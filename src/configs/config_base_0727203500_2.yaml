@@ -1,0 +1,72 @@
+general:
+  data_path: ./data/
+  model_name: digit82/kobart-summarization
+  output_dir: ./outputs/exp_base_0727203500_2
+inference:
+  batch_size: 32
+  ckt_dir: ./outputs/exp_base_0727203500_2/best
+  early_stopping: true
+  generate_max_length: 170
+  no_repeat_ngram_size: 2
+  num_beams: 4
+  remove_tokens:
+  - <usr>
+  - <s>
+  - </s>
+  - <pad>
+  result_path: ./outputs/exp_base_0727203500_2/submission_0727203500_2.csv
+tokenizer:
+  bos_token: <s>
+  decoder_max_len: 170
+  encoder_max_len: 1028
+  eos_token: </s>
+  special_tokens:
+  - '#Person1#'
+  - '#Person2#'
+  - '#Person3#'
+  - '#Person4#'
+  - '#PhoneNumber#'
+  - '#Address#'
+  - '#DateOfBirth#'
+  - '#PassportNumber#'
+  - '#SSN#'
+  - '#CardNumber#'
+  - '#CarNumber#'
+  - '#Email#'
+training:
+  dataloader_drop_last: false
+  dataloader_num_workers: 8
+  early_stopping_patience: 1
+  early_stopping_threshold: 0.001
+  eval_steps: 400
+  evaluation_strategy: steps
+  fp16: true
+  generation_max_length: 170
+  gradient_accumulation_steps: 1
+  gradient_checkpointing: true
+  gradient_checkpointing_kwargs:
+    use_reentrant: false
+  group_by_length: true
+  learning_rate: 1.0e-05
+  load_best_model_at_end: true
+  logging_dir: ./outputs/exp_base_0727203500_2
+  logging_steps: 400
+  num_train_epochs: 35
+  output_dir: ./outputs/exp_base_0727203500_2
+  overwrite_output_dir: false
+  per_device_eval_batch_size: 48
+  per_device_train_batch_size: 128
+  predict_with_generate: true
+  remove_unused_columns: true
+  report_to: 'wandb'
+  save_steps: 400
+  save_total_limit: 2
+  seed: 42
+  torch_empty_cache_steps: 10
+  warmup_steps: 10
+  weight_decay: 0.001
+wandb:
+  entity: skiersong
+  name: baseline_merged-train_0727203500_2
+  notes: Baseline-test-merged357289
+  project: nlp-5
