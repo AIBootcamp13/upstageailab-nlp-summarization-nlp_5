@@ -1,0 +1,46 @@
+# pandas==2.1.4
+# numpy==1.23.5
+# wandb==0.16.1
+# tqdm==4.66.1
+
+# torch==2.5.1
+# torchvision==0.20.1
+# torchaudio==2.5.1
+
+# pytorch_lightning==2.1.2
+# # transformers[torch]==4.35.2
+# transformers==4.35.2
+# rouge==1.0.1
+# jupyter==1.0.0
+# jupyterlab==4.0.9
+# unsloth
+# gradio
+# evaluate
+# matplotlib
+# seaborn
+# python-dotenv
+
+wandb
+tqdm
+torch==2.6.0
+torchvision==0.21.0
+torchaudio==2.6.0
+
+pytorch_lightning==2.5.2
+# transformers[torch]==4.35.2
+transformers==4.54.0
+rouge
+rouge-score
+jupyter
+jupyterlab
+unsloth
+gradio
+evaluate
+matplotlib
+seaborn
+python-dotenv
+nltk
+scipy
+kiwipiepy==0.21.0
+datasets
+optuna

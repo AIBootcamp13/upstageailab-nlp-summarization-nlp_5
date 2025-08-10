@@ -1,0 +1,765 @@
+﻿file,column,noun,count
+train.csv,dialogue,이 시간대에,11
+train.csv,dialogue,이 프로젝트,21
+train.csv,summary,이 프로젝트,1
+train.csv,dialogue,이 도시에서,21
+train.csv,dialogue,이 프로그램,16
+train.csv,dialogue,그 사람들,68
+train.csv,dialogue,그 사람의,13
+train.csv,summary,그 사람의,3
+train.csv,dialogue,이 사람들,27
+train.csv,summary,이 사람들,6
+train.csv,dialogue,이 드레스,34
+train.csv,summary,이 드레스,3
+train.csv,dialogue,그 정도면,47
+train.csv,dialogue,그 이후에,9
+train.csv,dialogue,이 보고서,20
+train.csv,summary,이 보고서,1
+train.csv,dialogue,이 선생님,7
+train.csv,summary,이 선생님,5
+train.csv,dialogue,그 다음엔,38
+train.csv,dialogue,이 초콜릿,7
+train.csv,summary,이 초콜릿,2
+train.csv,dialogue,그 표지판,4
+train.csv,dialogue,이 지역의,7
+train.csv,summary,이 지역의,2
+train.csv,dialogue,이 스타일,19
+train.csv,summary,이 스타일,1
+train.csv,dialogue,이 서비스,20
+train.csv,summary,이 서비스,3
+train.csv,dialogue,이 정도면,20
+train.csv,dialogue,그러시군요,19
+train.csv,dialogue,이 처방전,8
+train.csv,dialogue,그 다음에,60
+train.csv,dialogue,이 생각해,12
+train.csv,dialogue,이 사무실,17
+train.csv,summary,이 사무실,3
+train.csv,dialogue,이 회사의,7
+train.csv,summary,이 회사의,2
+train.csv,dialogue,그 나라의,7
+train.csv,summary,그 나라의,2
+train.csv,dialogue,이 스웨터,17
+train.csv,summary,이 스웨터,2
+train.csv,dialogue,이 아파트,30
+train.csv,summary,이 아파트,7
+train.csv,dialogue,이 도시의,11
+train.csv,summary,이 도시의,1
+train.csv,dialogue,그 드레스,17
+train.csv,summary,그 드레스,2
+train.csv,dialogue,이 신청서,11
+train.csv,dialogue,그 가격대,7
+train.csv,dialogue,그 이후로,24
+train.csv,dialogue,이 여기서,10
+train.csv,dialogue,그 선생님,8
+train.csv,summary,그 선생님,2
+train.csv,dialogue,그 비행기,13
+train.csv,dialogue,이 분야의,6
+train.csv,dialogue,이 컴퓨터,15
+train.csv,summary,이 컴퓨터,6
+train.csv,dialogue,이 대부분,10
+train.csv,summary,이 대부분,3
+train.csv,dialogue,이 서류들,4
+train.csv,dialogue,그 이야기,14
+train.csv,dialogue,그 사람,325
+train.csv,summary,그 사람,14
+train.csv,dialogue,그 친구,64
+train.csv,summary,그 친구,4
+train.csv,dialogue,그 얘기,44
+train.csv,dialogue,이 다음,28
+train.csv,summary,이 다음,7
+train.csv,dialogue,저 여자,26
+train.csv,dialogue,이 회사,77
+train.csv,summary,이 회사,19
+train.csv,dialogue,이 도시,76
+train.csv,summary,이 도시,5
+train.csv,dialogue,이 시간,59
+train.csv,summary,이 시간,5
+train.csv,dialogue,그 문제,25
+train.csv,summary,그 문제,1
+train.csv,dialogue,이 문제,102
+train.csv,summary,이 문제,23
+train.csv,dialogue,그다음에,67
+train.csv,dialogue,이 지역,39
+train.csv,summary,이 지역,7
+train.csv,dialogue,그 남자,29
+train.csv,summary,그 남자,17
+train.csv,dialogue,이 버스,39
+train.csv,summary,이 버스,5
+train.csv,dialogue,그 수업,22
+train.csv,summary,그 수업,5
+train.csv,dialogue,그 자리,30
+train.csv,summary,그 자리,4
+train.csv,dialogue,저 사람,56
+train.csv,dialogue,이 셔츠,16
+train.csv,summary,이 셔츠,4
+train.csv,dialogue,이 선물,18
+train.csv,summary,이 선물,2
+train.csv,dialogue,이 자리,39
+train.csv,summary,이 자리,4
+train.csv,dialogue,그 정보,15
+train.csv,summary,그 정보,4
+train.csv,dialogue,그 영화,47
+train.csv,summary,그 영화,8
+train.csv,dialogue,이 요즘,13
+train.csv,summary,이 요즘,1
+train.csv,dialogue,그 회사,31
+train.csv,summary,그 회사,5
+train.csv,dialogue,이 신발,10
+train.csv,dialogue,이 책들,16
+train.csv,dialogue,이 수업,29
+train.csv,summary,이 수업,20
+train.csv,dialogue,그 시간,55
+train.csv,summary,그 시간,2
+train.csv,dialogue,그 부분,44
+train.csv,dialogue,그 여자,33
+train.csv,summary,그 여자,3
+train.csv,dialogue,이 가게,23
+train.csv,summary,이 가게,4
+train.csv,dialogue,이 근처,40
+train.csv,summary,이 근처,2
+train.csv,dialogue,이 도움,22
+train.csv,summary,이 도움,11
+train.csv,dialogue,그 가격,34
+train.csv,summary,그 가격,6
+train.csv,dialogue,이 소포,23
+train.csv,summary,이 소포,2
+train.csv,dialogue,그 기간,12
+train.csv,summary,그 기간,2
+train.csv,dialogue,이 서류,16
+train.csv,summary,이 서류,2
+train.csv,dialogue,이 영화,38
+train.csv,summary,이 영화,10
+train.csv,dialogue,이 계약,18
+train.csv,summary,이 계약,4
+train.csv,dialogue,이 주소,9
+train.csv,dialogue,그 이후,35
+train.csv,summary,그 이후,1
+train.csv,dialogue,그 순간,6
+train.csv,dialogue,그 근처,10
+train.csv,dialogue,이 음악,11
+train.csv,summary,이 음악,1
+train.csv,dialogue,이 가방,31
+train.csv,summary,이 가방,2
+train.csv,dialogue,이 동네,31
+train.csv,summary,이 동네,2
+train.csv,dialogue,이 모델,17
+train.csv,summary,이 모델,1
+train.csv,dialogue,그 생각,27
+train.csv,summary,그 생각,2
+train.csv,dialogue,이 가격,24
+train.csv,summary,이 가격,6
+train.csv,dialogue,저 건물,6
+train.csv,dialogue,이 바지,6
+train.csv,summary,이 바지,1
+train.csv,dialogue,그 외에,38
+train.csv,summary,그 외에,1
+train.csv,dialogue,이 코트,10
+train.csv,summary,이 코트,1
+train.csv,dialogue,그 마음,10
+train.csv,dialogue,이 노래,19
+train.csv,summary,이 노래,9
+train.csv,dialogue,이 주말,6
+train.csv,summary,이 주말,5
+train.csv,dialogue,이 반지,7
+train.csv,dialogue,이 사진,27
+train.csv,summary,이 사진,3
+train.csv,dialogue,이 여기,43
+train.csv,dialogue,그 후에,56
+train.csv,summary,그 후에,4
+train.csv,dialogue,그 다음,123
+train.csv,summary,그 다음,1
+train.csv,dialogue,이 편지,24
+train.csv,summary,이 편지,2
+train.csv,dialogue,이 선반,6
+train.csv,summary,이 선반,1
+train.csv,dialogue,이 지금,20
+train.csv,summary,이 지금,2
+train.csv,dialogue,이 제품,24
+train.csv,summary,이 제품,4
+train.csv,dialogue,이 사람,48
+train.csv,summary,이 사람,9
+train.csv,dialogue,이 직업,29
+train.csv,summary,이 직업,8
+train.csv,dialogue,그 분야,13
+train.csv,summary,그 분야,2
+train.csv,dialogue,이 학교,21
+train.csv,summary,이 학교,8
+train.csv,dialogue,이 양식,87
+train.csv,summary,이 양식,1
+train.csv,dialogue,이 종이,8
+train.csv,summary,이 종이,1
+train.csv,dialogue,이 분야,42
+train.csv,dialogue,이 기계,17
+train.csv,summary,이 기계,2
+train.csv,dialogue,그 잡지,11
+train.csv,summary,그 잡지,1
+train.csv,dialogue,그 전에,29
+train.csv,summary,그 전에,1
+train.csv,dialogue,그 버스,11
+train.csv,dialogue,이 신문,13
+train.csv,summary,이 신문,3
+train.csv,dialogue,이 모두,15
+train.csv,summary,이 모두,14
+train.csv,dialogue,이 운동,23
+train.csv,summary,이 운동,3
+train.csv,dialogue,이 우리,118
+train.csv,summary,이 우리,2
+train.csv,dialogue,이 나라,25
+train.csv,summary,이 나라,3
+train.csv,dialogue,이 제안,13
+train.csv,summary,이 제안,7
+train.csv,dialogue,그 색상,6
+train.csv,dialogue,이 기간,6
+train.csv,summary,이 기간,1
+train.csv,dialogue,이 음식,24
+train.csv,summary,이 음식,9
+train.csv,dialogue,이 건물,20
+train.csv,dialogue,이 때문,11
+train.csv,summary,이 때문,3
+train.csv,dialogue,이 직책,44
+train.csv,summary,이 직책,3
+train.csv,dialogue,그 학생,8
+train.csv,summary,그 학생,4
+train.csv,dialogue,이 그림,13
+train.csv,summary,이 그림,1
+train.csv,dialogue,그 나라,25
+train.csv,summary,그 나라,3
+train.csv,dialogue,그 식당,17
+train.csv,summary,그 식당,1
+train.csv,dialogue,이 하루,12
+train.csv,summary,이 하루,1
+train.csv,dialogue,이 얘기,27
+train.csv,dialogue,이 인기,18
+train.csv,summary,이 인기,1
+train.csv,dialogue,그 소식,13
+train.csv,summary,그 소식,7
+train.csv,dialogue,이 실제,13
+train.csv,summary,이 실제,5
+train.csv,dialogue,이 직무,13
+train.csv,summary,이 직무,3
+train.csv,dialogue,그 노래,14
+train.csv,summary,그 노래,1
+train.csv,dialogue,이 비용,9
+train.csv,summary,이 비용,6
+train.csv,dialogue,이 완벽,23
+train.csv,summary,이 완벽,2
+train.csv,dialogue,그 목표,6
+train.csv,dialogue,이 거리,14
+train.csv,summary,이 거리,3
+train.csv,dialogue,이 세계,12
+train.csv,summary,이 세계,5
+train.csv,dialogue,이 광고,11
+train.csv,dialogue,그 정도,105
+train.csv,dialogue,이 너희,8
+train.csv,dialogue,이 기회,11
+train.csv,summary,이 기회,1
+train.csv,dialogue,이 환전,5
+train.csv,dialogue,이 치마,10
+train.csv,summary,이 치마,1
+train.csv,dialogue,그 얘긴,5
+train.csv,dialogue,이 잡지,13
+train.csv,summary,이 잡지,3
+train.csv,dialogue,그 학교,9
+train.csv,summary,그 학교,1
+train.csv,dialogue,그 선물,3
+train.csv,summary,그 선물,5
+train.csv,dialogue,이 경기,14
+train.csv,summary,이 경기,2
+train.csv,dialogue,이 나무,14
+train.csv,dialogue,이 집,71
+train.csv,summary,이 집,21
+train.csv,dialogue,그 일,97
+train.csv,summary,그 일,23
+train.csv,dialogue,이 차,75
+train.csv,summary,이 차,22
+train.csv,dialogue,그녀의,113
+train.csv,summary,그녀의,161
+train.csv,dialogue,그 말,73
+train.csv,summary,그 말,6
+train.csv,dialogue,그 돈,38
+train.csv,summary,그 돈,1
+train.csv,dialogue,이 책,79
+train.csv,summary,이 책,14
+train.csv,dialogue,그 애,36
+train.csv,summary,그 애,1
+train.csv,dialogue,이 일,240
+train.csv,summary,이 일,43
+train.csv,dialogue,이 약,60
+train.csv,summary,이 약,15
+train.csv,dialogue,그 책,50
+train.csv,summary,그 책,17
+train.csv,dialogue,그 후,91
+train.csv,summary,그 후,28
+train.csv,dialogue,그분들,55
+train.csv,dialogue,이 날,48
+train.csv,summary,이 날,3
+train.csv,dialogue,이 새,76
+train.csv,summary,이 새,43
+train.csv,dialogue,그 차,22
+train.csv,summary,그 차,7
+train.csv,dialogue,이 길,71
+train.csv,summary,이 길,14
+train.csv,dialogue,그 전,41
+train.csv,summary,그 전,4
+train.csv,dialogue,이 방,53
+train.csv,summary,이 방,16
+train.csv,dialogue,그것들,22
+train.csv,summary,그것들,8
+train.csv,dialogue,이 색,27
+train.csv,dialogue,그 길,18
+train.csv,dialogue,이 돈,33
+train.csv,summary,이 돈,13
+train.csv,dialogue,이곳의,5
+train.csv,summary,이곳의,3
+train.csv,dialogue,이디어,142
+train.csv,summary,이디어,37
+train.csv,dialogue,그분의,5
+train.csv,summary,그분의,1
+train.csv,dialogue,그 집,30
+train.csv,summary,그 집,7
+train.csv,dialogue,그 점,43
+train.csv,summary,그 점,2
+train.csv,dialogue,그다음,117
+train.csv,summary,그다음,1
+train.csv,dialogue,이후에,60
+train.csv,summary,이후에,13
+train.csv,dialogue,저 길,5
+train.csv,dialogue,이 옷,20
+train.csv,summary,이 옷,4
+train.csv,dialogue,이 문,124
+train.csv,summary,이 문,29
+train.csv,dialogue,그 외,43
+train.csv,summary,그 외,2
+train.csv,dialogue,그 정,133
+train.csv,summary,그 정,5
+train.csv,dialogue,이 공,60
+train.csv,summary,이 공,13
+train.csv,dialogue,그 중,28
+train.csv,summary,그 중,8
+train.csv,dialogue,그 둘,14
+train.csv,dialogue,이 그,361
+train.csv,summary,이 그,93
+train.csv,dialogue,이 꼭,16
+train.csv,dialogue,이 줄,47
+train.csv,summary,이 줄,6
+train.csv,dialogue,그곳의,6
+train.csv,summary,그곳의,7
+train.csv,dialogue,이웃들,25
+train.csv,summary,이웃들,5
+train.csv,dialogue,이 첫,13
+train.csv,summary,이 첫,2
+train.csv,dialogue,이 정,440
+train.csv,summary,이 정,21
+train.csv,dialogue,그 안,21
+train.csv,summary,그 안,2
+train.csv,dialogue,이 말,55
+train.csv,summary,이 말,5
+train.csv,dialogue,그 분,25
+train.csv,summary,그 분,2
+train.csv,dialogue,그 뒤,10
+train.csv,dialogue,그게,1327
+train.csv,summary,그게,10
+train.csv,dialogue,그런,2720
+train.csv,summary,그런,30
+train.csv,dialogue,그거,1150
+train.csv,dialogue,그건,1045
+train.csv,summary,그건,1
+train.csv,dialogue,그녀,448
+train.csv,summary,그녀,450
+train.csv,dialogue,저기,932
+train.csv,summary,저기,2
+train.csv,dialogue,이거,579
+train.csv,summary,이거,6
+train.csv,dialogue,그때,478
+train.csv,summary,그때,4
+train.csv,dialogue,이건,409
+train.csv,dialogue,그걸,442
+train.csv,summary,그걸,3
+train.csv,dialogue,그분,161
+train.csv,summary,그분,3
+train.csv,dialogue,이게,369
+train.csv,summary,이게,2
+train.csv,dialogue,그곳,152
+train.csv,summary,그곳,68
+train.csv,dialogue,그것,242
+train.csv,summary,그것,140
+train.csv,dialogue,그쪽,98
+train.csv,summary,그쪽,1
+train.csv,dialogue,이걸,234
+train.csv,dialogue,그의,200
+train.csv,summary,그의,209
+train.csv,dialogue,이곳,77
+train.csv,summary,이곳,29
+train.csv,dialogue,이것,77
+train.csv,summary,이것,12
+train.csv,dialogue,저쪽,129
+train.csv,summary,저쪽,1
+train.csv,dialogue,그날,113
+train.csv,summary,그날,10
+train.csv,dialogue,저번,57
+train.csv,summary,저번,2
+train.csv,dialogue,이쪽,147
+train.csv,summary,이쪽,1
+train.csv,dialogue,저거,62
+train.csv,dialogue,저건,47
+train.csv,dialogue,저의,21
+train.csv,summary,저의,2
+train.csv,dialogue,저요,16
+train.csv,dialogue,저게,33
+train.csv,dialogue,이대,9
+train.csv,dialogue,그림,118
+train.csv,summary,그림,39
+train.csv,dialogue,저 ,1102
+train.csv,summary,저 ,107
+train.csv,dialogue,이블,169
+train.csv,summary,이블,54
+train.csv,dialogue,이웃,100
+train.csv,summary,이웃,46
+train.csv,dialogue,그땐,15
+train.csv,dialogue,그중,47
+train.csv,summary,그중,4
+train.csv,dialogue,이룰,9
+train.csv,summary,이룰,1
+train.csv,dialogue,저,5223
+train.csv,summary,저,723
+train.csv,dialogue,그,10656
+train.csv,summary,그,2832
+dev.csv,dialogue,이 시간대에,1
+dev.csv,dialogue,이 프로젝트,1
+dev.csv,dialogue,이 도시에서,1
+dev.csv,dialogue,이 프로그램,1
+dev.csv,dialogue,그 사람들,3
+dev.csv,dialogue,그 사람의,1
+dev.csv,summary,이 사람들,1
+dev.csv,dialogue,이 드레스,1
+dev.csv,dialogue,그 정도면,1
+dev.csv,dialogue,그 다음엔,1
+dev.csv,dialogue,그 표지판,1
+dev.csv,dialogue,그러시군요,1
+dev.csv,dialogue,이 처방전,1
+dev.csv,dialogue,이 사무실,3
+dev.csv,dialogue,이 아파트,2
+dev.csv,dialogue,이 여기서,1
+dev.csv,dialogue,그 비행기,1
+dev.csv,dialogue,이 컴퓨터,3
+dev.csv,summary,이 컴퓨터,1
+dev.csv,dialogue,이 대부분,1
+dev.csv,dialogue,그 사람,12
+dev.csv,dialogue,그 친구,3
+dev.csv,dialogue,그 얘기,1
+dev.csv,dialogue,이 다음,4
+dev.csv,summary,이 다음,1
+dev.csv,dialogue,이 회사,3
+dev.csv,dialogue,이 도시,2
+dev.csv,dialogue,이 시간,2
+dev.csv,dialogue,이 문제,2
+dev.csv,summary,이 문제,1
+dev.csv,dialogue,그다음에,2
+dev.csv,dialogue,이 버스,2
+dev.csv,dialogue,그 수업,2
+dev.csv,dialogue,그 자리,3
+dev.csv,dialogue,저 사람,2
+dev.csv,dialogue,이 셔츠,1
+dev.csv,dialogue,이 자리,4
+dev.csv,summary,이 자리,2
+dev.csv,dialogue,그 영화,3
+dev.csv,dialogue,이 신발,1
+dev.csv,dialogue,이 수업,2
+dev.csv,summary,이 수업,1
+dev.csv,dialogue,그 시간,2
+dev.csv,dialogue,그 부분,3
+dev.csv,dialogue,그 여자,1
+dev.csv,dialogue,이 가게,1
+dev.csv,dialogue,이 근처,1
+dev.csv,dialogue,이 도움,1
+dev.csv,dialogue,그 가격,3
+dev.csv,dialogue,이 소포,1
+dev.csv,dialogue,이 영화,1
+dev.csv,summary,이 음악,1
+dev.csv,dialogue,이 가방,1
+dev.csv,dialogue,이 동네,2
+dev.csv,dialogue,이 모델,1
+dev.csv,dialogue,이 가격,2
+dev.csv,dialogue,저 건물,2
+dev.csv,dialogue,그 외에,2
+dev.csv,dialogue,그 마음,1
+dev.csv,dialogue,이 반지,1
+dev.csv,dialogue,이 여기,1
+dev.csv,dialogue,그 후에,1
+dev.csv,dialogue,그 다음,1
+dev.csv,dialogue,이 편지,1
+dev.csv,dialogue,이 선반,1
+dev.csv,dialogue,이 지금,1
+dev.csv,dialogue,이 제품,1
+dev.csv,summary,이 제품,1
+dev.csv,summary,이 사람,1
+dev.csv,dialogue,이 직업,3
+dev.csv,summary,이 직업,1
+dev.csv,dialogue,그 분야,1
+dev.csv,dialogue,이 학교,1
+dev.csv,dialogue,이 양식,4
+dev.csv,dialogue,이 종이,1
+dev.csv,dialogue,이 기계,2
+dev.csv,dialogue,그 전에,1
+dev.csv,dialogue,그 버스,2
+dev.csv,dialogue,이 신문,1
+dev.csv,dialogue,이 모두,1
+dev.csv,dialogue,이 운동,1
+dev.csv,dialogue,이 우리,7
+dev.csv,summary,이 제안,1
+dev.csv,dialogue,이 음식,1
+dev.csv,dialogue,이 때문,2
+dev.csv,dialogue,이 직책,2
+dev.csv,dialogue,이 그림,1
+dev.csv,dialogue,이 하루,1
+dev.csv,dialogue,이 직무,2
+dev.csv,dialogue,이 거리,1
+dev.csv,summary,이 광고,1
+dev.csv,dialogue,그 정도,7
+dev.csv,dialogue,이 잡지,2
+dev.csv,dialogue,이 나무,1
+dev.csv,dialogue,이 집,2
+dev.csv,summary,이 집,3
+dev.csv,dialogue,그 일,2
+dev.csv,dialogue,이 차,2
+dev.csv,dialogue,그녀의,4
+dev.csv,summary,그녀의,5
+dev.csv,dialogue,그 말,4
+dev.csv,summary,그 말,1
+dev.csv,dialogue,그 애,2
+dev.csv,dialogue,이 일,5
+dev.csv,summary,이 일,3
+dev.csv,dialogue,이 약,5
+dev.csv,summary,이 약,2
+dev.csv,dialogue,그 책,2
+dev.csv,dialogue,그 후,5
+dev.csv,summary,그 후,1
+dev.csv,dialogue,그분들,4
+dev.csv,dialogue,이 날,2
+dev.csv,dialogue,이 새,1
+dev.csv,dialogue,그 차,1
+dev.csv,dialogue,이 길,6
+dev.csv,summary,이 길,2
+dev.csv,dialogue,그 전,2
+dev.csv,dialogue,이 방,2
+dev.csv,dialogue,그것들,1
+dev.csv,dialogue,이 색,3
+dev.csv,dialogue,이디어,4
+dev.csv,summary,이디어,1
+dev.csv,dialogue,그 집,3
+dev.csv,summary,그 집,2
+dev.csv,dialogue,그 점,2
+dev.csv,dialogue,그다음,3
+dev.csv,dialogue,이후에,2
+dev.csv,summary,이후에,1
+dev.csv,dialogue,저 길,1
+dev.csv,dialogue,이 문,2
+dev.csv,summary,이 문,1
+dev.csv,dialogue,그 외,2
+dev.csv,dialogue,그 정,7
+dev.csv,dialogue,이 공,5
+dev.csv,summary,이 공,2
+dev.csv,dialogue,그 중,3
+dev.csv,dialogue,그 둘,1
+dev.csv,dialogue,이 그,14
+dev.csv,summary,이 그,5
+dev.csv,dialogue,이 꼭,2
+dev.csv,dialogue,이 줄,2
+dev.csv,summary,그곳의,2
+dev.csv,dialogue,이웃들,2
+dev.csv,dialogue,이 첫,1
+dev.csv,dialogue,이 정,20
+dev.csv,dialogue,그 안,1
+dev.csv,dialogue,이 말,3
+dev.csv,dialogue,그 분,2
+dev.csv,dialogue,그게,63
+dev.csv,summary,그게,1
+dev.csv,dialogue,그런,107
+dev.csv,summary,그런,1
+dev.csv,dialogue,그거,47
+dev.csv,dialogue,그건,47
+dev.csv,dialogue,그녀,16
+dev.csv,summary,그녀,16
+dev.csv,dialogue,저기,46
+dev.csv,dialogue,이거,28
+dev.csv,dialogue,그때,18
+dev.csv,dialogue,이건,24
+dev.csv,dialogue,그걸,19
+dev.csv,dialogue,그분,7
+dev.csv,dialogue,이게,15
+dev.csv,dialogue,그곳,1
+dev.csv,summary,그곳,4
+dev.csv,dialogue,그것,7
+dev.csv,summary,그것,7
+dev.csv,dialogue,그쪽,1
+dev.csv,dialogue,이걸,9
+dev.csv,dialogue,그의,4
+dev.csv,summary,그의,2
+dev.csv,dialogue,이곳,5
+dev.csv,summary,이곳,1
+dev.csv,dialogue,이것,4
+dev.csv,summary,이것,2
+dev.csv,dialogue,저쪽,6
+dev.csv,dialogue,그날,4
+dev.csv,dialogue,저번,2
+dev.csv,dialogue,이쪽,3
+dev.csv,dialogue,저거,4
+dev.csv,dialogue,저건,6
+dev.csv,dialogue,저의,1
+dev.csv,dialogue,저게,1
+dev.csv,dialogue,그림,4
+dev.csv,summary,그림,3
+dev.csv,dialogue,저 ,50
+dev.csv,summary,저 ,1
+dev.csv,dialogue,이블,9
+dev.csv,summary,이블,4
+dev.csv,dialogue,이웃,5
+dev.csv,dialogue,그중,1
+dev.csv,dialogue,이룰,2
+dev.csv,dialogue,저,209
+dev.csv,summary,저,21
+dev.csv,dialogue,그,424
+dev.csv,summary,그,93
+test.csv,dialogue,이 시간대에,1
+test.csv,dialogue,이 프로젝트,1
+test.csv,dialogue,이 도시에서,2
+test.csv,dialogue,이 프로그램,1
+test.csv,dialogue,그 사람들,2
+test.csv,dialogue,이 사람들,1
+test.csv,dialogue,그 정도면,1
+test.csv,dialogue,이 보고서,2
+test.csv,dialogue,그 다음엔,2
+test.csv,dialogue,이 정도면,1
+test.csv,dialogue,그 다음에,2
+test.csv,dialogue,이 생각해,1
+test.csv,dialogue,이 사무실,5
+test.csv,dialogue,이 도시의,1
+test.csv,dialogue,그 선생님,1
+test.csv,dialogue,그 비행기,1
+test.csv,dialogue,이 컴퓨터,2
+test.csv,dialogue,그 사람,10
+test.csv,dialogue,그 친구,5
+test.csv,dialogue,이 다음,1
+test.csv,dialogue,저 여자,2
+test.csv,dialogue,이 회사,5
+test.csv,dialogue,이 도시,7
+test.csv,dialogue,이 시간,2
+test.csv,dialogue,이 문제,4
+test.csv,dialogue,그다음에,6
+test.csv,dialogue,이 지역,3
+test.csv,dialogue,그 남자,1
+test.csv,dialogue,이 버스,1
+test.csv,dialogue,그 수업,3
+test.csv,dialogue,저 사람,2
+test.csv,dialogue,이 자리,2
+test.csv,dialogue,그 정보,1
+test.csv,dialogue,그 영화,1
+test.csv,dialogue,이 수업,1
+test.csv,dialogue,그 시간,3
+test.csv,dialogue,그 부분,1
+test.csv,dialogue,그 여자,2
+test.csv,dialogue,이 도움,1
+test.csv,dialogue,이 소포,3
+test.csv,dialogue,이 영화,1
+test.csv,dialogue,이 계약,1
+test.csv,dialogue,이 가방,1
+test.csv,dialogue,그 외에,1
+test.csv,dialogue,이 여기,2
+test.csv,dialogue,그 후에,2
+test.csv,dialogue,그 다음,4
+test.csv,dialogue,이 편지,2
+test.csv,dialogue,이 지금,3
+test.csv,dialogue,이 제품,1
+test.csv,dialogue,이 사람,1
+test.csv,dialogue,그 분야,1
+test.csv,dialogue,이 학교,2
+test.csv,dialogue,이 양식,4
+test.csv,dialogue,이 분야,2
+test.csv,dialogue,이 기계,3
+test.csv,dialogue,그 전에,1
+test.csv,dialogue,이 모두,2
+test.csv,dialogue,이 우리,4
+test.csv,dialogue,이 나라,2
+test.csv,dialogue,이 음식,1
+test.csv,dialogue,이 건물,2
+test.csv,dialogue,이 직책,1
+test.csv,dialogue,그 학생,1
+test.csv,dialogue,그 식당,1
+test.csv,dialogue,이 하루,1
+test.csv,dialogue,이 얘기,4
+test.csv,dialogue,그 소식,2
+test.csv,dialogue,이 실제,1
+test.csv,dialogue,이 완벽,1
+test.csv,dialogue,그 목표,1
+test.csv,dialogue,이 거리,1
+test.csv,dialogue,그 정도,2
+test.csv,dialogue,이 경기,1
+test.csv,dialogue,이 집,3
+test.csv,dialogue,그 일,3
+test.csv,dialogue,이 차,4
+test.csv,dialogue,그녀의,7
+test.csv,dialogue,그 말,4
+test.csv,dialogue,이 책,2
+test.csv,dialogue,그 애,1
+test.csv,dialogue,이 일,12
+test.csv,dialogue,이 약,1
+test.csv,dialogue,그 후,2
+test.csv,dialogue,그분들,1
+test.csv,dialogue,이 날,3
+test.csv,dialogue,이 새,2
+test.csv,dialogue,그 차,1
+test.csv,dialogue,이 길,1
+test.csv,dialogue,그 전,1
+test.csv,dialogue,이 방,2
+test.csv,dialogue,이 색,1
+test.csv,dialogue,그 길,1
+test.csv,dialogue,이 돈,2
+test.csv,dialogue,이디어,6
+test.csv,dialogue,그 집,1
+test.csv,dialogue,그다음,7
+test.csv,dialogue,이후에,2
+test.csv,dialogue,이 문,4
+test.csv,dialogue,그 외,3
+test.csv,dialogue,그 정,3
+test.csv,dialogue,이 공,7
+test.csv,dialogue,그 둘,1
+test.csv,dialogue,이 그,21
+test.csv,dialogue,이 줄,1
+test.csv,dialogue,이웃들,1
+test.csv,dialogue,이 정,20
+test.csv,dialogue,이 말,5
+test.csv,dialogue,그 분,1
+test.csv,dialogue,그게,60
+test.csv,dialogue,그런,106
+test.csv,dialogue,그거,59
+test.csv,dialogue,그건,50
+test.csv,dialogue,그녀,33
+test.csv,dialogue,저기,37
+test.csv,dialogue,이거,29
+test.csv,dialogue,그때,13
+test.csv,dialogue,이건,22
+test.csv,dialogue,그걸,25
+test.csv,dialogue,그분,7
+test.csv,dialogue,이게,20
+test.csv,dialogue,그곳,15
+test.csv,dialogue,그것,15
+test.csv,dialogue,그쪽,3
+test.csv,dialogue,이걸,15
+test.csv,dialogue,그의,12
+test.csv,dialogue,이곳,2
+test.csv,dialogue,이것,2
+test.csv,dialogue,저쪽,11
+test.csv,dialogue,그날,4
+test.csv,dialogue,저번,4
+test.csv,dialogue,이쪽,6
+test.csv,dialogue,저거,1
+test.csv,dialogue,저건,2
+test.csv,dialogue,저게,4
+test.csv,dialogue,그림,6
+test.csv,dialogue,저 ,52
+test.csv,dialogue,이블,7
+test.csv,dialogue,이웃,5
+test.csv,dialogue,그땐,1
+test.csv,dialogue,그중,2
+test.csv,dialogue,저,218
+test.csv,dialogue,그,426
