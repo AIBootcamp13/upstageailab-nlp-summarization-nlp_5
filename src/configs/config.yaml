@@ -1,0 +1,89 @@
+general:
+  data_path: ./data/
+  train_data: train_japan_backtranslation_filtered.csv
+  val_data: dev.csv
+  test_data: test.csv
+  model_name: digit82/kobart-summarization
+  output_dir: ./checkpoint/
+
+inference:
+  batch_size: 64              # 추론 배치 사이즈 조정 (48 → 64)
+  ckt_path: model-ckt-path
+  ckt_dir: ./checkpoint/
+  early_stopping: true
+  generate_max_length: 150     # 최대 생성 길이 140~160 사이 권장, 150으로 설정
+  no_repeat_ngram_size: 3      # 중복 방지 ngram 크기 3으로 증가 실험
+  num_beams: 5                # 빔 서치 개수 5로 조정
+  remove_tokens:              # 스페셜 토큰 제거 최소화 (아래 2개만 권장)
+    - <usr>
+    - <pad>
+  result_path: ./prediction/
+  length_penalty: 1.1          # 길이 패널티 약간 증가
+
+tokenizer:
+  bos_token: <s>
+  decoder_max_len: 150         # 디코더 최대 길이도 150으로 맞춤
+  encoder_max_len: 512
+  eos_token: </s>
+  special_tokens:
+    - '#Person1#'
+    - '#Person2#'
+    - '#Person3#'
+    - '#Person4#'
+    - '#Person5#'
+    - '#Person6#'
+    - '#Person7#'
+    - '#Name#'
+    - '#PersonName#'
+    - '#Alex#'
+    - '#Bob#'
+    - '#Kristin#'
+    - '#Liliana#'
+    - '#Mike#'
+    - '#Address#'
+    - '#PhoneNumber#'
+    - '#DateOfBirth#'
+    - '#PassportNumber#'
+    - '#SSN#'
+    - '#CardNumber#'
+    - '#CarNumber#'
+    - '#Email#'
+    - '#FlightNumber#'
+    - '#Price#'
+
+training:
+  dataloader_drop_last: false
+  dataloader_num_workers: 8
+  early_stopping_patience: 1
+  early_stopping_threshold: 0.001
+  eval_steps: 400
+  evaluation_strategy: steps
+  fp16: true
+  generation_max_length: 150       # 학습 시 생성 길이도 150으로 통일
+  gradient_accumulation_steps: 1
+  gradient_checkpointing: true
+  gradient_checkpointing_kwargs:
+    use_reentrant: false
+  group_by_length: true
+  learning_rate: 1e-05           # 러닝레이트 3e-5로 올림 (1e-5도 실험)
+  load_best_model_at_end: true
+  logging_steps: 100
+  num_train_epochs: 20
+  output_dir: ./checkpoint/
+  overwrite_output_dir: false
+  per_device_eval_batch_size: 64  # eval 배치 64로 증가
+  per_device_train_batch_size: 64
+  predict_with_generate: true
+  remove_unused_columns: true
+  report_to: all
+  save_steps: 400
+  save_total_limit: 1
+  seed: 42
+  torch_empty_cache_steps: 10
+  warmup_steps: 10
+  weight_decay: 0.01
+
+wandb:
+  entity: upstage_13
+  project: nlp5-eunbyul
+  name: 

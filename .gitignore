@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.env
+
+# Data & outputs
+data/
+prediction/
+checkpoint/
+wandb/
+outputs/
+logs/
+
+# Jupyter/VSCode
+.ipynb_checkpoints/
+.vscode/
